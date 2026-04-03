@@ -15,8 +15,8 @@ class DaSiWa_ResolutionScaler:
         "1.65 MP - 2K+": 1.65,
         "1.75 MP - QHD": 1.75,
         "2.10 MP - FHD": 2.10,
-        "3.30 MP - QHD+": 3.30,
-        "4.75 MP - 2K Pro": 4.75,
+        "3.30 MP - FHD+": 3.30,
+        "4.75 MP - FHD++": 4.75,
         "6.50 MP - Production": 6.50,
         "8.30 MP - UHD": 8.30,
     }
@@ -42,7 +42,7 @@ class DaSiWa_ResolutionScaler:
     }
 
     DESCRIPTION = """
-    
+
     DaSiWa Resolution Scaler
     Calculates mathematically precise resolutions based on a target Megapixel area.
     
