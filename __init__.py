@@ -1,4 +1,4 @@
-from .py.scaling_nodes import DaSiWa_ResolutionScaleCalculator
+from .nodes.scaling_nodes import DaSiWa_ResolutionScaleCalculator
 
 NODE_CLASS_MAPPINGS = {
     "DaSiWa_ResolutionScaleCalculator": DaSiWa_ResolutionScaleCalculator
