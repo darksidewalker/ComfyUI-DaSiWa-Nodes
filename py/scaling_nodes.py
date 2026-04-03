@@ -60,7 +60,7 @@ class DaSiWa_ResolutionScaler:
             "required": {
                 "method": (["Use Precision Tiers", "Use Resolution Presets", "No Scale (Source Dims)"], {"default": "Use Precision Tiers"}),
                 "pixel_precision": (list(PRECISION_TIERS.keys()), {"default": "0.52 MP - Standard"}),
-                "res_preset": (list(RES_PRESETS.keys()), {"default": "1080p Area"}),
+                "res_preset": (list(RES_PRESETS.keys()), {"default": "1080p"}),
                 "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no"}),
                 "aspect_preset": (list(ASPECT_PRESETS.keys()), {"default": "9:16 - Social"}),
                 "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
