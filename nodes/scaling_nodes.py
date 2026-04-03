@@ -1,11 +1,11 @@
 import math
 
-class DaSiWa_ResolutionScaler:
+class DaSiWa_ResolutionScaleCalculator:
     # --- DATA ARRAYS ---
-    PRECISION_TIERS = {
+    PRECISION_PRESETS = {
         "0.26 MP - Preview": 0.26,
         "0.36 MP - Small": 0.36,
-        "0.52 MP - Standard": 0.52,
+        "0.52 MP - SD": 0.52,
         "0.65 MP - Balanced": 0.65,
         "0.83 MP - HD": 0.83,
         "1.05 MP - HD+": 1.05,
@@ -15,13 +15,13 @@ class DaSiWa_ResolutionScaler:
         "1.65 MP - 2K+": 1.65,
         "1.75 MP - QHD": 1.75,
         "2.10 MP - FHD": 2.10,
-        "3.30 MP - FHD+": 3.30,
-        "4.75 MP - FHD++": 4.75,
+        "3.30 MP - QHD+": 3.30,
+        "4.75 MP - 2K Pro": 4.75,
         "6.50 MP - Production": 6.50,
         "8.30 MP - UHD": 8.30,
     }
 
-    RES_PRESETS = {
+    RESOLUTION_PRESETS = {
         "360p": 0.23,
         "480p": 0.38,
         "720p": 0.92,
@@ -42,23 +42,24 @@ class DaSiWa_ResolutionScaler:
     }
 
     DESCRIPTION = """
-
-    DaSiWa Resolution Scaler
+    ### DaSiWa Resolution Scale Calculator
     Calculates mathematically precise resolutions based on a target Megapixel area.
     
-    - Standard Mode: Pure mathematical scaling.
-    - WAN/LTX Mode: Snaps to 32-pixel boundaries (mandatory for WAN/LTX VAEs).
-    - Scale From Image: Uses aspect ratio from the connected 'image' input.
-
+    - **Standard Mode**: Pure mathematical scaling.
+    - **WAN/LTX Mode**: Snaps to 32-pixel boundaries (mandatory for WAN/LTX VAEs).
+    - **No Scale**: Overrides all math and outputs the source image dimensions directly.
     """
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "method": (["Use Precision Tiers", "Use Resolution Presets", "No Scale (Source Dims)"], {"default": "Use Precision Tiers"}),
-                "pixel_precision": (list(cls.PRECISION_TIERS.keys()), {"default": "0.52 MP - Standard"}),
-                "res_preset": (list(cls.RES_PRESETS.keys()), {"default": "1080p"}),
+                "method": (["Use Precision Presets", "Use Resolution Presets"], {"default": "Use Precision Presets"}),
+                "precision_presets": (list(cls.PRECISION_PRESETS.keys()), {"default": "0.52 MP - SD"}),
+                "resolution_presets": (list(cls.RESOLUTION_PRESETS.keys()), {"default": "1080p"}),
+                
+                "no_scale": ("BOOLEAN", {"default": False, "label_on": "ON (Source Dims)", "label_off": "OFF (Calculated)"}),
+                
                 "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no"}),
                 "aspect_preset": (list(cls.ASPECT_PRESETS.keys()), {"default": "9:16 - Social"}),
                 "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
@@ -76,12 +77,11 @@ class DaSiWa_ResolutionScaler:
     FUNCTION = "calculate"
     CATEGORY = "DaSiWa/Scaling"
 
-    def calculate(self, method, pixel_precision, res_preset, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, image=None):
-        # 1. ASPECT LOGIC
+    def calculate(self, method, precision_presets, resolution_presets, no_scale, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, image=None):
+        # 1. GET SOURCE DIMENSIONS (From Image or Manual)
         if scale_from_image:
             if image is None:
                 raise ValueError("DaSiWa Scaler: 'scale_from_image' is set to YES, but no image is connected.")
-            
             try:
                 # Get shape from first frame
                 _, h, w, _ = image.shape
@@ -96,21 +96,20 @@ class DaSiWa_ResolutionScaler:
             
             if swap_aspect:
                 source_w, source_h = source_h, source_w
-        
-        aspect_ratio = source_w / source_h
 
-        # 2. NO SCALE LOGIC
-        if method == "No Scale (Source Dims)":
+        # 2. HANDLE NO-SCALE TOGGLE (PASS-THROUGH)
+        if no_scale:
             final_w, final_h = int(source_w), int(source_h)
             return (final_w, final_h, float(final_w), float(final_h))
 
         # 3. GET MP TARGET
+        aspect_ratio = source_w / source_h
         if method == "Use Resolution Presets":
-            a = self.RES_PRESETS.get(res_preset, 2.07)
+            a = self.RESOLUTION_PRESETS.get(resolution_presets, 2.07)
         else:
-            a = self.PRECISION_TIERS.get(pixel_precision, 0.52)
+            a = self.PRECISION_PRESETS.get(precision_presets, 0.52)
 
-        # 4. MATH
+        # 4. CALCULATE
         target_total_pixels = a * 1000000
         calc_w = math.sqrt(target_total_pixels * aspect_ratio)
         calc_h = math.sqrt(target_total_pixels / aspect_ratio)
