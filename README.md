@@ -1,8 +1,14 @@
 # DaSiWa Custom Nodes Collection
 
-## 🛠 Installation
+## Included Nodes
 
-### Manual install
+### Resolution Scale Calculator
+
+The **DaSiWa Scale Calculator** provides mathematically precise resolution management for high-performance video models. It uses a **Constant-Area Square-Root method** to ensure that your GPU VRAM usage remains stable regardless of the aspect ratio.
+
+# 🛠 Installation
+
+## Manual install
 
 1. Activate your venv inside your comfyui folder
 
@@ -16,6 +22,6 @@ e.g.
     ```
     uv pip install -r requirements.txt
     ```
-### Use ComfyUI-Manager
+## Use ComfyUI-Manager
 
 Search for DaSiWa-Nodes and install
