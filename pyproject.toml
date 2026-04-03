@@ -1,0 +1,13 @@
+[project]
+name = "ComfyUI-DaSiWa-Nodes"
+description = "[WIP]DaSiWa Custom Nodes Collection"
+version = "0.0.1"
+license = { file = "LICENSE" }
+
+[project.urls]
+Repository = "https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "darksidewalker"
+DisplayName = "ComfyUI-DaSiWa-Nodes"
