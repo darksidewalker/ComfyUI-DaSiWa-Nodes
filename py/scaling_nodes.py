@@ -54,38 +54,19 @@ class DaSiWa_ResolutionScaler:
 
     """
 
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "method": (["Use Precision Tiers", "Use Resolution Presets", "No Scale (Source Dims)"], {"default": "Use Precision Tiers"}),
-                "pixel_precision": (list(PRECISION_TIERS.keys()), {"default": "0.52 MP - Standard"}),
-                "res_preset": (list(RES_PRESETS.keys()), {"default": "1080p"}),
-                "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no"}),
-                "aspect_preset": (list(ASPECT_PRESETS.keys()), {"default": "9:16 - Social"}),
-                "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
-                "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192}),
-                "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192}),
-                "mode": (["Standard", "WAN/LTX (Div32)"], {"default": "WAN/LTX (Div32)"}),
-            },
-            "optional": {
-                "image": ("IMAGE",),
-            }
-        }
-
-    RETURN_TYPES = ("INT", "INT", "FLOAT", "FLOAT")
-    RETURN_NAMES = ("width_int", "height_int", "width_float", "height_float")
-    FUNCTION = "calculate"
-    CATEGORY = "DaSiWa/Scaling"
-
-    def calculate(self, method, pixel_precision, res_preset, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, image=None):
-        # 1. ASPECT LOGIC & IMAGE REQUIREMENT CHECK
+def calculate(self, method, pixel_precision, res_preset, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, image=None):
+        # 1. ASPECT LOGIC & BATCH HANDLING
         if scale_from_image:
             if image is None:
-                raise ValueError("DaSiWa Scaler: 'scale_from_image' is set to YES, but no image is connected.")
+                raise ValueError("DaSiWa Scaler: 'scale_from_image' is set to YES, but no image or video is connected to the input.")
             
-            _, h, w, _ = image.shape
-            source_w, source_h = float(w), float(h)
+            # ComfyUI Images/Videos are [Batch, Height, Width, Channels]
+            # We explicitly grab only the first frame [0] to prevent batch-processing crashes
+            try:
+                batch_size, h, w, _ = image.shape
+                source_w, source_h = float(w), float(h)
+            except (AttributeError, IndexError, ValueError):
+                raise ValueError("DaSiWa Scaler: Received an invalid image tensor format.")
         else:
             # MANUAL MODE
             if aspect_preset == "CUSTOM":
@@ -120,7 +101,9 @@ class DaSiWa_ResolutionScaler:
             final_w = int(round(calc_w / 32.0) * 32)
             final_h = int(round(calc_h / 32.0) * 32)
         else:
+            # Standard Mode: nearest integer
             final_w = int(round(calc_w))
             final_h = int(round(calc_h))
 
+        # Final safety clamp
         return (max(final_w, 32), max(final_h, 32), float(final_w), float(final_h))
