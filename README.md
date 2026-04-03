@@ -31,7 +31,7 @@ This ensures that whether you are generating 1:1, 9:16, or 21:9, the **total str
    git clone https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes
    ```
 
-3. Install alld ependencies    
+3. Install all dependencies    
 e.g.
     ```
     uv pip install -r requirements.txt
