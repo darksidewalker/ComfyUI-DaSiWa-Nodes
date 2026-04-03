@@ -6,6 +6,8 @@
 
 The **DaSiWa Scale Calculator** provides mathematically precise resolution management for high-performance video models. It uses a **Constant-Area Square-Root method** to ensure that your GPU VRAM usage remains stable regardless of the aspect ratio.
 
+![ResolutionScaleCalculator.png](assets/ResolutionScaleCalculator.png)
+
 # 🛠 Installation
 
 ## Manual install
