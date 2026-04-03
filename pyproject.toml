@@ -1,6 +1,6 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
-description = "[WIP]DaSiWa Custom Nodes Collection"
+description = "DaSiWa Custom Nodes Collection"
 version = "0.0.1"
 license = { file = "LICENSE" }
 
