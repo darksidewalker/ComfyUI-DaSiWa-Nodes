@@ -3,7 +3,7 @@ name = "ComfyUI-DaSiWa-Nodes"
 description = "DaSiWa Custom Nodes Collection"
 version = "0.0.3"
 license = {file = "LICENSE"}
-dependencies = ["math"]
+dependencies = []
 
 [project.urls]
 Repository = "https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes"
