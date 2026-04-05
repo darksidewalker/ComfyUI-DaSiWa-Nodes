@@ -42,12 +42,16 @@ class DaSiWa_ResolutionScaleCalculator:
     }
 
     DESCRIPTION = """
-    ### DaSiWa Resolution Scale Calculator
+    DaSiWa Resolution Scale Calculator
+    
     Calculates mathematically precise resolutions based on a target Megapixel area.
     
-    - **Standard Mode**: Pure mathematical scaling.
-    - **WAN/LTX Mode**: Snaps to 32-pixel boundaries (mandatory for WAN/LTX VAEs).
-    - **No Scale**: Overrides all math and outputs the source image dimensions directly.
+    - Standard Mode: Pure mathematical scaling.
+
+    - WAN/LTX Mode: Snaps to 32-pixel boundaries (mandatory for WAN/LTX VAEs).
+
+    - No Scale: Overrides all math and outputs the source image dimensions directly.
+    
     """
 
     @classmethod
