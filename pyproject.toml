@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
 description = "DaSiWa Custom Nodes Collection"
-version = "0.0.5"
+version = "0.0.6"
 license = {file = "LICENSE"}
 dependencies = []
 
