@@ -6,9 +6,12 @@ Mutes or bypasses target nodes based on a boolean toggle.
 Targets are identified by wiring any output from the node you want
 to control into one of this node's target inputs.  Inputs appear
 dynamically: only one empty slot is shown at a time.  When you
-connect it, the next slot appears (up to 20).
+connect it, the next slot appears (up to 99).
 
-No outputs.  Pure control node.
+The switch exposes a single BOOLEAN output (`enabled_out`) carrying
+its effective `enabled` value so a chain of switches can be driven
+from a single upstream toggle.  Each switch in a chain still applies
+its own `trigger_on` and `action` independently.
 """
 
 
@@ -46,10 +49,13 @@ class DaSiWa_NodeStatusSwitch:
             },
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("enabled_out",)
     FUNCTION = "execute"
     CATEGORY = "DaSiWa/utils"
     OUTPUT_NODE = True
 
     def execute(self, enabled, trigger_on, action, unique_id=None, **kwargs):
-        return {}
+        # Pass the effective enabled value through to any chained switch.
+        # Downstream switches apply their own trigger_on / action logic.
+        return (bool(enabled),)

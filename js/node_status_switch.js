@@ -25,6 +25,13 @@ const NODE_TYPE     = "DaSiWa_NodeStatusSwitch";
 const TARGET_PREFIX = "target_";
 const MAX_TARGETS   = 99;
 
+// Toggle in browser console:  window.DASIWA_SWITCH_DEBUG = true
+function dlog(...args) {
+    if (typeof window !== "undefined" && window.DASIWA_SWITCH_DEBUG) {
+        console.log("[DaSiWa Switch]", ...args);
+    }
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 function getWidget(node, name) {
@@ -113,8 +120,17 @@ function readBoolFromNode(node) {
  * If the "enabled" input is connected, follow the link to the source
  * node and read its boolean value.  Otherwise fall back to the local
  * widget on the switch.
+ *
+ * Chaining: if the upstream node is another DaSiWa_NodeStatusSwitch,
+ * recursively read its effective enabled value (which is what the
+ * upstream switch outputs from its enabled_out pin).  A `visited`
+ * set guards against accidental cycles in user graphs.
  */
-function readEnabled(switchNode) {
+function readEnabled(switchNode, visited) {
+    visited = visited ?? new Set();
+    if (visited.has(switchNode.id)) return null; // cycle guard
+    visited.add(switchNode.id);
+
     const graph = switchNode.graph ?? app.graph;
 
     const enabledInput = (switchNode.inputs ?? []).find(
@@ -128,8 +144,18 @@ function readEnabled(switchNode) {
         if (link) {
             const allNodes = graph._nodes ?? graph.nodes ?? [];
             const src = allNodes.find((n) => n.id === link.origin_id);
-            const v = readBoolFromNode(src);
-            if (v != null) return v;
+            if (src) {
+                // If upstream is another switch, use its effective value,
+                // not its raw widget — a chained switch's output is what
+                // matters for downstream chaining.
+                if (src.type === NODE_TYPE) {
+                    const v = readEnabled(src, visited);
+                    if (v != null) return v;
+                } else {
+                    const v = readBoolFromNode(src);
+                    if (v != null) return v;
+                }
+            }
         }
     }
 
@@ -202,6 +228,15 @@ function applySwitch(switchNode) {
     const actionMode     = action === "mute" ? MODE_MUTE : MODE_BYPASS;
     const targetMode     = targetsActive ? MODE_ACTIVE : actionMode;
 
+    dlog("applySwitch", {
+        nodeId: switchNode.id,
+        enabled,
+        triggerOn,
+        action,
+        targetsActive,
+        targetMode,
+    });
+
     const graph = switchNode.graph ?? app.graph;
     if (!graph) return;
 
@@ -212,6 +247,70 @@ function applySwitch(switchNode) {
         const target = allNodes.find((n) => n.id === id);
         if (target) target.mode = targetMode;
     }
+}
+
+// ── propagate to downstream chained switches ────────────────────────────
+//
+// When this switch's effective state changes, find every other switch
+// whose `enabled` input is wired (directly or transitively) from this
+// switch's `enabled_out` and re-apply them too.  This is more reliable
+// than waiting for the polling mirror loop to notice.
+
+function findDownstreamSwitches(switchNode, visited) {
+    visited = visited ?? new Set();
+    if (visited.has(switchNode.id)) return [];
+    visited.add(switchNode.id);
+
+    const graph = switchNode.graph ?? app.graph;
+    if (!graph) return [];
+
+    const allNodes = graph._nodes ?? graph.nodes ?? [];
+    const linksMap = graph.links ?? graph._links;
+    if (!linksMap) return [];
+
+    // Find the output slot named "enabled_out" on this node.
+    const outIdx = (switchNode.outputs ?? []).findIndex(
+        (o) => o?.name === "enabled_out"
+    );
+    if (outIdx < 0) return [];
+
+    const outSlot = switchNode.outputs[outIdx];
+    const linkIds = outSlot?.links ?? [];
+
+    const found = [];
+    for (const linkId of linkIds) {
+        const link = linksMap?.[linkId] ?? linksMap?.get?.(linkId);
+        if (!link) continue;
+        const target = allNodes.find((n) => n.id === link.target_id);
+        if (!target || target.type !== NODE_TYPE) continue;
+        // Only count it if the link lands on the target's "enabled" input.
+        const tInput = target.inputs?.[link.target_slot];
+        if (!tInput || tInput.name !== "enabled") continue;
+
+        found.push(target);
+        // Recurse to catch chains of length > 2.
+        const further = findDownstreamSwitches(target, visited);
+        for (const f of further) found.push(f);
+    }
+    return found;
+}
+
+function applySwitchAndDownstream(switchNode) {
+    applySwitch(switchNode);
+    const downstream = findDownstreamSwitches(switchNode);
+    dlog("downstream of", switchNode.id, "=", downstream.map((d) => d.id));
+    for (const d of downstream) {
+        // Mirror upstream's effective enabled into the downstream
+        // switch's local widget so the UI reflects the chain.
+        const upstreamEnabled = readEnabled(switchNode);
+        const localW = getWidget(d, "enabled");
+        if (localW && localW.value !== upstreamEnabled) {
+            localW.value = upstreamEnabled;
+        }
+        applySwitch(d);
+    }
+    const graph = switchNode.graph ?? app.graph;
+    graph?.setDirtyCanvas?.(true, true);
 }
 
 // ── live mirror: external boolean -> local widget ───────────────────────
@@ -240,8 +339,18 @@ function syncExternalToLocal(switchNode) {
 
     const allNodes = graph._nodes ?? graph.nodes ?? [];
     const src = allNodes.find((n) => n.id === link.origin_id);
+    if (!src) return;
 
-    const externalValue = readBoolFromNode(src);
+    // If the source is another switch, we want its *effective* enabled
+    // (the value it would output), not its raw widget.  This makes the
+    // local widget on a chained switch mirror the upstream switch
+    // through any number of links.
+    let externalValue;
+    if (src.type === NODE_TYPE) {
+        externalValue = readEnabled(src);
+    } else {
+        externalValue = readBoolFromNode(src);
+    }
     if (externalValue == null) return;
 
     if (localW.value === externalValue) return; // already in sync
@@ -285,8 +394,14 @@ app.registerExtension({
             origCreated?.apply(this, arguments);
             const self = this;
 
-            while (self.outputs && self.outputs.length > 0) {
-                self.removeOutput(0);
+            // Ensure the chaining output pin exists.  ComfyUI normally
+            // adds it from RETURN_TYPES, but be defensive in case the
+            // node definition is reloaded without it.
+            const hasOutput = (self.outputs ?? []).some(
+                (o) => o?.name === "enabled_out"
+            );
+            if (!hasOutput) {
+                self.addOutput("enabled_out", "BOOLEAN");
             }
 
             if (countTargetSlots(self) === 0) {
@@ -294,12 +409,13 @@ app.registerExtension({
             }
 
             // Local widget callbacks: live updates when the user
-            // toggles directly on the switch node.
+            // toggles directly on the switch node.  Cascade through
+            // any chained downstream switches.
             for (const w of self.widgets ?? []) {
                 const origCb = w.callback;
                 w.callback = function (...args) {
                     origCb?.apply(this, args);
-                    requestAnimationFrame(() => applySwitch(self));
+                    requestAnimationFrame(() => applySwitchAndDownstream(self));
                 };
             }
 
@@ -318,7 +434,7 @@ app.registerExtension({
             if (side === 1) {
                 requestAnimationFrame(() => {
                     syncTargetSlots(self);
-                    applySwitch(self);
+                    applySwitchAndDownstream(self);
                 });
             }
         };
@@ -327,8 +443,20 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function (data) {
             origOnConfigure?.apply(this, arguments);
             const self = this;
-            while (self.outputs && self.outputs.length > 0) {
-                self.removeOutput(0);
+            // Migration: older saved graphs had no outputs.  Add the
+            // chaining output if missing.  Strip any *other* outputs
+            // (defensive — should not occur).
+            const outs = self.outputs ?? [];
+            for (let i = outs.length - 1; i >= 0; i--) {
+                if (outs[i]?.name !== "enabled_out") {
+                    self.removeOutput(i);
+                }
+            }
+            const hasOutput = (self.outputs ?? []).some(
+                (o) => o?.name === "enabled_out"
+            );
+            if (!hasOutput) {
+                self.addOutput("enabled_out", "BOOLEAN");
             }
             requestAnimationFrame(() => syncTargetSlots(self));
         };
@@ -337,8 +465,17 @@ app.registerExtension({
     async loadedGraphNode(node) {
         if (node.type !== NODE_TYPE) return;
         requestAnimationFrame(() => {
-            while (node.outputs && node.outputs.length > 0) {
-                node.removeOutput(0);
+            const outs = node.outputs ?? [];
+            for (let i = outs.length - 1; i >= 0; i--) {
+                if (outs[i]?.name !== "enabled_out") {
+                    node.removeOutput(i);
+                }
+            }
+            const hasOutput = (node.outputs ?? []).some(
+                (o) => o?.name === "enabled_out"
+            );
+            if (!hasOutput) {
+                node.addOutput("enabled_out", "BOOLEAN");
             }
             syncTargetSlots(node);
         });

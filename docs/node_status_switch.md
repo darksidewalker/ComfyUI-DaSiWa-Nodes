@@ -23,7 +23,22 @@ The Node Status Switch lets you mute or bypass any node in your workflow using a
 
 ## Outputs
 
-None. The Node Status Switch is a pure control node with no data outputs.
+| Output | Type | Description |
+|---|---|---|
+| `enabled_out` | BOOLEAN | The effective `enabled` value of this switch. Wire this into another switch's `enabled` input to chain switches: the downstream switch will use this value as its own `enabled` and apply its own `trigger_on` / `action` independently. |
+
+---
+
+## Chaining switches
+
+Wire the `enabled_out` output of one switch into the `enabled` input of another. The downstream switch receives the upstream switch's effective `enabled` value (raw, not post-`trigger_on`) and applies its own logic on top.
+
+This lets you drive any number of switches from a single master toggle while keeping each branch's `trigger_on` and `action` independent. For example, with one master toggle:
+
+- Switch B uses `trigger_on = true → active`, `action = bypass` to gate an upscale branch
+- Switch C uses `trigger_on = false → active`, `action = mute` to enable a preview branch only when the master is off
+
+Both react instantly when the master flips. Cycles (A → B → A) are detected and ignored.
 
 ---
 
