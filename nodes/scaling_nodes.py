@@ -69,7 +69,8 @@ class DaSiWa_ResolutionScaleCalculator:
                 "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
                 "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192}),
                 "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192}),
-                "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)"], {"default": "WAN/LTX (Div32)"}),
+                "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)", "CUSTOM"], {"default": "WAN/LTX (Div32)"}),
+                "custom_divisor": ("INT", {"default": 8, "min": 1, "max": 256, "step": 1}),
             },
             "optional": {
                 "image": ("IMAGE",),
@@ -81,7 +82,7 @@ class DaSiWa_ResolutionScaleCalculator:
     FUNCTION = "calculate"
     CATEGORY = "DaSiWa/Scaling"
 
-    def calculate(self, method, precision_presets, resolution_presets, no_scale, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, image=None):
+    def calculate(self, method, precision_presets, resolution_presets, no_scale, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, custom_divisor, image=None):
         # 1. GET SOURCE DIMENSIONS (From Image or Manual)
         if scale_from_image:
             if image is None:
@@ -119,15 +120,22 @@ class DaSiWa_ResolutionScaleCalculator:
         calc_h = math.sqrt(target_total_pixels / aspect_ratio)
         
         # 5. MODE HANDLING
-        if mode == "LTX 2-Stage (Div64)":
-            # Half-res latent must be /32, so full-res must be /64
+        if mode == "CUSTOM":
+            d = max(1, int(custom_divisor))
+            final_w = int(round(calc_w / d) * d)
+            final_h = int(round(calc_h / d) * d)
+            floor = d
+        elif mode == "LTX 2-Stage (Div64)":
             final_w = int(round(calc_w / 64.0) * 64)
             final_h = int(round(calc_h / 64.0) * 64)
+            floor = 64
         elif mode == "WAN/LTX (Div32)":
             final_w = int(round(calc_w / 32.0) * 32)
             final_h = int(round(calc_h / 32.0) * 32)
+            floor = 32
         else:
             final_w = int(round(calc_w))
             final_h = int(round(calc_h))
+            floor = 1
 
-        return (max(final_w, 64), max(final_h, 64), float(final_w), float(final_h))
+        return (max(final_w, floor), max(final_h, floor), float(final_w), float(final_h))
