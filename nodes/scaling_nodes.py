@@ -69,7 +69,7 @@ class DaSiWa_ResolutionScaleCalculator:
                 "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
                 "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192}),
                 "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192}),
-                "mode": (["Standard", "WAN/LTX (Div32)"], {"default": "WAN/LTX (Div32)"}),
+                "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)"], {"default": "WAN/LTX (Div32)"}),
             },
             "optional": {
                 "image": ("IMAGE",),
@@ -119,11 +119,15 @@ class DaSiWa_ResolutionScaleCalculator:
         calc_h = math.sqrt(target_total_pixels / aspect_ratio)
         
         # 5. MODE HANDLING
-        if mode == "WAN/LTX (Div32)":
+        if mode == "LTX 2-Stage (Div64)":
+            # Half-res latent must be /32, so full-res must be /64
+            final_w = int(round(calc_w / 64.0) * 64)
+            final_h = int(round(calc_h / 64.0) * 64)
+        elif mode == "WAN/LTX (Div32)":
             final_w = int(round(calc_w / 32.0) * 32)
             final_h = int(round(calc_h / 32.0) * 32)
         else:
             final_w = int(round(calc_w))
             final_h = int(round(calc_h))
 
-        return (max(final_w, 32), max(final_h, 32), float(final_w), float(final_h))
+        return (max(final_w, 64), max(final_h, 64), float(final_w), float(final_h))
