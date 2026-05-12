@@ -116,6 +116,23 @@ function readBoolFromNode(node) {
 }
 
 /**
+ * Resolves the true source node by traversing through Reroute nodes.
+ */
+function resolveSourceNode(startNode, graph) {
+    let current = startNode;
+    const visited = new Set();
+    while (current?.type?.includes?.("Reroute") && !visited.has(current.id)) {
+        visited.add(current.id);
+        const linkId = current.inputs?.[0]?.link;
+        const link = linkId != null ? (graph.links?.[linkId] ?? graph._links?.get?.(linkId)) : null;
+        if (!link) break;
+        const allNodes = graph._nodes ?? graph.nodes ?? [];
+        current = allNodes.find((n) => n.id === link.origin_id);
+    }
+    return current;
+}
+
+/**
  * Read the effective "enabled" value at queue time.
  * If the "enabled" input is connected, follow the link to the source
  * node and read its boolean value.  Otherwise fall back to the local
@@ -143,7 +160,7 @@ function readEnabled(switchNode, visited) {
             graph._links?.get?.(enabledInput.link);
         if (link) {
             const allNodes = graph._nodes ?? graph.nodes ?? [];
-            const src = allNodes.find((n) => n.id === link.origin_id);
+            const src = resolveSourceNode(allNodes.find((n) => n.id === link.origin_id), graph);
             if (src) {
                 // If upstream is another switch, use its effective value,
                 // not its raw widget — a chained switch's output is what
@@ -178,7 +195,9 @@ function getTargetNodeIds(switchNode) {
         const link =
             graph.links?.[input.link] ?? graph._links?.get?.(input.link);
         if (link && link.origin_id != null) {
-            ids.push(link.origin_id);
+            const allNodes = graph._nodes ?? graph.nodes ?? [];
+            const src = resolveSourceNode(allNodes.find((n) => n.id === link.origin_id), graph);
+            if (src) ids.push(src.id);
         }
     }
     return ids;
@@ -278,20 +297,24 @@ function findDownstreamSwitches(switchNode, visited) {
     const linkIds = outSlot?.links ?? [];
 
     const found = [];
-    for (const linkId of linkIds) {
-        const link = linksMap?.[linkId] ?? linksMap?.get?.(linkId);
-        if (!link) continue;
-        const target = allNodes.find((n) => n.id === link.target_id);
-        if (!target || target.type !== NODE_TYPE) continue;
-        // Only count it if the link lands on the target's "enabled" input.
-        const tInput = target.inputs?.[link.target_slot];
-        if (!tInput || tInput.name !== "enabled") continue;
+    const traceVisited = new Set();
 
-        found.push(target);
-        // Recurse to catch chains of length > 2.
-        const further = findDownstreamSwitches(target, visited);
-        for (const f of further) found.push(f);
+    function traceDownstream(linkId) {
+        if (traceVisited.has(linkId)) return;
+        traceVisited.add(linkId);
+
+        const link = linksMap?.[linkId] ?? linksMap?.get?.(linkId);
+        const target = link ? allNodes.find((n) => n.id === link.target_id) : null;
+        if (!target) return;
+
+        if (target.type?.includes?.("Reroute")) {
+            (target.outputs?.[0]?.links ?? []).forEach(traceDownstream);
+        } else if (target.type === NODE_TYPE && target.inputs?.[link.target_slot]?.name === "enabled") {
+            found.push(target, ...findDownstreamSwitches(target, visited));
+        }
     }
+
+    linkIds.forEach(traceDownstream);
     return found;
 }
 
@@ -338,7 +361,7 @@ function syncExternalToLocal(switchNode) {
     if (!link) return;
 
     const allNodes = graph._nodes ?? graph.nodes ?? [];
-    const src = allNodes.find((n) => n.id === link.origin_id);
+    const src = resolveSourceNode(allNodes.find((n) => n.id === link.origin_id), graph);
     if (!src) return;
 
     // If the source is another switch, we want its *effective* enabled
