@@ -61,7 +61,7 @@ The **DaSiWa Node Status Switch** lets you mute or bypass any node in your workf
    ```bash
    pip install -r requirements.txt
    ```
-4. **Requirement:** Ensure NVIDIA RTX Video SDK / Broadcast SDK is installed for the RTX nodes to function.
+4. **Requirement:** NVIDIA RTX GPU with drivers 530+. (Windows users may need the NVIDIA Broadcast SDK; Linux usually works out-of-the-box with the pip package).
 5. Restart ComfyUI.
 
 ### Use ComfyUI-Manager
