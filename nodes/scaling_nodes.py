@@ -58,22 +58,22 @@ class DaSiWa_ResolutionScaleCalculator:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "method": (["Use Precision Presets", "Use Resolution Presets"], {"default": "Use Precision Presets"}),
-                "precision_presets": (list(cls.PRECISION_PRESETS.keys()), {"default": "0.52 MP - SD"}),
-                "resolution_presets": (list(cls.RESOLUTION_PRESETS.keys()), {"default": "1080p"}),
+                "method": (["Use Precision Presets", "Use Resolution Presets"], {"default": "Use Precision Presets", "description": "Switch between using Megapixel presets or standard Resolution targets."}),
+                "precision_presets": (list(cls.PRECISION_PRESETS.keys()), {"default": "0.52 MP - SD", "description": "Optimized Megapixel budgets for various quality tiers."}),
+                "resolution_presets": (list(cls.RESOLUTION_PRESETS.keys()), {"default": "1080p", "description": "Standard video resolution targets."}),
                 
-                "no_scale": ("BOOLEAN", {"default": False, "label_on": "ON (Source Dims)", "label_off": "OFF (Calculated)"}),
+                "no_scale": ("BOOLEAN", {"default": False, "label_on": "ON (Source Dims)", "label_off": "OFF (Calculated)", "description": "Bypass all calculations and output the source dimensions exactly."}),
                 
-                "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no"}),
-                "aspect_preset": (list(cls.ASPECT_PRESETS.keys()), {"default": "9:16 - Social"}),
-                "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no"}),
-                "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192}),
-                "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192}),
-                "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)", "CUSTOM"], {"default": "WAN/LTX (Div32)"}),
-                "custom_divisor": ("INT", {"default": 8, "min": 1, "max": 256, "step": 1}),
+                "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no", "description": "If YES, uses the input image's aspect ratio. If NO, uses presets or manual sliders."}),
+                "aspect_preset": (list(cls.ASPECT_PRESETS.keys()), {"default": "9:16 - Social", "description": "Choose a common aspect ratio."}),
+                "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no", "description": "Flip width and height."}),
+                "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192, "description": "Custom ratio width (e.g., 21)."}),
+                "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192, "description": "Custom ratio height (e.g., 9)."}),
+                "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)", "CUSTOM"], {"default": "WAN/LTX (Div32)", "description": "Snapping engine. Use WAN/LTX (Div32) for modern video models."}),
+                "custom_divisor": ("INT", {"default": 8, "min": 1, "max": 256, "step": 1, "description": "Custom pixel boundary snapping."}),
             },
             "optional": {
-                "image": ("IMAGE",),
+                "image": ("IMAGE", {"description": "The source image used to calculate the target aspect ratio."}),
             }
         }
 

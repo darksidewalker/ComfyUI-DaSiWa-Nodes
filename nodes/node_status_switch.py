@@ -37,12 +37,12 @@ class DaSiWa_NodeStatusSwitch:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "enabled": ("BOOLEAN", {"default": True}),
+                "enabled": ("BOOLEAN", {"default": True, "description": "Master toggle to activate or deactivate the switch."}),
                 "trigger_on": (
                     ["true \u2192 active", "false \u2192 active"],
-                    {"default": "true \u2192 active"},
+                    {"default": "true \u2192 active", "description": "Define if the switch is active when the boolean is True or False."},
                 ),
-                "action": (["mute", "bypass"], {"default": "bypass"}),
+                "action": (["mute", "bypass"], {"default": "bypass", "description": "Choose whether to Mute (stop execution) or Bypass (pass through) targets."}),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
