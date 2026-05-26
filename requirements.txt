@@ -1,2 +1,4 @@
 torch
 nvidia-vfx
+Pillow
+numpy

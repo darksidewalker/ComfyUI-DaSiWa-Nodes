@@ -48,6 +48,22 @@ The **DaSiWa Node Status Switch** lets you mute or bypass any node in your workf
 
 ---
 
+### 💾 Metadata Image Saver (Civitai Ready)
+
+The **DaSiWa Metadata Image Saver** ensures your images are fully compatible with Civitai, Hugging Face, and other galleries by embedding A1111-style metadata. It automatically detects LoRAs used in the workflow and supports dynamic filenames.
+
+- **Civitai Compatibility:** Writes the standard `parameters` block for auto-parsing of prompts and resources.
+- **LoRA Detection:** Scans your workflow and appends `<lora:name:weight>` triggers automatically.
+- **WebP Support:** Full "Drag-and-Drop" workflow reconstruction support for both PNG and WebP formats.
+- **Dynamic Filenames:** Use placeholders like `%seed%`, `%date%`, `%model%`, `%width%`, and `%height%`.
+- **Privacy:** Toggle workflow JSON embedding to share images without exposing your full graph.
+
+!DaSiWa-MetadataImageSaver.png
+
+Full documentation →
+
+---
+
 ## 🛠️ Installation
 
 ### Manual install
