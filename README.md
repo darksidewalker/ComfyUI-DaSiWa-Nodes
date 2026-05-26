@@ -58,9 +58,9 @@ The **DaSiWa Metadata Image Saver** ensures your images are fully compatible wit
 - **Dynamic Filenames:** Use placeholders like `%seed%`, `%date%`, `%model%`, `%width%`, and `%height%`.
 - **Privacy:** Toggle workflow JSON embedding to share images without exposing your full graph.
 
-!DaSiWa-MetadataImageSaver.png
+![DaSiWa-MetadataImageSaver.png](assets/DaSiWa-MetadataImageSaver.png)
 
-Full documentation →
+[Full documentation →](docs/metadata_image_saver.md)
 
 ---
 
