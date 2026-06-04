@@ -17,6 +17,7 @@
  */
 
 import { app } from "../../scripts/app.js";
+import { api } from "../../scripts/api.js";
 
 const MODE_ACTIVE   = 0;
 const MODE_MUTE     = 2;
@@ -202,6 +203,118 @@ function getTargetNodeIds(switchNode) {
     }
     return ids;
 }
+
+function removeBackendSwitchNodes(prompt) {
+    if (!prompt || typeof prompt !== "object") return;
+
+    for (const [nodeId, nodeData] of Object.entries(prompt)) {
+        if (nodeData?.class_type !== NODE_TYPE) continue;
+        delete prompt[nodeId];
+    }
+}
+
+function removeBackendTargetInputsFromSwitchNodes(prompt) {
+    if (!prompt || typeof prompt !== "object") return;
+
+    for (const nodeData of Object.values(prompt)) {
+        if (nodeData?.class_type !== NODE_TYPE) continue;
+        const inputs = nodeData.inputs;
+        if (!inputs || typeof inputs !== "object" || Array.isArray(inputs)) continue;
+
+        for (const key of Object.keys(inputs)) {
+            if (key.startsWith(TARGET_PREFIX)) {
+                delete inputs[key];
+            }
+        }
+    }
+}
+
+function isPromptNodeKeyForTarget(key, targetId) {
+    const id = String(targetId);
+    return key === id || key.startsWith(`${id}:`) || key.endsWith(`:${id}`);
+}
+
+function removeInactiveTargetOutputs(output) {
+    if (!output || typeof output !== "object") return;
+
+    const graph = app.graph;
+    const allNodes = graph?._nodes ?? graph?.nodes ?? [];
+    if (!allNodes.length) return;
+
+    const inactiveTargets = new Set();
+    for (const node of allNodes) {
+        if (node.type !== NODE_TYPE) continue;
+
+        for (const targetId of getTargetNodeIds(node)) {
+            const target = allNodes.find((n) => String(n.id) === String(targetId));
+            if (target && target.mode !== MODE_ACTIVE) {
+                inactiveTargets.add(target.id);
+            }
+        }
+    }
+
+    for (const key of Object.keys(output)) {
+        for (const targetId of inactiveTargets) {
+            if (isPromptNodeKeyForTarget(key, targetId)) {
+                delete output[key];
+                break;
+            }
+        }
+    }
+}
+
+function sanitizeQueuePrompt(queuePromptData) {
+    if (!queuePromptData || typeof queuePromptData !== "object") return;
+
+    applyAllSwitches();
+    removeInactiveTargetOutputs(queuePromptData.output);
+    removeBackendTargetInputsFromSwitchNodes(queuePromptData.output);
+    removeBackendTargetInputsFromSwitchNodes(queuePromptData.prompt);
+    removeBackendSwitchNodes(queuePromptData.output);
+    removeBackendSwitchNodes(queuePromptData.prompt);
+
+    if (!queuePromptData.output && !queuePromptData.prompt) {
+        removeBackendTargetInputsFromSwitchNodes(queuePromptData);
+        removeBackendSwitchNodes(queuePromptData);
+    }
+}
+
+function patchQueuePrompt() {
+    if (api.__dasiwaNodeStatusSwitchQueuePatched) return;
+
+    const originalQueuePrompt = api.queuePrompt;
+    api.queuePrompt = async function (index, prompt, ...args) {
+        sanitizeQueuePrompt(prompt);
+        return originalQueuePrompt.apply(this, [index, prompt, ...args]);
+    };
+
+    api.__dasiwaNodeStatusSwitchQueuePatched = true;
+}
+
+function applyAllSwitches() {
+    const allNodes = app.graph?._nodes ?? app.graph?.nodes ?? [];
+    for (const n of allNodes) {
+        if (n.type === NODE_TYPE) applySwitch(n);
+    }
+    app.graph?.setDirtyCanvas?.(true, true);
+}
+
+function patchGraphToPrompt() {
+    if (app.__dasiwaNodeStatusSwitchGraphToPromptPatched) return;
+
+    const originalGraphToPrompt = app.graphToPrompt;
+    app.graphToPrompt = async function (...args) {
+        applyAllSwitches();
+        const prompt = await originalGraphToPrompt.apply(this, args);
+        sanitizeQueuePrompt(prompt);
+        return prompt;
+    };
+
+    app.__dasiwaNodeStatusSwitchGraphToPromptPatched = true;
+}
+
+patchQueuePrompt();
+patchGraphToPrompt();
 
 // ── dynamic input management ────────────────────────────────────────────
 
@@ -505,11 +618,11 @@ app.registerExtension({
     },
 
     // The only place mode is applied: right before the prompt is sent.
-    async beforeQueued() {
-        const allNodes = app.graph?._nodes ?? app.graph?.nodes ?? [];
-        for (const n of allNodes) {
-            if (n.type === NODE_TYPE) applySwitch(n);
+    async beforeQueued(...args) {
+        for (const arg of args) {
+            sanitizeQueuePrompt(arg);
         }
-        app.graph?.setDirtyCanvas?.(true, true);
+
+        applyAllSwitches();
     },
 });

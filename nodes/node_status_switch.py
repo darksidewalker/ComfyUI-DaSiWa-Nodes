@@ -53,11 +53,17 @@ class DaSiWa_NodeStatusSwitch:
     RETURN_NAMES = ("enabled_out",)
     FUNCTION = "execute"
     CATEGORY = "DaSiWa/utils"
-    OUTPUT_NODE = True
+    OUTPUT_NODE = False
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        # Legacy ComfyUI validation hook. Target sockets are frontend-only
+        # control links, so this node accepts whatever reaches validation.
+        return True
 
     def validate_inputs(self, *args, **kwargs):
-        # Catch-all signature to prevent crashes during ComfyUI core updates.
-        # Also ensures dynamic 'target_XX' inputs pass validation.
+        # New ComfyUI validation hook. Kept as a catch-all for compatibility
+        # with internal-node validation and future ComfyUI core updates.
         return True
 
     def execute(self, enabled, trigger_on, action, unique_id=None, **kwargs):
