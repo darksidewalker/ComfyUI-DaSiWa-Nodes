@@ -48,6 +48,22 @@ The **DaSiWa Node Status Switch** lets you mute or bypass any node in your workf
 
 ---
 
+### 🎬 LTX-2 Lora Loader
+
+The **DaSiWa LTX-2 Lora Loader** is a 10-slot LoRA stacker designed for LTX-2.3 video generation. LTX-2.3 is unique because it generates both video and audio from separate transformer branches. This node gives you independent control over how LoRAs affect video vs. audio.
+
+- **Dual-Branch Control:** Adjust video (V×) and audio (A×) multipliers independently per LoRA.
+- **10 LoRA Slots:** Stack up to 10 LoRAs with fine-grained strength control (STR: −2.0 to +2.0).
+- **Key Count Indicator:** Auto-scans each LoRA to show video/audio key counts before generation.
+- **6 Themes:** Switch between Jade, Neon, Studio, Chrome, OLED, and Wood color schemes.
+- **Searchable UI:** Quick LoRA search with live filtering in the node itself.
+
+![DaSiWa-LTX23-LoraLoader.png](assets/DaSiWa-LTX23-LoraLoader.png)
+
+[Full documentation →](docs/ltx2_loader.md)
+
+---
+
 ### 💾 Metadata Image Saver (Civitai Ready)
 
 The **DaSiWa Metadata Image Saver** ensures your images are fully compatible with Civitai, Hugging Face, and other galleries by embedding A1111-style metadata. It automatically detects LoRAs used in the workflow and supports dynamic filenames.
@@ -89,3 +105,4 @@ Search for **DaSiWa-Nodes** and install.
 ## Credits
 
 The RTX implementation in this collection is based on the excellent work by Deno2026/comfyui-deno-custom-nodes.
+Lora-Loader is based on Brojakhoeman/Loradaddyloaderltx.
