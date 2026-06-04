@@ -55,6 +55,11 @@ class DaSiWa_NodeStatusSwitch:
     CATEGORY = "DaSiWa/utils"
     OUTPUT_NODE = True
 
+    def validate_inputs(self, *args, **kwargs):
+        # Catch-all signature to prevent crashes during ComfyUI core updates.
+        # Also ensures dynamic 'target_XX' inputs pass validation.
+        return True
+
     def execute(self, enabled, trigger_on, action, unique_id=None, **kwargs):
         # Pass the effective enabled value through to any chained switch.
         # Downstream switches apply their own trigger_on / action logic.
