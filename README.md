@@ -25,6 +25,10 @@ State-of-the-art image and video enhancement using NVIDIA RTX Video SDK. It exec
 
 The **DaSiWa Scale Calculator** provides mathematically precise resolution management for high-performance video models. It uses a **Constant-Area Square-Root method** to ensure that your GPU VRAM usage remains stable regardless of the aspect ratio.
 
+- **Unified Resolution Presets:** Pick standard `p` targets from 144p to 2160p/4K or optimized megapixel tiers from one dropdown.
+- **Clear Aspect Modes:** `IMAGE ASPECT` uses the connected image shape; `USE ASPECT BELOW` uses the always-visible aspect controls.
+- **Video-Safe Snapping:** Standard, Div32, Div64, and custom divisor modes keep dimensions aligned for different model families.
+
 ![ResolutionScaleCalculator.png](assets/ResolutionScaleCalculator.png)
 
 [Full documentation →](docs/ResolutionScaleCalculator.md)
@@ -80,6 +84,21 @@ The **DaSiWa Metadata Image Saver** ensures your images are fully compatible wit
 
 ---
 
+### 🎬 Watermark Overlay
+
+A professional-grade watermark tool optimized for image and video batches. It uses a stable CPU compositor with high-quality resampling and precise rotation.
+
+- **Dynamic Random Positioning:** Toggle seeded corner cycling while keeping the selected position as the start position.
+- **Splash Mode:** Configure dynamic fade-in and fade-out at the start and end of clips for professional branding.
+- **Optical Padding:** Automatically adjusts placement by the watermark's visual center of mass for perfect alignment.
+- **Stable Compositing:** Output frames are initialized from the source batch before the watermark region is blended, avoiding flicker and black-frame artifacts.
+
+![DaSiWa-Watermark.png](assets/DaSiWa-Watermark.png)
+
+[Full documentation →](docs/watermark.md)
+
+---
+
 ## 🛠️ Installation
 
 ### Manual install
@@ -104,5 +123,6 @@ Search for **DaSiWa-Nodes** and install.
 
 ## Credits
 
-The RTX implementation in this collection is based on the excellent work by Deno2026/comfyui-deno-custom-nodes.
-Lora-Loader is based on Brojakhoeman/Loradaddyloaderltx.
+- The RTX implementation in this collection is based on the excellent work by [Deno2026/comfyui-deno-custom-nodes](https://github.com/Deno2026/comfyui-deno-custom-nodes).
+- Lora-Loader is based on [Brojakhoeman/Loradaddyloaderltx](https://github.com/Brojakhoeman/Loradaddyloaderltx/tree/main).
+- Ideas for Watermark Overlay are inspired by [Artificial-Sweetener/comfyui-WhiteRabbit](https://github.com/Artificial-Sweetener/comfyui-WhiteRabbit)

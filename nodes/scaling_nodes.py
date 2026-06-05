@@ -2,6 +2,23 @@ import math
 
 class DaSiWa_ResolutionScaleCalculator:
     # --- DATA ARRAYS ---
+    RESOLUTION_PRESETS = {
+        "144p": 0.04,
+        "240p": 0.10,
+        "360p": 0.23,
+        "480p": 0.38,
+        "540p": 0.52,
+        "576p": 0.59,
+        "720p": 0.92,
+        "900p": 1.44,
+        "1080p": 2.07,
+        "1152p": 2.36,
+        "1440p": 3.68,
+        "2160p": 8.29,
+        "2K": 4.19,
+        "4K": 8.29,
+    }
+
     PRECISION_PRESETS = {
         "0.26 MP - Preview": 0.26,
         "0.36 MP - Small": 0.36,
@@ -21,15 +38,7 @@ class DaSiWa_ResolutionScaleCalculator:
         "8.30 MP - UHD": 8.30,
     }
 
-    RESOLUTION_PRESETS = {
-        "360p": 0.23,
-        "480p": 0.38,
-        "720p": 0.92,
-        "1080p": 2.07,
-        "1440p": 3.68,
-        "2K": 4.19,
-        "4K": 8.29,
-    }
+    PRESETS = {**RESOLUTION_PRESETS, **PRECISION_PRESETS}
 
     ASPECT_PRESETS = {
         "1:1 - Square": (1, 1),
@@ -58,17 +67,15 @@ class DaSiWa_ResolutionScaleCalculator:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "method": (["Use Precision Presets", "Use Resolution Presets"], {"default": "Use Precision Presets", "description": "Switch between using Megapixel presets or standard Resolution targets."}),
-                "precision_presets": (list(cls.PRECISION_PRESETS.keys()), {"default": "0.52 MP - SD", "description": "Optimized Megapixel budgets for various quality tiers."}),
-                "resolution_presets": (list(cls.RESOLUTION_PRESETS.keys()), {"default": "1080p", "description": "Standard video resolution targets."}),
+                "resolution_preset": (list(cls.PRESETS.keys()), {"default": "0.52 MP - SD", "description": "Target visual resolution / pixel budget. Pick either a standard resolution label or an optimized megapixel tier."}),
                 
                 "no_scale": ("BOOLEAN", {"default": False, "label_on": "ON (Source Dims)", "label_off": "OFF (Calculated)", "description": "Bypass all calculations and output the source dimensions exactly."}),
                 
-                "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "yes", "label_off": "no", "description": "If YES, uses the input image's aspect ratio. If NO, uses presets or manual sliders."}),
-                "aspect_preset": (list(cls.ASPECT_PRESETS.keys()), {"default": "9:16 - Social", "description": "Choose a common aspect ratio."}),
-                "swap_aspect": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no", "description": "Flip width and height."}),
-                "manual_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192, "description": "Custom ratio width (e.g., 21)."}),
-                "manual_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192, "description": "Custom ratio height (e.g., 9)."}),
+                "scale_from_image": ("BOOLEAN", {"default": True, "label_on": "IMAGE ASPECT", "label_off": "USE ASPECT BELOW", "description": "IMAGE ASPECT ignores the aspect controls below and uses the connected image shape. USE ASPECT BELOW uses the visible aspect controls."}),
+                "aspect_preset_when_not_image": (list(cls.ASPECT_PRESETS.keys()), {"default": "9:16 - Social", "description": "Used only when scale_from_image is USE ASPECT BELOW. Ignored while IMAGE ASPECT is selected."}),
+                "swap_aspect_when_not_image": ("BOOLEAN", {"default": False, "label_on": "yes", "label_off": "no", "description": "Used only when scale_from_image is USE ASPECT BELOW. Flip width and height."}),
+                "custom_aspect_width": ("INT", {"default": 16, "min": 1, "max": 8192, "description": "Used only when scale_from_image is USE ASPECT BELOW and aspect preset is CUSTOM. Ratio width, not final pixels."}),
+                "custom_aspect_height": ("INT", {"default": 9, "min": 1, "max": 8192, "description": "Used only when scale_from_image is USE ASPECT BELOW and aspect preset is CUSTOM. Ratio height, not final pixels."}),
                 "mode": (["Standard", "WAN/LTX (Div32)", "LTX 2-Stage (Div64)", "CUSTOM"], {"default": "WAN/LTX (Div32)", "description": "Snapping engine. Use WAN/LTX (Div32) for modern video models."}),
                 "custom_divisor": ("INT", {"default": 8, "min": 1, "max": 256, "step": 1, "description": "Custom pixel boundary snapping."}),
             },
@@ -82,7 +89,34 @@ class DaSiWa_ResolutionScaleCalculator:
     FUNCTION = "calculate"
     CATEGORY = "DaSiWa/Scaling"
 
-    def calculate(self, method, precision_presets, resolution_presets, no_scale, scale_from_image, aspect_preset, swap_aspect, manual_aspect_width, manual_aspect_height, mode, custom_divisor, image=None):
+    def calculate(
+        self,
+        resolution_preset=None,
+        no_scale=False,
+        scale_from_image=True,
+        aspect_preset_when_not_image="9:16 - Social",
+        swap_aspect_when_not_image=False,
+        custom_aspect_width=16,
+        custom_aspect_height=9,
+        mode="WAN/LTX (Div32)",
+        custom_divisor=8,
+        image=None,
+        method=None,
+        preset=None,
+        precision_presets=None,
+        resolution_presets=None,
+        aspect_preset=None,
+        swap_aspect=None,
+        manual_aspect_width=None,
+        manual_aspect_height=None,
+    ):
+        if resolution_preset is None:
+            resolution_preset = preset
+        aspect_preset = aspect_preset if aspect_preset is not None else aspect_preset_when_not_image
+        swap_aspect = swap_aspect if swap_aspect is not None else swap_aspect_when_not_image
+        manual_aspect_width = manual_aspect_width if manual_aspect_width is not None else custom_aspect_width
+        manual_aspect_height = manual_aspect_height if manual_aspect_height is not None else custom_aspect_height
+
         # 1. GET SOURCE DIMENSIONS (From Image or Manual)
         if scale_from_image:
             if image is None:
@@ -109,10 +143,12 @@ class DaSiWa_ResolutionScaleCalculator:
 
         # 3. GET MP TARGET
         aspect_ratio = source_w / source_h
-        if method == "Use Resolution Presets":
-            a = self.RESOLUTION_PRESETS.get(resolution_presets, 2.07)
-        else:
-            a = self.PRECISION_PRESETS.get(precision_presets, 0.52)
+        if resolution_preset is None:
+            if method == "Use Resolution Presets":
+                resolution_preset = resolution_presets
+            else:
+                resolution_preset = precision_presets
+        a = self.PRESETS.get(resolution_preset, 0.52)
 
         # 4. CALCULATE
         target_total_pixels = a * 1000000

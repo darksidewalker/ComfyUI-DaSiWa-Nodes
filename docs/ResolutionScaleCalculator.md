@@ -9,21 +9,21 @@ Whether you are generating in **1:1 Square**, **9:16 Vertical**, or **21:9 Ultra
 
 ## 🚀 Key Features
 - **WAN/LTX (Div32) Mode:** Snaps calculations to the nearest **32-pixel boundary**. Mandatory for WAN 2.1 and LTX-Video.
-- **Precision Presets:** Multiple tiers from 0.26 MP (Preview) to 8.30 MP (4K Production).
+- **Unified Resolution Preset Selector:** Standard labels from 144p to 2160p/4K and optimized MP tiers from 0.26 MP to 8.30 MP live in one dropdown.
+- **Clear Aspect Modes:** **IMAGE ASPECT** uses the connected image shape. **USE ASPECT BELOW** uses the always-visible aspect controls.
 - **No Scale Toggle:** A dedicated "Bypass" switch to use source image dimensions exactly.
 - **Batch-Safe Scaling:** Intelligent first-frame parsing for video and image batches.
 
 # 🛠 Quick Start Guide
 
-### 1. Define your "Size" (Method)
+### 1. Define your "Size" (Resolution Preset)
 The node uses a **Constant-Area** formula. Instead of setting raw width/height, you set a **Pixel Budget**.
-* **Precision Presets:** Optimized Megapixel tiers. **0.52 MP (SD)** is the baseline for most video models.
-* **Resolution Presets:** Standard targets (e.g., **1080p**). The node adjusts the actual dimensions to fit your custom aspect ratio while keeping the "1080p density."
+* **resolution_preset:** Choose a standard resolution label such as **540p**, **720p**, or **1080p**, or an optimized megapixel tier such as **0.52 MP - SD**. The node converts the choice into a pixel budget and adapts it to your aspect ratio.
 
 ### 2. Define your "Shape" (Aspect Ratio)
-* **Scale From Image (YES):** The node "peeks" at the first frame of your input. It calculates the aspect ratio and applies your chosen MP budget to that specific shape.
-* **Scale From Image (NO):** Uses the **Aspect Preset** (e.g., 9:16) or **Manual Aspect** sliders. 
-    * *Note: Manual sliders define the ratio (e.g., 21 x 9), not the final pixels.*
+* **IMAGE ASPECT:** The node "peeks" at the first frame of your connected image. It calculates the aspect ratio and applies your chosen MP budget to that shape. The aspect controls remain visible, but they are ignored.
+* **USE ASPECT BELOW:** The node uses the visible **aspect_preset_when_not_image** selector (e.g., 9:16) instead of the image shape.
+* **Manual Aspect Note:** **custom_aspect_width** and **custom_aspect_height** are only used when **USE ASPECT BELOW** is active and the aspect preset is **CUSTOM**. They define a ratio such as 21 x 9, not final pixel dimensions.
 
 ### 3. Choose your "Engine" (Mode)
 * **WAN/LTX (Div32):** **Mandatory for Video.** Forces the math to snap to the nearest 32-pixel block. This prevents VAE artifacts and edge flickering.
@@ -36,9 +36,9 @@ The node uses a **Constant-Area** formula. Instead of setting raw width/height, 
 
 ## 💡 Quick Reference Table
 
-| Goal | Method | Mode | Scale From Image? |
+| Goal | Resolution Preset | Mode | Aspect Mode |
 | :--- | :--- | :--- | :--- |
-| **WAN/LTX Video** | Precision Presets | WAN/LTX (Div32) | YES |
-| **Flux Image** | Resolution Presets | Standard | NO (Manual) |
-| **Social Media Clip** | Precision Presets | WAN/LTX (Div32) | NO (Use 9:16) |
+| **WAN/LTX Video** | 0.52 MP - SD | WAN/LTX (Div32) | IMAGE ASPECT |
+| **Flux Image** | 1080p | Standard | USE ASPECT BELOW |
+| **Social Media Clip** | 0.52 MP - SD | WAN/LTX (Div32) | USE ASPECT BELOW with 9:16 |
 | **Original Dims** | *Any* | *Any* | **No Scale: ON** |
