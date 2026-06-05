@@ -75,6 +75,23 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const bump = (v, d) => Math.round(clamp((v || 1.0) + d, 0.0, 2.0) * 100) / 100;
 const bumpS = (v, d) => Math.round(clamp((v || 1.0) + d, -2.0, 2.0) * 100) / 100;
 
+const CONTROL_DESCRIPTIONS = {
+  theme: "Cycle the visual theme of this LTX-2 LoRA stacker.",
+  add: "Add one LoRA slot to the stack.",
+  remove: "Remove the last LoRA slot from the stack.",
+  enabled: "Enable or disable this LoRA slot.",
+  lora: "Choose the LoRA file for this slot.",
+  str: "Master LoRA strength. This is multiplied by the video and audio multipliers. Range: -2.0 to 2.0.",
+  video: "Video branch multiplier. Effective video strength = STR x V. Range: 0.0 to 2.0.",
+  audio: "Audio branch multiplier. Effective audio strength = STR x A. Range: 0.0 to 2.0.",
+  keys: "Detected LoRA key counts for video and audio branches.",
+};
+
+function setCanvasTooltip(text) {
+  const canvas = app?.canvas?.canvas;
+  if (canvas && canvas.title !== text) canvas.title = text || "";
+}
+
 function drawWoodRow(ctx, x, y, w, h, seed) {
   ctx.fillStyle = seed % 2 === 0 ? "#2c1f0e" : "#321f0a";
   ctx.fillRect(x, y, w, h);
@@ -162,6 +179,66 @@ app.registerExtension({
     const sync = node => {
       const w = node.widgets.find(w => w.name === "stack_data");
       if (w) w.value = node.properties.stack_data;
+    };
+
+    const getTooltipAt = (node, local_pos) => {
+      if (node.flags.collapsed) return "";
+      let data = [];
+      try {
+        data = JSON.parse(node.properties.stack_data);
+      } catch {
+        return "";
+      }
+
+      const [x, y] = local_pos;
+      const W = node.size[0];
+      const s = W / 1000;
+      const BTN_H = 16;
+      const BTN_Y = 40;
+      const ROW_START = BTN_Y + BTN_H + 3;
+      const ROW_H = 28;
+      const btnW = 110;
+      const btnX = (W - btnW) / 2;
+      const plusX = btnX + btnW + 4;
+      const minusX = plusX + BTN_H + 2;
+
+      if (y > BTN_Y && y < BTN_Y + BTN_H) {
+        if (x > btnX && x < btnX + btnW) return CONTROL_DESCRIPTIONS.theme;
+        if (x > plusX && x < plusX + BTN_H) return CONTROL_DESCRIPTIONS.add;
+        if (data.length > 1 && x > minusX && x < minusX + BTN_H) return CONTROL_DESCRIPTIONS.remove;
+      }
+
+      const C = {
+        onX: 8 * s, onW: 50 * s,
+        nmX: 62 * s, nmW: 480 * s,
+        stX: 548 * s, stW: 80 * s,
+        vX: 635 * s, vW: 60 * s,
+        aX: 702 * s, aW: 60 * s,
+        rX: 770 * s, rW: W - 770 * s - 8,
+      };
+
+      for (let i = 0; i < data.length; i++) {
+        const ry = ROW_START + i * ROW_H;
+        if (y < ry || y > ry + ROW_H) continue;
+        if (x > C.onX && x < C.onX + C.onW) return CONTROL_DESCRIPTIONS.enabled;
+        if (x > C.nmX && x < C.nmX + C.nmW) return CONTROL_DESCRIPTIONS.lora;
+        if (x > C.stX && x < C.stX + C.stW) return CONTROL_DESCRIPTIONS.str;
+        if (x > C.vX && x < C.vX + C.vW) return CONTROL_DESCRIPTIONS.video;
+        if (x > C.aX && x < C.aX + C.aW) return CONTROL_DESCRIPTIONS.audio;
+        if (x > C.rX && x < C.rX + C.rW) return CONTROL_DESCRIPTIONS.keys;
+      }
+
+      return "";
+    };
+
+    nodeType.prototype.onMouseMove = function (_e, local_pos) {
+      setCanvasTooltip(getTooltipAt(this, local_pos));
+      return false;
+    };
+
+    nodeType.prototype.onMouseLeave = function () {
+      setCanvasTooltip("");
+      return false;
     };
 
     nodeType.prototype.onDrawForeground = function (ctx) {

@@ -32,6 +32,10 @@ ANY = AnyType("*")
 
 
 class DaSiWa_NodeStatusSwitch:
+    DESCRIPTION = (
+        "DaSiWa Node Status Switch: mutes or bypasses connected target nodes "
+        "based on a boolean state, with an enabled output for chaining switches."
+    )
 
     @classmethod
     def INPUT_TYPES(cls):

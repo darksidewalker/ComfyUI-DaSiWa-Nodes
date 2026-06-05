@@ -11,37 +11,64 @@ import folder_paths
 # Global cache for model hashes to avoid re-calculating large files
 _MODEL_HASH_CACHE = {}
 
+METADATA_INPUT_DESCRIPTIONS = {
+    "save_workflow": "Include the ComfyUI workflow JSON so the saved image can be loaded back into ComfyUI.",
+    "model_hash": "Optional model hash to embed in A1111/Civitai-style metadata. Leave empty to auto-detect from the model file when possible.",
+    "node_positive": "Connect the positive conditioning or prompt path so the saver can auto-detect the positive prompt.",
+    "node_negative": "Connect the negative conditioning or prompt path so the saver can auto-detect the negative prompt.",
+    "node_model": "Connect the model path so the saver can auto-detect checkpoint or diffusion model name and hash.",
+    "node_latent": "Connect the latent/sampler path so the saver can trace steps, CFG, sampler, scheduler, and seed.",
+    "node_noise": "Optional noise source used to auto-detect seed when it is separate from the sampler path.",
+    "node_sigmas": "Optional sigmas/scheduler source used to auto-detect steps and scheduler when they are separate.",
+    "node_sampler": "Optional sampler source used to auto-detect sampler name when it is separate from the latent path.",
+    "extra_metadata": "Optional custom key/value metadata bundle created by DaSiWa Create Extra Metadata.",
+    "text_positive": "Manual positive prompt override. Connect a string to force this exact prompt into saved metadata.",
+    "text_negative": "Manual negative prompt override. Connect a string to force this exact negative prompt into saved metadata.",
+    "text_steps": "Manual steps override. Use 0 to prefer auto-detected steps when available.",
+    "text_cfg": "Manual CFG scale override. Use 0.0 to prefer auto-detected CFG when available.",
+    "text_sampler": "Manual sampler override. Leave blank to prefer auto-detected sampler when available.",
+    "text_scheduler": "Manual scheduler override. Leave blank to prefer auto-detected scheduler when available.",
+    "text_seed": "Manual seed override. Use 0 to prefer auto-detected seed when available.",
+    "text_model": "Manual model filename override. Leave blank to prefer auto-detected model when available.",
+    "save_output": "When connected, overrides whether files are saved to the output folder or temp preview folder.",
+}
+
 class DaSiWa_MetadataConfig:
     """
     Companion node for DaSiWa_MetadataImageSaver.
     Gathers all metadata-related inputs into a single 'config' bundle
     to declutter the main saver node.
     """
+    DESCRIPTION = (
+        "DaSiWa Metadata Config: collects workflow metadata settings and optional "
+        "auto-detection links into one compact config output for the image saver."
+    )
+
     @classmethod
     def INPUT_TYPES(s):
         return {
             "required": {
-                "save_workflow": ("BOOLEAN", {"default": True, "description": "Include the ComfyUI workflow JSON in the metadata."}),
-                "model_hash": ("STRING", {"default": "", "placeholder": "Optional: Civitai uses this to link models"}),
+                "save_workflow": ("BOOLEAN", {"default": True, "description": METADATA_INPUT_DESCRIPTIONS["save_workflow"]}),
+                "model_hash": ("STRING", {"default": "", "placeholder": "Optional: Civitai uses this to link models", "description": METADATA_INPUT_DESCRIPTIONS["model_hash"]}),
             },
             "optional": {
-                "node_positive": ("CONDITIONING",),
-                "node_negative": ("CONDITIONING",),
-                "node_model": ("MODEL",),
-                "node_latent": ("LATENT",),
-                "node_noise": ("NOISE",),
-                "node_sigmas": ("SIGMAS",),
-                "node_sampler": ("SAMPLER",),
-                "extra_metadata": ("EXTRA_METADATA",),
-                "text_positive": ("STRING", {"multiline": True, "placeholder": "Positive Prompt (Manual Override)", "forceInput": True}),
-                "text_negative": ("STRING", {"multiline": True, "placeholder": "Negative Prompt (Manual Override)", "forceInput": True}),
-                "text_steps": ("INT", {"default": 0, "min": 0, "max": 10000, "forceInput": True}),
-                "text_cfg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.5, "forceInput": True}),
-                "text_sampler": (["", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms", "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_sde", "ddim", "uni_pc"], {"default": "", "forceInput": True}),
-                "text_scheduler": (["", "normal", "karras", "exponential", "simple", "ddim_uniform"], {"default": "", "forceInput": True}),
-                "text_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "forceInput": True}),
-                "text_model": ("STRING", {"default": "", "forceInput": True}),
-                "save_output": ("BOOLEAN", {"forceInput": True}),
+                "node_positive": ("CONDITIONING", {"description": METADATA_INPUT_DESCRIPTIONS["node_positive"]}),
+                "node_negative": ("CONDITIONING", {"description": METADATA_INPUT_DESCRIPTIONS["node_negative"]}),
+                "node_model": ("MODEL", {"description": METADATA_INPUT_DESCRIPTIONS["node_model"]}),
+                "node_latent": ("LATENT", {"description": METADATA_INPUT_DESCRIPTIONS["node_latent"]}),
+                "node_noise": ("NOISE", {"description": METADATA_INPUT_DESCRIPTIONS["node_noise"]}),
+                "node_sigmas": ("SIGMAS", {"description": METADATA_INPUT_DESCRIPTIONS["node_sigmas"]}),
+                "node_sampler": ("SAMPLER", {"description": METADATA_INPUT_DESCRIPTIONS["node_sampler"]}),
+                "extra_metadata": ("EXTRA_METADATA", {"description": METADATA_INPUT_DESCRIPTIONS["extra_metadata"]}),
+                "text_positive": ("STRING", {"multiline": True, "placeholder": "Positive Prompt (Manual Override)", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_positive"]}),
+                "text_negative": ("STRING", {"multiline": True, "placeholder": "Negative Prompt (Manual Override)", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_negative"]}),
+                "text_steps": ("INT", {"default": 0, "min": 0, "max": 10000, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_steps"]}),
+                "text_cfg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.5, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_cfg"]}),
+                "text_sampler": (["", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms", "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_sde", "ddim", "uni_pc"], {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_sampler"]}),
+                "text_scheduler": (["", "normal", "karras", "exponential", "simple", "ddim_uniform"], {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_scheduler"]}),
+                "text_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_seed"]}),
+                "text_model": ("STRING", {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_model"]}),
+                "save_output": ("BOOLEAN", {"forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["save_output"]}),
             }
         }
 
@@ -58,6 +85,10 @@ class DaSiWa_MetadataImageSaver:
     Compact version of the Metadata Image Saver.
     Designed to be used with DaSiWa_MetadataConfig to keep the workflow clean.
     """
+    DESCRIPTION = (
+        "DaSiWa Metadata Image Saver: saves PNG or WebP images with ComfyUI "
+        "workflow data and A1111/Civitai-compatible generation metadata."
+    )
 
     def __init__(self):
         self.output_dir = folder_paths.get_output_directory()
@@ -75,8 +106,8 @@ class DaSiWa_MetadataImageSaver:
                 "save_output": ("BOOLEAN", {"default": True, "description": "If False, images are saved to the temp folder for preview only."}),
             },
             "optional": {
-                "metadata_config": ("METADATA_CONFIG",),
-                "extra_metadata": ("EXTRA_METADATA",),
+                "metadata_config": ("METADATA_CONFIG", {"description": "Config bundle from DaSiWa Metadata Config. Values in this config override or fill saver metadata settings."}),
+                "extra_metadata": ("EXTRA_METADATA", {"description": METADATA_INPUT_DESCRIPTIONS["extra_metadata"]}),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
         }
@@ -586,27 +617,32 @@ class DaSiWa_MetadataImageSaverFull(DaSiWa_MetadataImageSaver):
     """
     Full version of the Metadata Image Saver with all ports exposed.
     """
+    DESCRIPTION = (
+        "DaSiWa Metadata Image Saver Full: advanced saver variant with every "
+        "metadata detection and manual override port exposed directly on the node."
+    )
+
     @classmethod
     def INPUT_TYPES(s):
         types = DaSiWa_MetadataImageSaver.INPUT_TYPES()
         types["optional"].update({
-            "save_workflow": ("BOOLEAN", {"default": True}),
-            "model_hash": ("STRING", {"default": ""}),
-            "node_positive": ("CONDITIONING",),
-            "node_negative": ("CONDITIONING",),
-            "node_model": ("MODEL",),
-            "node_latent": ("LATENT",),
-            "node_noise": ("NOISE",),
-            "node_sigmas": ("SIGMAS",),
-            "node_sampler": ("SAMPLER",),
-            "text_positive": ("STRING", {"multiline": True, "forceInput": True}),
-            "text_negative": ("STRING", {"multiline": True, "forceInput": True}),
-            "text_steps": ("INT", {"default": 0, "min": 0, "max": 10000, "forceInput": True}),
-            "text_cfg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.5, "forceInput": True}),
-            "text_sampler": (["", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms", "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_sde", "ddim", "uni_pc"], {"default": "", "forceInput": True}),
-            "text_scheduler": (["", "normal", "karras", "exponential", "simple", "ddim_uniform"], {"default": "", "forceInput": True}),
-            "text_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "forceInput": True}),
-            "text_model": ("STRING", {"default": "", "forceInput": True}),
+            "save_workflow": ("BOOLEAN", {"default": True, "description": METADATA_INPUT_DESCRIPTIONS["save_workflow"]}),
+            "model_hash": ("STRING", {"default": "", "description": METADATA_INPUT_DESCRIPTIONS["model_hash"]}),
+            "node_positive": ("CONDITIONING", {"description": METADATA_INPUT_DESCRIPTIONS["node_positive"]}),
+            "node_negative": ("CONDITIONING", {"description": METADATA_INPUT_DESCRIPTIONS["node_negative"]}),
+            "node_model": ("MODEL", {"description": METADATA_INPUT_DESCRIPTIONS["node_model"]}),
+            "node_latent": ("LATENT", {"description": METADATA_INPUT_DESCRIPTIONS["node_latent"]}),
+            "node_noise": ("NOISE", {"description": METADATA_INPUT_DESCRIPTIONS["node_noise"]}),
+            "node_sigmas": ("SIGMAS", {"description": METADATA_INPUT_DESCRIPTIONS["node_sigmas"]}),
+            "node_sampler": ("SAMPLER", {"description": METADATA_INPUT_DESCRIPTIONS["node_sampler"]}),
+            "text_positive": ("STRING", {"multiline": True, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_positive"]}),
+            "text_negative": ("STRING", {"multiline": True, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_negative"]}),
+            "text_steps": ("INT", {"default": 0, "min": 0, "max": 10000, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_steps"]}),
+            "text_cfg": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 100.0, "step": 0.5, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_cfg"]}),
+            "text_sampler": (["", "euler", "euler_ancestral", "heun", "dpm_2", "dpm_2_ancestral", "lms", "dpmpp_2s_ancestral", "dpmpp_2m", "dpmpp_2m_sde", "dpmpp_sde", "ddim", "uni_pc"], {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_sampler"]}),
+            "text_scheduler": (["", "normal", "karras", "exponential", "simple", "ddim_uniform"], {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_scheduler"]}),
+            "text_seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff, "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_seed"]}),
+            "text_model": ("STRING", {"default": "", "forceInput": True, "description": METADATA_INPUT_DESCRIPTIONS["text_model"]}),
         })
         return types
 
@@ -616,6 +652,8 @@ class DaSiWa_CreateExtraMetadata:
     """
     A helper node to inject custom metadata keys into the save node.
     """
+    DESCRIPTION = "DaSiWa Create Extra Metadata: creates or extends a custom metadata key/value bundle for the image saver."
+
     @classmethod
     def INPUT_TYPES(s):
         return {

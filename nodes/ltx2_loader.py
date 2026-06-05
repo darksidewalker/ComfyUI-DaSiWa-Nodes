@@ -93,17 +93,22 @@ class DaSiWa_LTX2LoraLoader:
     Ideal for LTX-2.3 workflows where you need fine-grained control over
     how LoRAs affect video and audio generation independently.
     """
+    DESCRIPTION = (
+        "DaSiWa LTX-2 LoRA Loader: stacks multiple LoRAs for LTX video/audio models.\n"
+        "Each slot has a master strength plus separate video and audio multipliers, "
+        "so one LoRA can affect the visual branch, audio branch, or both."
+    )
 
     @classmethod
     def INPUT_TYPES(cls):
         lora_list = ["None"] + folder_paths.get_filename_list("loras")
         return {
             "required": {
-                "model": ("MODEL",),
-                "clip": ("CLIP",),
-                "stack_data": ("STRING", {"default": "[]", "multiline": False}),
+                "model": ("MODEL", {"description": "Base model that will receive the active LoRA stack."}),
+                "clip": ("CLIP", {"description": "CLIP/text encoder paired with the model; LoRA weights are applied when compatible."}),
+                "stack_data": ("STRING", {"default": "[]", "multiline": False, "description": "JSON-encoded LoRA slot data managed by the custom UI. Each slot stores on/off, LoRA file, master strength, video multiplier, and audio multiplier."}),
             },
-            "hidden": {"available_loras": (lora_list,)}
+            "hidden": {"available_loras": (lora_list, {"description": "Internal list of LoRA files used by the custom slot picker."})}
         }
 
     RETURN_TYPES = ("MODEL", "CLIP")
