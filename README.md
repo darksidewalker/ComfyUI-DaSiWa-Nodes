@@ -99,6 +99,21 @@ A professional-grade watermark tool optimized for image and video batches. It us
 
 ---
 
+### 🔀 Random String Picker
+
+Bridge any string/text node through **DaSiWa Random String Picker** to randomize prompt variants inline.
+
+- **Text passthrough:** Accepts a connected `STRING` input and returns a `STRING` output.
+- **Inline variants:** Replaces every `{A|B|C}` segment with one randomly selected option.
+- **Multiple groups:** Processes any number of groups independently, such as `{red|blue} car in {sun|rain}`.
+- **Literal passthrough:** Text outside complete `{...}` groups is left unchanged.
+
+![RandomStringPicker.png](assets/RandomStringPicker.png)
+
+[Full documentation →](docs/random_string_picker.md)
+
+---
+
 ## 🛠️ Installation
 
 ### Manual install
