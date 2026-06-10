@@ -114,6 +114,20 @@ Bridge any string/text node through **DaSiWa Random String Picker** to randomize
 
 ---
 
+### 🧠 LLM / VLM Analyze
+
+The **DaSiWa LLM / VLM nodes** let you run local transformers chat or vision-language models from inside a ComfyUI workflow. They accept native `STRING` inputs and native `IMAGE` batches from nodes such as Load Image or VHS frame loaders.
+
+- **Native ComfyUI Inputs:** Analyze connected text, still images, or video/image-sequence frame batches.
+- **Prompt Presets:** Custom system instructions, LTX-2.3/Wan2.2 video prompt enhancement, and image/video caption presets for mixed tags, tag-only, or natural language.
+- **Memory Modes:** Keep models cached for speed, unload after each response, or use the Analyze node cleanup switch to free RAM/VRAM before later steps.
+- **Frame Sampling:** Limit video analysis with max frames, stride, frame strategy, resize controls, context limits, and optional KV-cache reduction.
+- **Local Models:** Load full Hugging Face-style model folders from `ComfyUI/models/llm`.
+
+[Full documentation →](docs/llm_nodes.md)
+
+---
+
 ## 🛠️ Installation
 
 ### Manual install

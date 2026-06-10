@@ -258,6 +258,18 @@ def _close_vfx_effect(effect):
             method()
             return
 
+def _run_vfx_effect(effect, frame, cuda_device):
+    if not frame.is_contiguous():
+        frame = frame.contiguous()
+
+    # nvvfx owns its execution stream and may reuse output buffers. Synchronize
+    # before and after each handoff, then clone the DLPack tensor so the next
+    # effect/frame cannot overwrite data that has not been assembled yet.
+    torch.cuda.current_stream(cuda_device).synchronize()
+    res = effect.run(frame)
+    torch.cuda.synchronize(cuda_device)
+    return torch.from_dlpack(res.image).clone().contiguous()
+
 @contextlib.contextmanager
 def _maybe_vfx_effect(vfx_api, enabled, mode, quality, device_index, out_width, out_height):
     if not enabled:
@@ -392,7 +404,7 @@ class DaSiWa_RTX_UpscalerRefiner:
         # Preallocate output tensor on the same device as input (usually CPU in ComfyUI)
         out_device = images.device
         out_dtype = images.dtype
-        out = torch.empty(
+        out = torch.zeros(
             (batch_size, target_height, target_width, 3),
             device=out_device,
             dtype=out_dtype,
@@ -425,22 +437,15 @@ class DaSiWa_RTX_UpscalerRefiner:
                                 .permute(0, 3, 1, 2)
                                 .contiguous()
                             )
-                            chunk_out = torch.empty(
-                                (end - start, target_height, target_width, 3),
-                                device=cuda_device,
-                                dtype=torch.float32,
-                            )
-
                             for local_index in range(end - start):
+                                global_index = start + local_index
                                 frame = chunk[local_index]
 
                                 if denoise_effect:
-                                    res = denoise_effect.run(frame)
-                                    frame = torch.from_dlpack(res.image).clone()
+                                    frame = _run_vfx_effect(denoise_effect, frame, cuda_device)
 
                                 if deblur_effect:
-                                    res = deblur_effect.run(frame)
-                                    frame = torch.from_dlpack(res.image).clone()
+                                    frame = _run_vfx_effect(deblur_effect, frame, cuda_device)
 
                                 if upscale_enabled:
                                     if fit_to_target_aspect:
@@ -448,18 +453,20 @@ class DaSiWa_RTX_UpscalerRefiner:
                                             frame, target_width, target_height, resize_method
                                         )
                                     if upscale_effect:
-                                        res = upscale_effect.run(frame)
-                                        frame = torch.from_dlpack(res.image)
+                                        frame = _run_vfx_effect(upscale_effect, frame, cuda_device)
 
-                                chunk_out[local_index].copy_(
-                                    frame.permute(1, 2, 0).clamp(0.0, 1.0)
+                                output_frame = (
+                                    frame.permute(1, 2, 0)
+                                    .contiguous()
+                                    .clamp(0.0, 1.0)
+                                    .to(device=out_device, dtype=out_dtype, non_blocking=False)
                                 )
+                                out[global_index].copy_(output_frame, non_blocking=False)
 
-                            out[start:end].copy_(
-                                chunk_out.to(device=out_device, dtype=out_dtype, non_blocking=True)
-                            )
-
-                            del chunk, chunk_out
+                            torch.cuda.synchronize(cuda_device)
+                            if out_device.type == "cuda":
+                                torch.cuda.synchronize(out_device)
+                            del chunk
 
         return (out,)
 
