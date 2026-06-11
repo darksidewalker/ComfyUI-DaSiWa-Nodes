@@ -344,6 +344,19 @@ class DaSiWa_RTX_UpscalerRefiner:
     FUNCTION = "execute"
     CATEGORY = "DaSiWa/Video"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, **kwargs):
+        # ComfyUI may call this legacy validation hook before execution.
+        # The RTX node validates tensor shape, CUDA availability, and VFX
+        # support in execute where the real input values are available.
+        return True
+
+    def validate_inputs(self, *args, **kwargs):
+        # Newer ComfyUI builds can pass positional metadata through the
+        # internal validation path. Accept all signatures and defer concrete
+        # checks to execute for compatibility across core versions.
+        return True
+
     def execute(
         self,
         images,
