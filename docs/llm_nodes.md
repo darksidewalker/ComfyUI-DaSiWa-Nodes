@@ -16,9 +16,22 @@ ComfyUI/models/llm/
 
 The folder should include files such as `config.json`, tokenizer files, processor files for vision models, and `.safetensors` weights. A single `.safetensors` file is usually not enough for LLM chat inference.
 
+You can also enter a Hugging Face repo id in `hf_repo_id`, such as:
+
+```text
+Qwen/Qwen2.5-VL-7B-Instruct
+```
+
+When `download_if_missing` is enabled, the node downloads the repo snapshot into `ComfyUI/models/llm` and reuses that local folder on later runs. The local folder name uses `owner--repo`, plus the revision when it is not `main`.
+
+For gated or private repos, set `HF_TOKEN` or `HUGGING_FACE_HUB_TOKEN` in the ComfyUI environment. The node does not expose a token widget, so secrets are not stored in workflow JSON.
+
 Important controls:
 
 - `task`: use `auto` for most workflows. Connect images to use a vision-language model.
+- `hf_repo_id`: optional Hugging Face repo id. Overrides the model dropdown when set.
+- `hf_revision`: branch, tag, or commit, defaulting to `main`.
+- `download_if_missing`: fetch the repo into `models/llm` when it is not already available locally.
 - `device`: `auto`, `cuda`, or `cpu`.
 - `dtype`: `auto`, `float16`, `bfloat16`, or `float32`.
 - `quantization`: optional `8bit` or `4bit`, requiring `bitsandbytes`.

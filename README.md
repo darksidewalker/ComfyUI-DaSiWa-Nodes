@@ -122,7 +122,7 @@ The **DaSiWa LLM / VLM nodes** let you run local transformers chat or vision-lan
 - **Prompt Presets:** Custom system instructions, LTX-2.3/Wan2.2 video prompt enhancement, and image/video caption presets for mixed tags, tag-only, or natural language.
 - **Memory Modes:** Keep models cached for speed, unload after each response, or use the Analyze node cleanup switch to free RAM/VRAM before later steps.
 - **Frame Sampling:** Limit video analysis with max frames, stride, frame strategy, resize controls, context limits, and optional KV-cache reduction.
-- **Local Models:** Load full Hugging Face-style model folders from `ComfyUI/models/llm`.
+- **Local or HF Models:** Load full model folders from `ComfyUI/models/llm`, or download a Hugging Face repo id into that folder when missing.
 
 [Full documentation →](docs/llm_nodes.md)
 

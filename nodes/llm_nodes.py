@@ -166,7 +166,59 @@ def _list_llm_models():
     return ["None"] + models
 
 
-def _resolve_model_path(model_name, custom_path):
+def _safe_repo_dir_name(repo_id, revision):
+    repo_name = repo_id.strip().replace("/", "--")
+    revision_name = (revision or "").strip()
+    if revision_name and revision_name != "main":
+        repo_name = f"{repo_name}--{revision_name.replace('/', '--')}"
+    return repo_name
+
+
+def _resolve_hf_repo_path(hf_repo_id, hf_revision, download_if_missing):
+    repo_id = (hf_repo_id or "").strip()
+    if not repo_id:
+        return None
+
+    local_name = _safe_repo_dir_name(repo_id, hf_revision)
+    for base in _folder_paths_for_llm():
+        candidate = os.path.join(base, local_name)
+        if os.path.isfile(os.path.join(candidate, "config.json")):
+            return candidate
+
+    nested_name = repo_id.replace("/", os.sep)
+    for base in _folder_paths_for_llm():
+        candidate = os.path.join(base, nested_name)
+        if os.path.isfile(os.path.join(candidate, "config.json")):
+            return candidate
+
+    if not download_if_missing:
+        raise FileNotFoundError(
+            f"HF repo '{repo_id}' is not present in models/llm. "
+            "Enable download_if_missing to fetch it."
+        )
+
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError as exc:
+        raise ImportError(
+            "Downloading Hugging Face repos requires huggingface_hub. "
+            "Install it in the ComfyUI environment with: pip install huggingface_hub"
+        ) from exc
+
+    local_dir = os.path.join(_LLM_DIR, local_name)
+    os.makedirs(local_dir, exist_ok=True)
+    token = os.environ.get("HF_TOKEN") or os.environ.get("HUGGING_FACE_HUB_TOKEN")
+    print(f"[DaSiWa LLM] Downloading HF repo '{repo_id}' to {local_dir}")
+    snapshot_download(
+        repo_id=repo_id,
+        revision=(hf_revision or "main").strip() or "main",
+        local_dir=local_dir,
+        token=token or None,
+    )
+    return _normalize_model_path(local_dir)
+
+
+def _resolve_model_path(model_name, custom_path, hf_repo_id="", hf_revision="main", download_if_missing=False):
     path = (custom_path or "").strip()
     if path:
         path = os.path.expanduser(path)
@@ -179,6 +231,10 @@ def _resolve_model_path(model_name, custom_path):
         if not os.path.exists(path):
             raise FileNotFoundError(f"LLM path does not exist: {path}")
         return _normalize_model_path(path)
+
+    hf_path = _resolve_hf_repo_path(hf_repo_id, hf_revision, download_if_missing)
+    if hf_path:
+        return _normalize_model_path(hf_path)
 
     if not model_name or model_name == "None":
         raise ValueError("Choose an LLM model or provide a custom_path.")
@@ -593,6 +649,9 @@ class DaSiWa_LLMModelSelector:
             "required": {
                 "model": (_list_llm_models(), {"description": "Model folder under ComfyUI/models/llm. Use a full Hugging Face-style folder with config/tokenizer files."}),
                 "custom_path": ("STRING", {"default": "", "description": "Optional absolute path, or relative path under ComfyUI/models/llm. Overrides model when set."}),
+                "hf_repo_id": ("STRING", {"default": "", "description": "Optional Hugging Face repo id, for example Qwen/Qwen2.5-VL-7B-Instruct. Overrides model when set."}),
+                "hf_revision": ("STRING", {"default": "main", "description": "HF branch, tag, or commit. Used when downloading or locating a repo copy."}),
+                "download_if_missing": ("BOOLEAN", {"default": False, "description": "Download hf_repo_id into ComfyUI/models/llm if it is not already present."}),
                 "backend": (["transformers"], {"default": "transformers", "description": "Inference backend. Transformers is supported in this version."}),
                 "task": (["auto", "text", "vision"], {"default": "auto", "description": "Use vision when analyzing connected images/frame batches."}),
                 "device": (["auto", "cuda", "cpu"], {"default": "auto", "description": "Device placement for the model."}),
@@ -609,11 +668,14 @@ class DaSiWa_LLMModelSelector:
     FUNCTION = "select"
     CATEGORY = "DaSiWa/LLM"
 
-    def select(self, model, custom_path, backend, task, device, dtype, quantization,
-               cache_mode, trust_remote_code, attention_implementation):
-        model_path = _resolve_model_path(model, custom_path)
+    def select(self, model, custom_path, hf_repo_id, hf_revision, download_if_missing,
+               backend, task, device, dtype, quantization, cache_mode, trust_remote_code,
+               attention_implementation):
+        model_path = _resolve_model_path(model, custom_path, hf_repo_id, hf_revision, download_if_missing)
         return ({
             "model_path": model_path,
+            "hf_repo_id": hf_repo_id,
+            "hf_revision": hf_revision,
             "backend": backend,
             "task": task,
             "device": device,

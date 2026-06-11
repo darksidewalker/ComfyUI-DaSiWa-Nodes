@@ -4,3 +4,4 @@ Pillow
 numpy
 transformers>=4.45.0
 accelerate
+huggingface_hub
