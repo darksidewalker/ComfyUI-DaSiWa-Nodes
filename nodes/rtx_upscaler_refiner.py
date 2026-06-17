@@ -159,33 +159,51 @@ def _fit_frame_to_target_aspect(frame, target_width: int, target_height: int, re
     _, source_height, source_width = frame.shape
     source_aspect = float(source_width) / float(source_height)
     target_aspect = float(target_width) / float(target_height)
+    ratio_width, ratio_height = _aspect_ratio_parts(target_width, target_height)
 
-    if abs(source_aspect - target_aspect) < 0.0001:
+    if _same_aspect(source_width, source_height, target_width, target_height):
         return frame.contiguous()
 
     if resize_method == "Center Crop (Fill)":
-        if source_aspect > target_aspect:
+        ratio_scale = min(int(source_width) // ratio_width, int(source_height) // ratio_height)
+        if ratio_scale > 0:
+            crop_width = ratio_scale * ratio_width
+            crop_height = ratio_scale * ratio_height
+        elif source_aspect > target_aspect:
             crop_width = max(1, min(int(source_width), int(round(float(source_height) * target_aspect))))
-            crop_x = max(0, (int(source_width) - crop_width) // 2)
-            return frame[:, :, crop_x:crop_x + crop_width].contiguous()
-
-        crop_height = max(1, min(int(source_height), int(round(float(source_width) / target_aspect))))
+            crop_height = int(source_height)
+        else:
+            crop_width = int(source_width)
+            crop_height = max(1, min(int(source_height), int(round(float(source_width) / target_aspect))))
+        crop_x = max(0, (int(source_width) - crop_width) // 2)
         crop_y = max(0, (int(source_height) - crop_height) // 2)
-        return frame[:, crop_y:crop_y + crop_height, :].contiguous()
+        return frame[:, crop_y:crop_y + crop_height, crop_x:crop_x + crop_width].contiguous()
 
     # Letterbox (Fit)
-    if source_aspect > target_aspect:
-        padded_height = max(int(source_height), int(math.ceil(float(source_width) / target_aspect)))
-        pad_total = padded_height - int(source_height)
-        pad_top = pad_total // 2
-        pad_bottom = pad_total - pad_top
-        return F.pad(frame, (0, 0, pad_top, pad_bottom), mode="constant", value=0.0).contiguous()
+    ratio_scale = max(
+        math.ceil(int(source_width) / ratio_width),
+        math.ceil(int(source_height) / ratio_height),
+    )
+    padded_width = max(int(source_width), ratio_scale * ratio_width)
+    padded_height = max(int(source_height), ratio_scale * ratio_height)
+    pad_width = padded_width - int(source_width)
+    pad_height = padded_height - int(source_height)
+    pad_left = pad_width // 2
+    pad_right = pad_width - pad_left
+    pad_top = pad_height // 2
+    pad_bottom = pad_height - pad_top
+    return F.pad(frame, (pad_left, pad_right, pad_top, pad_bottom), mode="constant", value=0.0).contiguous()
 
-    padded_width = max(int(source_width), int(math.ceil(float(source_height) * target_aspect)))
-    pad_total = padded_width - int(source_width)
-    pad_left = pad_total // 2
-    pad_right = pad_total - pad_left
-    return F.pad(frame, (pad_left, pad_right, 0, 0), mode="constant", value=0.0).contiguous()
+def _aspect_ratio_parts(width: int, height: int) -> Tuple[int, int]:
+    divisor = math.gcd(int(width), int(height))
+    if divisor <= 0:
+        return max(1, int(width)), max(1, int(height))
+    return max(1, int(width) // divisor), max(1, int(height) // divisor)
+
+
+def _same_aspect(source_width: int, source_height: int, target_width: int, target_height: int) -> bool:
+    return int(source_width) * int(target_height) == int(target_width) * int(source_height)
+
 
 def _import_vfx():
     try:
@@ -412,7 +430,9 @@ class DaSiWa_RTX_UpscalerRefiner:
         vfx_api = _import_vfx()
         cuda_device = torch.device(f"cuda:{device_id}")
         frames_per_chunk = max(1, MAX_CHUNK_OUTPUT_PIXELS // max(1, target_width * target_height))
-        fit_to_target_aspect = upscale_enabled and resize_type in ("Manual", "Preset Ratio")
+        fit_to_target_aspect = upscale_enabled and not _same_aspect(
+            source_width, source_height, target_width, target_height
+        )
 
         # Preallocate output tensor on the same device as input (usually CPU in ComfyUI)
         out_device = images.device
