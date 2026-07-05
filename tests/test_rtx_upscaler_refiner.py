@@ -1,6 +1,7 @@
 import torch
 
 from nodes.rtx_upscaler_refiner import (
+    DaSiWa_RTX_UpscalerRefiner,
     _fit_frame_to_target_aspect,
     _same_aspect,
 )
@@ -36,3 +37,17 @@ def test_matching_aspect_returns_contiguous_copy_without_resize():
 
     assert fitted.shape == frame.shape
     assert fitted.is_contiguous()
+
+
+def test_validate_inputs_accepts_new_comfyui_positional_signature():
+    node = DaSiWa_RTX_UpscalerRefiner()
+
+    assert node.validate_inputs("images", "IMAGE", object(), object()) is True
+
+
+def test_validate_inputs_accepts_class_level_positional_signature():
+    validate_inputs = DaSiWa_RTX_UpscalerRefiner.__dict__["validate_inputs"]
+
+    assert validate_inputs(
+        DaSiWa_RTX_UpscalerRefiner, "images", "IMAGE", object(), object()
+    ) is True
