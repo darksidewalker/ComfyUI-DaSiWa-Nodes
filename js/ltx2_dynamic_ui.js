@@ -75,6 +75,24 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const bump = (v, d) => Math.round(clamp((v || 1.0) + d, 0.0, 2.0) * 100) / 100;
 const bumpS = (v, d) => Math.round(clamp((v || 1.0) + d, -2.0, 2.0) * 100) / 100;
 
+async function getCurrentLoraList(nodeData) {
+  const fallback = nodeData?.input?.hidden?.available_loras?.[0] || ["None"];
+
+  try {
+    const response = await fetch("/object_info/DaSiWa_LTX2LoraLoader", { cache: "no-store" });
+    if (!response.ok) return fallback;
+
+    const info = await response.json();
+    const refreshed = info?.DaSiWa_LTX2LoraLoader?.input?.hidden?.available_loras?.[0]
+      || info?.input?.hidden?.available_loras?.[0];
+
+    return Array.isArray(refreshed) && refreshed.length ? refreshed : fallback;
+  } catch (error) {
+    console.warn("[DaSiWa LTX2] Failed to refresh LoRA list from ComfyUI object_info:", error);
+    return fallback;
+  }
+}
+
 const CONTROL_DESCRIPTIONS = {
   theme: "Cycle the visual theme of this LTX-2 LoRA stacker.",
   add: "Add one LoRA slot to the stack.",
@@ -435,28 +453,29 @@ app.registerExtension({
         if (x > C.onX && x < C.onX + C.onW) {
           data[i].on = !data[i].on;
         } else if (x > C.nmX && x < C.nmX + C.nmW) {
-          const loraList = nodeData.input.hidden.available_loras[0];
-          const menu = new LiteGraph.ContextMenu(loraList, {
-            event: e, scale: 1.2,
-            callback: v => {
-              data[i].lora = v;
-              this.properties.stack_data = JSON.stringify(data);
-              sync(this);
-              this.setDirtyCanvas(true);
-            }
-          });
-          const sw = document.createElement("div");
-          sw.style = "padding:5px;background:#333;border-bottom:1px solid #555;";
-          const inp = document.createElement("input");
-          inp.style = "width:100%;background:#222;color:#00FFCC;border:1px solid #444;padding:4px;";
-          inp.placeholder = "Search LoRAs...";
-          sw.appendChild(inp);
-          menu.root.prepend(sw);
-          setTimeout(() => inp.focus(), 10);
-          inp.addEventListener("input", ev => {
-            const term = ev.target.value.toLowerCase();
-            menu.root.querySelectorAll(".litemenu-entry").forEach(el => {
-              el.style.display = el.textContent.toLowerCase().includes(term) ? "block" : "none";
+          getCurrentLoraList(nodeData).then(loraList => {
+            const menu = new LiteGraph.ContextMenu(loraList, {
+              event: e, scale: 1.2,
+              callback: v => {
+                data[i].lora = v;
+                this.properties.stack_data = JSON.stringify(data);
+                sync(this);
+                this.setDirtyCanvas(true);
+              }
+            });
+            const sw = document.createElement("div");
+            sw.style = "padding:5px;background:#333;border-bottom:1px solid #555;";
+            const inp = document.createElement("input");
+            inp.style = "width:100%;background:#222;color:#00FFCC;border:1px solid #444;padding:4px;";
+            inp.placeholder = "Search LoRAs...";
+            sw.appendChild(inp);
+            menu.root.prepend(sw);
+            setTimeout(() => inp.focus(), 10);
+            inp.addEventListener("input", ev => {
+              const term = ev.target.value.toLowerCase();
+              menu.root.querySelectorAll(".litemenu-entry").forEach(el => {
+                el.style.display = el.textContent.toLowerCase().includes(term) ? "block" : "none";
+              });
             });
           });
           return true;
