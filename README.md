@@ -99,6 +99,23 @@ A professional-grade watermark tool optimized for image and video batches. It us
 
 ---
 
+### 🖥️ System Monitor
+
+A compact, non-intrusive system telemetry bar integrated directly into the ComfyUI top toolbar. Displays real-time resource utilization with color-coded percentage fills.
+
+- **Multi-GPU Support:** Separate metrics per GPU device (NVIDIA, AMD, Intel) labeled as GPU0, GPU1, etc.
+- **Resource Metrics:** CPU, RAM, SWAP/Pagefile, DISK, GPU Utilization, GPU VRAM, and GPU Temperature.
+- **Visual Feedback:** Color-coded borders and proportional background fills (0–100%) for instant at-a-glance assessment.
+- **Responsive Layout:** Automatically hides lower-priority metrics when toolbar space is limited.
+- **Cross-Platform:** Works on Linux and Windows with automatic fallback detection for GPU tools.
+- **Independent Placement:** Renders as its own toolbar element, not dependent on third-party extensions.
+
+![DaSiWa_System_Monitor.png](assets/DaSiWa_System_Monitor.png)
+
+[Full documentation →](docs/system_monitor.md)
+
+---
+
 ### 🔀 Random String Picker
 
 Bridge any string/text node through **DaSiWa Random String Picker** to randomize prompt variants inline.
