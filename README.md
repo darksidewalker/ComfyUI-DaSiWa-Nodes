@@ -101,16 +101,23 @@ A professional-grade watermark tool optimized for image and video batches. It us
 
 ### 🖥️ System Monitor
 
-A compact, non-intrusive system telemetry bar integrated directly into the ComfyUI top toolbar. Displays real-time resource utilization with color-coded percentage fills.
+A compact system telemetry bar integrated directly into the ComfyUI top toolbar. The adjacent DaSiWa settings button lets you hide the monitor or choose its display mode.
 
 - **Multi-GPU Support:** Separate metrics per GPU device (NVIDIA, AMD, Intel) labeled as GPU0, GPU1, etc.
 - **Resource Metrics:** CPU, RAM, SWAP/Pagefile, DISK, GPU Utilization, GPU VRAM, and GPU Temperature.
 - **Visual Feedback:** Color-coded borders and proportional background fills (0–100%) for instant at-a-glance assessment.
-- **Responsive Layout:** Automatically hides lower-priority metrics when toolbar space is limited.
+- **Lite / Full Modes:** Lite is the default compact toolbar view; Full shows every available metric with detailed values and a live 60-second graph.
+- **Responsive Layout:** Lite automatically hides lower-priority metrics when toolbar space is limited; Full is a scrollable panel that adapts to narrow screens.
 - **Cross-Platform:** Works on Linux and Windows with automatic fallback detection for GPU tools.
 - **Independent Placement:** Renders as its own toolbar element, not dependent on third-party extensions.
 
+**Lite mode**
+
 ![DaSiWa_System_Monitor.png](assets/DaSiWa_System_Monitor.png)
+
+**Full mode**
+
+![DaSiWa_System_Monitor-full.png](assets/DaSiWa_System_Monitor-full.png)
 
 [Full documentation →](docs/system_monitor.md)
 

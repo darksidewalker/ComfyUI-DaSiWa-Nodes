@@ -12,6 +12,20 @@ The current settings are stored in the browser, so they remain active after a Co
 - **Lite:** the default compact fixed-width, color-coded toolbar meters. Each meter shows a label, a numeric value, and a proportional background fill representing 0–100% usage.
 - **Full:** a spacious monitor panel with every available metric, its current value and detail, plus a live graph covering the most recent 60 telemetry samples (normally about one minute).
 
+## Display Modes
+
+### Lite (default)
+
+Lite keeps the monitor in the toolbar as compact, fixed-width meters. It is intended for continuous at-a-glance monitoring while working in ComfyUI.
+
+![Lite system monitor](../assets/DaSiWa_System_Monitor.png)
+
+### Full
+
+Full opens a larger panel directly below the monitor controls. It shows all available CPU, memory, disk, and GPU metrics at once, including each metric's detailed value and a graph of the most recent 60 telemetry samples. The settings button remains available above the panel to switch back to Lite or disable the monitor.
+
+![Full system monitor](../assets/DaSiWa_System_Monitor-full.png)
+
 ## Metrics
 
 | Metric | Description | Color |
