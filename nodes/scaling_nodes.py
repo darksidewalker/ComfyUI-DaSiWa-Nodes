@@ -2,21 +2,23 @@ import math
 
 class DaSiWa_ResolutionScaleCalculator:
     # --- DATA ARRAYS ---
+    # Resolution presets: value = real_world_pixel_count / (1024*1024)
+    # Matches ComfyUI native MP convention (1 MP = 1,048,576 pixels)
     RESOLUTION_PRESETS = {
-        "144p": 0.04,
-        "240p": 0.10,
-        "360p": 0.23,
-        "480p": 0.38,
-        "540p": 0.52,
-        "576p": 0.59,
-        "720p": 0.92,
-        "900p": 1.44,
-        "1080p": 2.07,
-        "1152p": 2.36,
-        "1440p": 3.68,
-        "2160p": 8.29,
-        "2K": 4.19,
-        "4K": 8.29,
+        "144p": 0.0352,
+        "240p": 0.0977,
+        "360p": 0.22,
+        "480p": 0.391,
+        "540p": 0.494,
+        "576p": 0.396,
+        "720p": 0.879,
+        "900p": 1.373,
+        "1080p": 1.978,
+        "1152p": 2.25,
+        "1440p": 3.516,
+        "2160p": 7.91,
+        "2K": 3.906,
+        "4K": 7.91,
     }
 
     PRECISION_PRESETS = {
@@ -151,7 +153,9 @@ class DaSiWa_ResolutionScaleCalculator:
         a = self.PRESETS.get(resolution_preset, 0.52)
 
         # 4. CALCULATE
-        target_total_pixels = a * 1000000
+        # ComfyUI-native MP convention: 1 MP = 1024*1024 = 1,048,576 pixels
+        # (matches Scale Image to Total Pixels node)
+        target_total_pixels = a * 1024 * 1024
         calc_w = math.sqrt(target_total_pixels * aspect_ratio)
         calc_h = math.sqrt(target_total_pixels / aspect_ratio)
         

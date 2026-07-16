@@ -5,6 +5,8 @@ The **DaSiWa Scale Calculator** provides mathematically precise resolution manag
 ## 📐 The Core Logic
 Standard scalers often change the total pixel count when you change aspect ratios, leading to unexpected "Out of Memory" (OOM) errors. DaSiWa treats the resolution as a **Pixel Budget (Megapixels)**. 
 
+**MP Convention:** Like ComfyUI's native `Scale Image to Total Pixels` node, 1 MP = 1024 × 1024 = 1,048,576 pixels. This ensures DaSiWa produces the same dimensions as the built-in node for the same megapixel value.
+
 Whether you are generating in **1:1 Square**, **9:16 Vertical**, or **21:9 Ultra-Wide**, the node calculates dimensions so the total surface area remains consistent.
 
 ## 🚀 Key Features
