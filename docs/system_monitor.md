@@ -4,7 +4,13 @@ A compact, non-intrusive system telemetry bar integrated directly into the Comfy
 
 ## Overview
 
-The System Monitor displays real-time resource utilization as fixed-width, color-coded chips in the ComfyUI header area. Each chip shows a label, a numeric value, and a proportional background fill representing 0–100% usage.
+The System Monitor displays real-time resource utilization in the ComfyUI header area. A DaSiWa settings button sits directly beside the monitor and is the home for settings shared by DaSiWa nodes as they are added.
+
+The current settings are stored in the browser, so they remain active after a ComfyUI page reload:
+
+- **Show system monitor:** hides or shows the monitor while keeping the settings button available.
+- **Lite:** the default compact fixed-width, color-coded toolbar meters. Each meter shows a label, a numeric value, and a proportional background fill representing 0–100% usage.
+- **Full:** a spacious monitor panel with every available metric, its current value and detail, plus a live graph covering the most recent 60 telemetry samples (normally about one minute).
 
 ## Metrics
 
@@ -52,7 +58,7 @@ When toolbar width is insufficient to display all metrics, lower-priority chips 
 4. SWAP
 5. DISK
 
-A ResizeObserver monitors window changes and adjusts visibility dynamically without user interaction.
+A ResizeObserver monitors window changes and adjusts visibility dynamically without user interaction. Full mode uses a scrollable panel and collapses to one metric column on narrow screens.
 
 ## Backend Requirements
 
@@ -81,4 +87,4 @@ Additionally, updates are broadcast via WebSocket event `dasiwa.system_monitor` 
 
 ## Disabling
 
-To disable the monitor entirely, remove or comment out the import of `system_monitor` in the project's `__init__.py`. No configuration file or command-line flag is needed.
+Use the settings button next to the monitor and disable **Show system monitor**. The setting is browser-local and does not stop the lightweight backend telemetry endpoint or WebSocket event; this keeps re-enabling instant without requiring a ComfyUI restart.
