@@ -7,6 +7,7 @@ if __package__:
     from .nodes.watermark_nodes import DaSiWa_Watermark
     from .nodes.random_string_picker import DaSiWa_RandomStringPicker
     from .nodes.llm_nodes import DaSiWa_LLMModelSelector, DaSiWa_LLMAnalyze
+    from .nodes import system_monitor
 
     NODE_CLASS_MAPPINGS = {
         "DaSiWa_ResolutionScaleCalculator": DaSiWa_ResolutionScaleCalculator,
