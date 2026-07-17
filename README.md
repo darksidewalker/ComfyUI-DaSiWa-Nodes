@@ -37,12 +37,13 @@ The **DaSiWa Scale Calculator** provides mathematically precise resolution manag
 
 ### ⚡ Torch Resize
 
-Native, batch-aware PyTorch image/video resizing with no `torchlanc`, Triton, Pillow, or vendor SDK dependency. It runs on the tensor's current PyTorch device and supports CPU plus available CUDA, ROCm, MPS, and DirectML-compatible backends.
+A drop-in replacement for ComfyUI's built-in resize nodes that keeps images sharp and video workflows fast without extra dependencies.
 
-- **Methods:** Pixel-perfect Nearest, Bilinear, Bicubic, Area, and cached separable Lanczos.
-- **Colour Correctness:** Optional sRGB-linear-sRGB processing for non-nearest methods; alpha stays separate.
-- **Sizing:** Two clear menus separate scale source (`Multiplier` or `Target resolution`) from aspect handling (`Stretch`, `Fit`, `Fill and crop`, `Fit and pad`, or `Long side with divisible crop`); includes divisible-by alignment, crop placement, and RGB pad colour.
-- **Batch Efficiency:** `batch_size=0` automatically plans bounded video-frame chunks from a configurable megapixel budget, then writes chunks into one preallocated output; manual chunk sizes and reusable Lanczos weights remain available.
+- **Sharper results:** Lanczos resampling with optional sRGB-to-linear gamma correction produces cleaner upscaling and downscaling than native bilinear/bicubic.
+- **Video-friendly batching:** Automatically splits long frame sequences into memory-safe chunks so you never run out of VRAM, while keeping output order intact.
+- **Zero extra installs:** Runs entirely on the PyTorch build ComfyUI already uses — no Pillow, torchlanc, Triton, or vendor SDK required.
+- **Precise sizing control:** Divisible-by alignment, five aspect modes (fit, fill/crop, pad, stretch, long-side crop), and configurable crop/pad placement eliminate guesswork for downstream model constraints.
+- **Alpha preserved:** Transparency channels are resized independently without gamma conversion artifacts.
 
 ![DaSiWa-Torch-Resize.png](assets/DaSiWa-Torch-Resize.png)
 
