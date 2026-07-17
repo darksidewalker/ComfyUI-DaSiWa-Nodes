@@ -1,5 +1,5 @@
 if __package__:
-    from .nodes.scaling_nodes import DaSiWa_ResolutionScaleCalculator
+    from .nodes.scaling_nodes import DaSiWa_ResolutionScaleCalculator, DaSiWa_TorchResize
     from .nodes.node_status_switch import DaSiWa_NodeStatusSwitch
     from .nodes.rtx_upscaler_refiner import DaSiWa_RTX_UpscalerRefiner
     from .nodes.metadata_nodes import DaSiWa_MetadataImageSaver, DaSiWa_MetadataImageSaverFull, DaSiWa_MetadataConfig, DaSiWa_CreateExtraMetadata
@@ -11,6 +11,7 @@ if __package__:
 
     NODE_CLASS_MAPPINGS = {
         "DaSiWa_ResolutionScaleCalculator": DaSiWa_ResolutionScaleCalculator,
+        "DaSiWa_TorchResize": DaSiWa_TorchResize,
         "DaSiWa_NodeStatusSwitch": DaSiWa_NodeStatusSwitch,
         "DaSiWa_RTX_UpscalerRefiner": DaSiWa_RTX_UpscalerRefiner,
         "DaSiWa_MetadataImageSaver": DaSiWa_MetadataImageSaver,
@@ -26,6 +27,7 @@ if __package__:
 
     NODE_DISPLAY_NAME_MAPPINGS = {
         "DaSiWa_ResolutionScaleCalculator": "DaSiWa Resolution Scale Calculator",
+        "DaSiWa_TorchResize": "DaSiWa Torch Resize",
         "DaSiWa_NodeStatusSwitch": "DaSiWa Node Status Switch",
         "DaSiWa_RTX_UpscalerRefiner": "DaSiWa RTX Upscaler & Refiner",
         "DaSiWa_MetadataImageSaver": "DaSiWa Metadata Image Saver",
