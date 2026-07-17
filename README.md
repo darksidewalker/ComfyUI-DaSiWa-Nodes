@@ -35,6 +35,21 @@ The **DaSiWa Scale Calculator** provides mathematically precise resolution manag
 
 ---
 
+### ⚡ Torch Resize
+
+Native, batch-aware PyTorch image/video resizing with no `torchlanc`, Triton, Pillow, or vendor SDK dependency. It runs on the tensor's current PyTorch device and supports CPU plus available CUDA, ROCm, MPS, and DirectML-compatible backends.
+
+- **Methods:** Pixel-perfect Nearest, Bilinear, Bicubic, Area, and cached separable Lanczos.
+- **Colour Correctness:** Optional sRGB-linear-sRGB processing for non-nearest methods; alpha stays separate.
+- **Sizing:** Two clear menus separate scale source (`Multiplier` or `Target resolution`) from aspect handling (`Stretch`, `Fit`, `Fill and crop`, `Fit and pad`, or `Long side with divisible crop`); includes divisible-by alignment, crop placement, and RGB pad colour.
+- **Batch Efficiency:** `batch_size=0` automatically plans bounded video-frame chunks from a configurable megapixel budget, then writes chunks into one preallocated output; manual chunk sizes and reusable Lanczos weights remain available.
+
+![DaSiWa-Torch-Resize.png](assets/DaSiWa-Torch-Resize.png)
+
+[Full documentation →](docs/torch_resize.md)
+
+---
+
 ### 🎛️ Node Status Switch
 
 The **DaSiWa Node Status Switch** lets you mute or bypass any node in your workflow using a single toggle. Targets are registered by wiring their outputs into the switch's input slots, which grow dynamically as you connect more nodes (up to 99).

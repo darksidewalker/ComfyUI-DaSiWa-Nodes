@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
 description = "DaSiWa Custom Nodes Collection"
-version = "0.2.11"
+version = "0.2.12"
 license = {file = "LICENSE"}
 dependencies = [
     "torch",
