@@ -115,6 +115,11 @@ def _format_filename_prefix(filename_prefix):
     return re.sub(r"%date(?::([^%]+))?%", replace_date, filename_prefix)
 
 
+def _output_filename(filename, counter, extension, has_audio):
+    audio_suffix = "-audio" if has_audio else ""
+    return f"{filename}_{counter:05}{audio_suffix}.{extension.lstrip('.')}"
+
+
 def _metadata_file(prompt, extra_pnginfo):
     if prompt is None and not extra_pnginfo:
         return None
@@ -244,7 +249,7 @@ class DaSiWa_EnhancedVideoCombine:
                 "quality": ("INT", {"default": 20, "min": 0, "max": 51, "description": "Encoding quality for every encoder. 0 is no compression (largest files); higher values increase compression and reduce quality. 20 is the recommended default."}),
                 "pingpong": ("BOOLEAN", {"default": False, "description": "Append the interior frames in reverse order for seamless forward/reverse playback."}),
                 "save_metadata": ("BOOLEAN", {"default": True, "description": "Embed ComfyUI prompt and workflow metadata for workflow-aware video loaders."}),
-                "filename_prefix": ("STRING", {"default": "DaSiWa/EnhancedVideo", "description": "Output path/name prefix. Supports %date% and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%."}),
+                "filename_prefix": ("STRING", {"default": "video_%date:hhmmss%", "description": "Output path/name prefix. Supports %date% and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%."}),
                 "save_output": ("BOOLEAN", {"default": True}),
                 "pass_frames": ("BOOLEAN", {"default": False, "description": "Return the encoded frame sequence for downstream processing."}),
                 "crop_to_audio": ("BOOLEAN", {"default": False, "description": "When audio is connected, end the output video at the audio duration."}),
@@ -296,7 +301,10 @@ class DaSiWa_EnhancedVideoCombine:
         attempts = []
         try:
             for selected_container in _container_candidates(codec, container):
-                output_path = os.path.join(output_folder, f"{filename}_{counter:05}_.{_CONTAINER_EXTENSIONS[selected_container].lstrip('.')}")
+                output_path = os.path.join(
+                    output_folder,
+                    _output_filename(filename, counter, _CONTAINER_EXTENSIONS[selected_container], audio_path is not None),
+                )
                 try:
                     encoder = _encode_with_available_encoder(
                         ffmpeg, codec, selected_bit_depth, width, height, frame_rate, payload,
@@ -307,7 +315,7 @@ class DaSiWa_EnhancedVideoCombine:
                 except RuntimeError as error:
                     attempts.append(f"{selected_container}: {error}")
             else:
-                fallback_path = os.path.join(output_folder, f"{filename}_{counter:05}_.mp4")
+                fallback_path = os.path.join(output_folder, _output_filename(filename, counter, ".mp4", audio_path is not None))
                 encoder = _encode_with_available_encoder(
                     ffmpeg, "H.264", selected_bit_depth, width, height, frame_rate, payload,
                     fallback_path, "MP4", quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,

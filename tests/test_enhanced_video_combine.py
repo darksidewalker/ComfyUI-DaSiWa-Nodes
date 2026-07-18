@@ -42,6 +42,9 @@ def test_node_schema_and_registration():
     assert controls["quality"][1]["default"] == 20
     assert controls["pingpong"][1]["default"] is False
     assert controls["pass_frames"][1]["default"] is False
+    assert controls["filename_prefix"][1]["default"] == "video_%date:hhmmss%"
+    assert enhanced_video_combine._output_filename("video_130405", 1, ".mp4", False) == "video_130405_00001.mp4"
+    assert enhanced_video_combine._output_filename("video_130405", 1, ".mp4", True) == "video_130405_00001-audio.mp4"
 
     assert controls["audio_codec"][0] == ["Auto", "AAC", "Opus", "MP3"]
     assert controls["audio_bitrate"][1]["default"] == "192k"
@@ -49,15 +52,20 @@ def test_node_schema_and_registration():
     assert 'name: "DaSiWa.EnhancedVideoCombinePreview"' in preview_source
     assert "this.addDOMWidget" in preview_source
     assert "message?.gifs?.[0] ?? message?.videos?.[0]" in preview_source
-    assert "Save first frame" in preview_source
-    assert "Save last frame" in preview_source
+    assert 'saveFirstFrame.type = "checkbox"' in preview_source
+    assert 'saveLastFrame.type = "checkbox"' in preview_source
     assert "this.setSize" not in preview_source
     assert "video.fps" in preview_source
     assert '"Video preview"' not in preview_source
     assert "preview.controls = true" not in preview_source
     assert "previewWidget.aspectRatio = preview.videoWidth / preview.videoHeight" in preview_source
     assert "fitPreviewHeight(previewNode)" in preview_source
-    assert "actions.append(firstFrame, lastFrame)" in preview_source
+    assert "actions.append(saveFirstFrameLabel, saveLastFrameLabel)" in preview_source
+    assert 'preview.addEventListener("click", togglePlayback)' in preview_source
+    assert "if (saveFirstFrame.checked) saveFrame(preview, false);" in preview_source
+    assert "if (saveLastFrame.checked) saveFrame(preview, true);" in preview_source
+    assert 'preview.dataset.filename = video.filename' in preview_source
+    assert 'link.download = `${filename}-${lastFrame ? "last" : "first"}-frame.png`;' in preview_source
 
 
 

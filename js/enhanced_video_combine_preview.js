@@ -24,7 +24,8 @@ function saveFrame(video, lastFrame) {
             if (!blob) return;
             const link = document.createElement("a");
             link.href = URL.createObjectURL(blob);
-            link.download = `enhanced-video-${lastFrame ? "last" : "first"}-frame.png`;
+            const filename = (video.dataset.filename || "enhanced-video").replace(/\.[^/.]+$/, "");
+            link.download = `${filename}-${lastFrame ? "last" : "first"}-frame.png`;
             link.click();
             URL.revokeObjectURL(link.href);
         }, "image/png");
@@ -74,7 +75,7 @@ app.registerExtension({
             preview.loop = true;
             preview.muted = true;
             preview.playsInline = true;
-            preview.style.cssText = "display:block;width:100%;background:#111";
+            preview.style.cssText = "display:block;width:100%;background:#111;cursor:pointer";
 
             const info = document.createElement("div");
             info.style.cssText = "display:flex;gap:8px;margin-top:4px;color:var(--input-text,#ddd);font:11px sans-serif";
@@ -104,13 +105,15 @@ app.registerExtension({
 
             const actions = document.createElement("div");
             actions.style.cssText = "display:flex;gap:5px;margin-top:4px";
-            const firstFrame = document.createElement("button");
-            firstFrame.type = "button";
-            firstFrame.textContent = "Save first frame";
-            const lastFrame = document.createElement("button");
-            lastFrame.type = "button";
-            lastFrame.textContent = "Save last frame";
-            actions.append(firstFrame, lastFrame);
+            const saveFirstFrame = document.createElement("input");
+            saveFirstFrame.type = "checkbox";
+            const saveFirstFrameLabel = document.createElement("label");
+            saveFirstFrameLabel.append(saveFirstFrame, " Save first frame");
+            const saveLastFrame = document.createElement("input");
+            saveLastFrame.type = "checkbox";
+            const saveLastFrameLabel = document.createElement("label");
+            saveLastFrameLabel.append(saveLastFrame, " Save last frame");
+            actions.append(saveFirstFrameLabel, saveLastFrameLabel);
 
             preview.addEventListener("loadedmetadata", () => {
                 previewWidget.aspectRatio = preview.videoWidth / preview.videoHeight;
@@ -118,8 +121,12 @@ app.registerExtension({
                 duration.textContent = formatTime(preview.duration);
                 fps.textContent = preview.dataset.fps ? `${preview.dataset.fps} fps` : "";
                 fitPreviewHeight(previewNode);
+                if (saveFirstFrame.checked) saveFrame(preview, false);
+                if (saveLastFrame.checked) saveFrame(preview, true);
             });
-            play.addEventListener("click", () => preview.paused ? preview.play() : preview.pause());
+            const togglePlayback = () => preview.paused ? preview.play() : preview.pause();
+            play.addEventListener("click", togglePlayback);
+            preview.addEventListener("click", togglePlayback);
             preview.addEventListener("play", () => { play.textContent = "❚❚"; });
             preview.addEventListener("pause", () => { play.textContent = "▶"; });
             preview.addEventListener("timeupdate", () => {
@@ -133,9 +140,7 @@ app.registerExtension({
                 preview.muted = !preview.muted;
                 mute.textContent = preview.muted ? "🔇" : "🔊";
             });
-            firstFrame.addEventListener("click", () => saveFrame(preview, false));
-            lastFrame.addEventListener("click", () => saveFrame(preview, true));
-            [preview, controls, play, seek, mute, actions, firstFrame, lastFrame].forEach(stopNodeInteraction);
+            [preview, controls, play, seek, mute, actions, saveFirstFrame, saveFirstFrameLabel, saveLastFrame, saveLastFrameLabel].forEach(stopNodeInteraction);
 
             root.append(preview, info, controls, actions);
             previewWidget = this.addDOMWidget("video_preview", "preview", root, {
@@ -157,6 +162,7 @@ app.registerExtension({
 
             const preview = this.dasiwaVideoPreview;
             preview.pause();
+            preview.dataset.filename = video.filename;
             preview.dataset.fps = video.fps ?? "";
             preview.src = videoUrl(video);
             preview.load();
