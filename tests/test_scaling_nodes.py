@@ -47,6 +47,35 @@ class TestComfyUINativeCompatibility:
         expected = 1.05 * 1024 * 1024
         assert abs(total - expected) < 2048
 
+    def test_1mp_presets_produce_1024_square_at_1x1(self):
+        img = _fake_tensor(1024, 1024)
+        calculator = Calculator()
+        for preset in ("1024p", "1.00 MP - 1024p"):
+            w, h, _, _ = calculator.calculate(
+                resolution_preset=preset,
+                image=img,
+                mode="Standard",
+            )
+            assert (w, h) == (1024, 1024)
+
+    def test_divisor_rounding_matches_comfyui_resolution_selector(self):
+        calculator = Calculator()
+        for mode, custom_divisor, expected in (
+            ("WAN/LTX (Div32)", 8, (1376, 768)),
+            ("LTX 2-Stage (Div64)", 8, (1344, 768)),
+            ("CUSTOM", 8, (1368, 768)),
+        ):
+            w, h, _, _ = calculator.calculate(
+                resolution_preset="1.00 MP - 1024p",
+                scale_from_image=False,
+                aspect_preset_when_not_image="CUSTOM",
+                custom_aspect_width=16,
+                custom_aspect_height=9,
+                mode=mode,
+                custom_divisor=custom_divisor,
+            )
+            assert (w, h) == expected
+
 
 class TestResolutionPresetsRealWorld:
     """###p presets must resolve to their real-world pixel count."""

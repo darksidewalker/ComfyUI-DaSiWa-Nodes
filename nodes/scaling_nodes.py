@@ -18,6 +18,7 @@ class DaSiWa_ResolutionScaleCalculator:
         "576p": 0.396,
         "720p": 0.879,
         "900p": 1.373,
+        "1024p": 1.00,
         "1080p": 1.978,
         "1152p": 2.25,
         "1440p": 3.516,
@@ -32,6 +33,7 @@ class DaSiWa_ResolutionScaleCalculator:
         "0.52 MP - SD": 0.52,
         "0.65 MP - Balanced": 0.65,
         "0.83 MP - HD": 0.83,
+        "1.00 MP - 1024p": 1.00,
         "1.05 MP - HD+": 1.05,
         "1.20 MP - HD++": 1.20,
         "1.35 MP - 2K lite": 1.35,
@@ -164,26 +166,17 @@ class DaSiWa_ResolutionScaleCalculator:
         calc_w = math.sqrt(target_total_pixels * aspect_ratio)
         calc_h = math.sqrt(target_total_pixels / aspect_ratio)
         
-        # 5. MODE HANDLING
-        if mode == "CUSTOM":
-            d = max(1, int(custom_divisor))
-            final_w = int(round(calc_w / d) * d)
-            final_h = int(round(calc_h / d) * d)
-            floor = d
-        elif mode == "LTX 2-Stage (Div64)":
-            final_w = int(round(calc_w / 64.0) * 64)
-            final_h = int(round(calc_h / 64.0) * 64)
-            floor = 64
-        elif mode == "WAN/LTX (Div32)":
-            final_w = int(round(calc_w / 32.0) * 32)
-            final_h = int(round(calc_h / 32.0) * 32)
-            floor = 32
-        else:
-            final_w = int(round(calc_w))
-            final_h = int(round(calc_h))
-            floor = 1
+        # Match ComfyUI's ResolutionSelector: round each dimension to the chosen multiple.
+        divisors = {
+            "WAN/LTX (Div32)": 32,
+            "LTX 2-Stage (Div64)": 64,
+            "CUSTOM": max(1, int(custom_divisor)),
+        }
+        divisor = divisors.get(mode, 1)
+        final_w = max(divisor, int(round(calc_w / divisor) * divisor))
+        final_h = max(divisor, int(round(calc_h / divisor) * divisor))
 
-        return (max(final_w, floor), max(final_h, floor), float(final_w), float(final_h))
+        return (final_w, final_h, float(final_w), float(final_h))
 
 
 class _LanczosWeightCache:
