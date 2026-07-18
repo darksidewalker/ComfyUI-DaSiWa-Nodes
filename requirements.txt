@@ -6,3 +6,4 @@ transformers>=4.45.0
 accelerate
 huggingface_hub
 psutil>=5.9
+imageio-ffmpeg>=0.5

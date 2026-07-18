@@ -7,6 +7,7 @@ if __package__:
     from .nodes.watermark_nodes import DaSiWa_Watermark
     from .nodes.random_string_picker import DaSiWa_RandomStringPicker
     from .nodes.llm_nodes import DaSiWa_LLMModelSelector, DaSiWa_LLMAnalyze
+    from .nodes.enhanced_video_combine import DaSiWa_EnhancedVideoCombine
     from .nodes import system_monitor
 
     NODE_CLASS_MAPPINGS = {
@@ -23,6 +24,7 @@ if __package__:
         "DaSiWa_RandomStringPicker": DaSiWa_RandomStringPicker,
         "DaSiWa_LLMModelSelector": DaSiWa_LLMModelSelector,
         "DaSiWa_LLMAnalyze": DaSiWa_LLMAnalyze,
+        "DaSiWa_EnhancedVideoCombine": DaSiWa_EnhancedVideoCombine,
     }
 
     NODE_DISPLAY_NAME_MAPPINGS = {
@@ -39,6 +41,7 @@ if __package__:
         "DaSiWa_RandomStringPicker": "DaSiWa Random String Picker",
         "DaSiWa_LLMModelSelector": "DaSiWa LLM Model Selector",
         "DaSiWa_LLMAnalyze": "DaSiWa LLM Analyze",
+        "DaSiWa_EnhancedVideoCombine": "DaSiWa Enhanced Video Combine",
     }
 else:
     NODE_CLASS_MAPPINGS = {}

@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
 description = "DaSiWa Custom Nodes Collection"
-version = "0.2.13"
+version = "0.2.14"
 license = {file = "LICENSE"}
 dependencies = [
     "torch",
@@ -12,6 +12,7 @@ dependencies = [
     "accelerate",
     "huggingface_hub",
     "psutil>=5.9",
+    "imageio-ffmpeg>=0.5",
 ]
 
 [project.urls]
