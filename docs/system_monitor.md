@@ -11,12 +11,15 @@ The current settings are stored in the browser, so they remain active after a Co
 - **Show system monitor:** hides or shows the monitor while keeping the settings button available.
 - **Lite:** the default compact fixed-width, color-coded toolbar meters. Each meter shows a label, a numeric value, and a proportional background fill representing 0–100% usage.
 - **Full:** a spacious monitor panel with every available metric, its current value and detail, plus a live graph covering the most recent 60 telemetry samples (normally about one minute).
+- **Placement:** drag the monitor freely anywhere on the ComfyUI canvas. While dragging, drop it on the visible **Dock to top** target to return it to the toolbar. Its placement and toolbar position are retained after reload.
 
 ## Display Modes
 
 ### Lite (default)
 
 Lite keeps the monitor in the toolbar as compact, fixed-width meters. It is intended for continuous at-a-glance monitoring while working in ComfyUI.
+
+Use the small grip at the monitor's left edge to float it above the canvas. To dock it again, drag that grip to the **Dock to top** target that appears at the top of the UI and release it there.
 
 ![Lite system monitor](../assets/DaSiWa_System_Monitor.png)
 
