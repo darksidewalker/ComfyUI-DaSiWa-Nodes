@@ -12,36 +12,17 @@ function videoUrl(video) {
     return api.apiURL(`/view?${params}`);
 }
 
-function saveFrame(video, lastFrame) {
-    if (!video.videoWidth || !video.videoHeight || !Number.isFinite(video.duration)) return;
-    const targetTime = lastFrame ? Math.max(0, video.duration - 0.001) : 0;
-    const saveCurrentFrame = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => {
-            if (!blob) return;
-            const link = document.createElement("a");
-            link.href = URL.createObjectURL(blob);
-            const filename = (video.dataset.filename || "enhanced-video").replace(/\.[^/.]+$/, "");
-            link.download = `${filename}-${lastFrame ? "last" : "first"}-frame.png`;
-            link.click();
-            URL.revokeObjectURL(link.href);
-        }, "image/png");
-    };
-    if (Math.abs(video.currentTime - targetTime) < 0.0001) {
-        saveCurrentFrame();
-    } else {
-        video.addEventListener("seeked", saveCurrentFrame, { once: true });
-        video.currentTime = targetTime;
-    }
-}
-
 function stopNodeInteraction(element) {
     for (const eventName of ["pointerdown", "mousedown", "touchstart"]) {
         element.addEventListener(eventName, (event) => event.stopPropagation());
     }
+}
+
+function syncBooleanWidget(node, name, checked) {
+    const widget = node.widgets?.find((candidate) => candidate.name === name);
+    if (!widget) return;
+    widget.value = checked;
+    widget.callback?.(checked);
 }
 
 function formatTime(seconds) {
@@ -162,10 +143,14 @@ app.registerExtension({
             actions.style.cssText = "display:flex;gap:5px;margin-top:4px";
             const saveFirstFrame = document.createElement("input");
             saveFirstFrame.type = "checkbox";
+            saveFirstFrame.checked = Boolean(this.widgets?.find((widget) => widget.name === "save_first_frame")?.value);
+            saveFirstFrame.addEventListener("change", () => syncBooleanWidget(this, "save_first_frame", saveFirstFrame.checked));
             const saveFirstFrameLabel = document.createElement("label");
             saveFirstFrameLabel.append(saveFirstFrame, " Save first frame");
             const saveLastFrame = document.createElement("input");
             saveLastFrame.type = "checkbox";
+            saveLastFrame.checked = Boolean(this.widgets?.find((widget) => widget.name === "save_last_frame")?.value);
+            saveLastFrame.addEventListener("change", () => syncBooleanWidget(this, "save_last_frame", saveLastFrame.checked));
             const saveLastFrameLabel = document.createElement("label");
             saveLastFrameLabel.append(saveLastFrame, " Save last frame");
             const autoPlay = document.createElement("input");
@@ -182,8 +167,6 @@ app.registerExtension({
                 duration.textContent = formatTime(preview.duration);
                 fps.textContent = preview.dataset.fps ? `${preview.dataset.fps} fps` : "";
                 fitPreviewHeight(previewNode);
-                if (saveFirstFrame.checked) saveFrame(preview, false);
-                if (saveLastFrame.checked) saveFrame(preview, true);
                 if (autoPlay.checked) preview.play().catch(() => {});
             });
             preview.addEventListener("error", () => {

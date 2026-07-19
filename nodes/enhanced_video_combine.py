@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 
 import torch
+from PIL import Image
 
 import folder_paths
 
@@ -101,6 +102,26 @@ def _frame_bytes(images, bit_depth):
     if bit_depth == 10:
         return torch.round(frames * 1023).to(torch.int32).mul_(64).to(torch.uint16).numpy().tobytes()
     return torch.round(frames * 255).to(torch.uint8).numpy().tobytes()
+
+
+def _save_frame_exports(images, output_path, save_first_frame, save_last_frame):
+    """Write selected source frames beside the encoded video without browser downloads."""
+    if not (save_first_frame or save_last_frame):
+        return []
+
+    frame_stem = os.path.splitext(output_path)[0]
+    exports = []
+    for suffix, frame, enabled in (
+        ("first", images[0], save_first_frame),
+        ("last", images[-1], save_last_frame),
+    ):
+        if not enabled:
+            continue
+        path = f"{frame_stem}-{suffix}-frame.png"
+        pixels = torch.round(frame[..., :3].detach().to(device="cpu", dtype=torch.float32).clamp(0, 1) * 255).to(torch.uint8).numpy()
+        Image.fromarray(pixels, mode="RGB").save(path, "PNG")
+        exports.append(path)
+    return exports
 
 
 def _pingpong_frames(images, pingpong):
@@ -270,6 +291,8 @@ class DaSiWa_EnhancedVideoCombine:
                 "filename_prefix": ("STRING", {"default": "video_%date:hhmmss%", "description": "Output path/name prefix. Supports %date% and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%."}),
                 "save_output": ("BOOLEAN", {"default": True}),
                 "pass_frames": ("BOOLEAN", {"default": False, "description": "Return the encoded frame sequence for downstream processing."}),
+                "save_first_frame": ("BOOLEAN", {"default": False, "description": "Write the first frame as a PNG beside the encoded video."}),
+                "save_last_frame": ("BOOLEAN", {"default": False, "description": "Write the last frame as a PNG beside the encoded video."}),
                 "crop_to_audio": ("BOOLEAN", {"default": False, "description": "When audio is connected, end the output video at the audio duration."}),
                 "audio_codec": (_AUDIO_CODEC_OPTIONS, {"default": "Auto", "description": "Audio codec. Auto uses Opus for WebM and AAC for MKV/MP4."}),
                 "audio_bitrate": (_AUDIO_BITRATE_OPTIONS, {"default": "192k", "description": "Target bitrate for the connected audio stream."}),
@@ -300,7 +323,8 @@ class DaSiWa_EnhancedVideoCombine:
 
     def combine(
         self, images, frame_rate, codec, container, bit_depth, quality, pingpong,
-        save_metadata, filename_prefix, save_output, pass_frames, crop_to_audio=False, audio_codec="Auto",
+        save_metadata, filename_prefix, save_output, pass_frames, save_first_frame=False, save_last_frame=False,
+        crop_to_audio=False, audio_codec="Auto",
         audio_bitrate="192k", log_level="Standard", audio=None, prompt=None,
         extra_pnginfo=None,
     ):
@@ -366,6 +390,7 @@ class DaSiWa_EnhancedVideoCombine:
                 os.unlink(audio_path[0])
 
         output_frames = images if pass_frames else images[:0]
+        frame_exports = _save_frame_exports(images, output_path, save_first_frame, save_last_frame)
         preview_path = output_path
         preview_codec = selected_codec
         if selected_codec == "H.265 (HEVC)":
@@ -384,9 +409,16 @@ class DaSiWa_EnhancedVideoCombine:
         preview_container = "MP4" if preview_codec == "H.264" and preview_path != output_path else selected_container
         preview_mime_type = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4"}[preview_container]
         output_mime_type = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4"}[selected_container]
+        assets = [{"filename": os.path.basename(output_path), "subfolder": subfolder, "type": output_type, "format": output_mime_type, "width": width, "height": height}]
+        assets.extend(
+            {"filename": os.path.basename(path), "subfolder": subfolder, "type": output_type, "format": "image/png", "width": width, "height": height}
+            for path in frame_exports
+        )
         ui = {
             "gifs": [{"filename": os.path.basename(preview_path), "subfolder": subfolder, "type": output_type, "format": preview_mime_type, "width": width, "height": height, "fps": frame_rate}],
-            "images": [{"filename": os.path.basename(output_path), "subfolder": subfolder, "type": output_type, "format": output_mime_type, "width": width, "height": height}],
+            "images": assets,
         }
         _log(f"Output: {output_path} ({selected_codec}, {encoder}, {selected_bit_depth}-bit).")
+        for path in frame_exports:
+            _log(f"Frame export: {path}.")
         return {"ui": ui, "result": (output_frames, output_path)}

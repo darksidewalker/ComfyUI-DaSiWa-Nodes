@@ -36,7 +36,7 @@ def test_node_schema_and_registration():
     package_source = (Path(__file__).parents[1] / "__init__.py").read_text(encoding="utf-8")
     preview_source = (Path(__file__).parents[1] / "js" / "enhanced_video_combine_preview.js").read_text(encoding="utf-8")
 
-    assert {"images", "bit_depth", "pass_frames", "crop_to_audio", "audio_codec", "audio_bitrate", "filename_prefix", "quality", "pingpong", "save_metadata", "log_level"} <= controls.keys()
+    assert {"images", "bit_depth", "pass_frames", "save_first_frame", "save_last_frame", "crop_to_audio", "audio_codec", "audio_bitrate", "filename_prefix", "quality", "pingpong", "save_metadata", "log_level"} <= controls.keys()
     assert enhanced_video_combine.DaSiWa_EnhancedVideoCombine.INPUT_TYPES()["optional"]["audio"][0] == "AUDIO"
     assert controls["codec"][0] == ["Auto", "AV1", "VP9", "H.265 (HEVC)", "H.264"]
     assert controls["container"][0] == ["Auto", "WebM", "MKV", "MP4"]
@@ -54,8 +54,8 @@ def test_node_schema_and_registration():
     assert 'name: "DaSiWa.EnhancedVideoCombinePreview"' in preview_source
     assert "this.addDOMWidget" in preview_source
     assert "message?.gifs?.[0] ?? message?.videos?.[0]" in preview_source
-    assert 'saveFirstFrame.type = "checkbox"' in preview_source
-    assert 'saveLastFrame.type = "checkbox"' in preview_source
+    assert "function saveFrame" not in preview_source
+    assert "link.download" not in preview_source
     assert "previewWidget.aspectRatio = 16 / 9;" in preview_source
     assert "requestAnimationFrame(() => fitPreviewHeight(previewNode));" in preview_source
     assert "getHeight: () => previewHeight()," in preview_source
@@ -65,6 +65,9 @@ def test_node_schema_and_registration():
     assert "preview.controls = true" not in preview_source
     assert "previewWidget.aspectRatio = preview.videoWidth / preview.videoHeight" in preview_source
     assert "fitPreviewHeight(previewNode)" in preview_source
+    assert "syncBooleanWidget" in preview_source
+    assert 'syncBooleanWidget(this, "save_first_frame", saveFirstFrame.checked)' in preview_source
+    assert 'syncBooleanWidget(this, "save_last_frame", saveLastFrame.checked)' in preview_source
     assert "actions.append(saveFirstFrameLabel, saveLastFrameLabel, autoPlayLabel)" in preview_source
     assert 'autoPlay.type = "checkbox"' in preview_source
     assert "autoPlay.checked = true;" in preview_source
@@ -72,8 +75,7 @@ def test_node_schema_and_registration():
     assert 'autoPlayLabel.style.marginLeft = "auto"' in preview_source
     assert "if (autoPlay.checked) preview.play().catch(() => {});" in preview_source
     assert 'preview.addEventListener("click", togglePlayback)' in preview_source
-    assert "if (saveFirstFrame.checked) saveFrame(preview, false);" in preview_source
-    assert "if (saveLastFrame.checked) saveFrame(preview, true);" in preview_source
+
     assert 'preview.dataset.filename = video.filename' in preview_source
     assert "preview.addEventListener(\"error\"" in preview_source
     assert "H.265/HEVC playback is not supported by this browser" in preview_source
@@ -81,7 +83,7 @@ def test_node_schema_and_registration():
     assert "Enhanced Video Combine Help" in preview_source
     assert "onDrawForeground" in preview_source
     assert "isHelpIconHit" in preview_source
-    assert 'link.download = `${filename}-${lastFrame ? "last" : "first"}-frame.png`;' in preview_source
+
 
 
 
@@ -112,6 +114,22 @@ def test_10_bit_frame_data_uses_rgb48le_values():
 
     assert len(payload) == 6
     assert torch.frombuffer(bytearray(payload), dtype=torch.uint16).tolist() == [0, 32768, 65472]
+
+
+def test_frame_exports_are_written_as_pngs_beside_the_video(tmp_path):
+    images = torch.tensor([
+        [[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0]]],
+        [[[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]],
+    ])
+    output_path = tmp_path / "video_00001-audio.mp4"
+
+    exports = enhanced_video_combine._save_frame_exports(images, str(output_path), True, True)
+
+    assert exports == [
+        str(tmp_path / "video_00001-audio-first-frame.png"),
+        str(tmp_path / "video_00001-audio-last-frame.png"),
+    ]
+    assert all(Path(path).is_file() for path in exports)
 
 
 def test_encoder_priority_prefers_nvenc_then_other_hardware_then_software():
@@ -246,20 +264,22 @@ def test_verbose_encode_log_reports_unavailable_encoders(monkeypatch, capsys):
     assert "[DaSiWa Enhanced Video Combine] H.264/MP4 missing: h264_nvenc, h264_qsv, h264_amf, h264_vaapi." in capsys.readouterr().out
 
 
-def test_output_is_published_to_comfyui_assets(monkeypatch):
+def test_output_and_selected_frame_exports_are_published_to_comfyui_assets(tmp_path, monkeypatch):
     monkeypatch.setattr(enhanced_video_combine, "find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr(enhanced_video_combine, "_encode_with_available_encoder", lambda *args, **kwargs: "libx264")
+    monkeypatch.setattr(enhanced_video_combine.folder_paths, "get_output_directory", lambda: str(tmp_path))
     images = torch.rand((2, 4, 6, 3), dtype=torch.float32)
 
     result = enhanced_video_combine.DaSiWa_EnhancedVideoCombine().combine(
         images, 24.0, "H.264", "MP4", "8-bit", 20, False, False, "asset-video", True, False,
+        save_first_frame=True, save_last_frame=True,
     )
 
-    asset = result["ui"]["images"][0]
-    assert asset["filename"] == "asset-video_00001.mp4"
-    assert asset["subfolder"] == ""
-    assert asset["type"] == "output"
-    assert asset["format"] == "video/mp4"
+    assert result["ui"]["images"] == [
+        {"filename": "asset-video_00001.mp4", "subfolder": "", "type": "output", "format": "video/mp4", "width": 6, "height": 4},
+        {"filename": "asset-video_00001-first-frame.png", "subfolder": "", "type": "output", "format": "image/png", "width": 6, "height": 4},
+        {"filename": "asset-video_00001-last-frame.png", "subfolder": "", "type": "output", "format": "image/png", "width": 6, "height": 4},
+    ]
 
 
 def test_missing_ffmpeg_reports_required_mp4_fallback(tmp_path, monkeypatch):
