@@ -1,0 +1,13 @@
+{
+  "feature": "DaSiWa Torch Resize video-batch optimization",
+  "status": "complete",
+  "goals": [
+    {"id": "plan", "goal": "Maintain this JSON plan with implementation checkmarks.", "checked": true},
+    {"id": "automatic_chunking", "goal": "Make batch_size=0 choose a bounded frame chunk from source/output pixel cost.", "checked": true},
+    {"id": "allocation", "goal": "Preallocate the final output and write each processed frame chunk into it.", "checked": true},
+    {"id": "manual_override", "goal": "Keep explicit batch_size as a deterministic override.", "checked": true},
+    {"id": "tests", "goal": "Add failing-first tests for chunk planning and 100-frame output preservation.", "checked": true},
+    {"id": "documentation", "goal": "Document automatic and manual video-batch tuning.", "checked": true},
+    {"id": "verification", "goal": "Run CPU and CUDA video-batch smoke tests.", "checked": true}
+  ]
+}

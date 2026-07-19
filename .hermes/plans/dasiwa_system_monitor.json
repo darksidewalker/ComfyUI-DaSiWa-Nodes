@@ -1,0 +1,30 @@
+{
+  "feature": "DaSiWa System Monitor",
+  "status": "completed",
+  "goal": "Add a live Linux and Windows ComfyUI dashboard monitor for CPU, RAM, swap/pagefile, disk, and individually identified NVIDIA, AMD, and Intel GPUs.",
+  "architecture": {
+    "backend": "nodes/system_monitor.py collects cross-platform psutil system metrics; NVIDIA/AMD command adapters provide telemetry, Linux Intel uses DRM sysfs, and Windows uses PowerShell/CIM adapter discovery. It emits snapshots to the ComfyUI websocket and exposes a metadata endpoint.",
+    "frontend": "js/dasiwa_system_monitor.js registers a ComfyUI extension, subscribes to monitor snapshots, and renders a compact dashboard with one card per GPU and its GPU ID.",
+    "dependencies": ["psutil>=5.9"]
+  },
+  "checklist": [
+    {"id": "plan", "task": "Inspect DaSiWa registration and Crystools monitoring architecture; save implementation checklist.", "status": "completed", "evidence": "__init__.py, pyproject.toml, Crystools general/{hardware,gpu,monitor}.py and web monitor implementation inspected."},
+    {"id": "backend", "task": "Implement normalized system, swap/pagefile, disk, and multi-vendor GPU telemetry backend.", "status": "completed", "files": ["nodes/system_monitor.py", "requirements.txt", "pyproject.toml"], "evidence": "psutil snapshots plus NVIDIA nvidia-smi, AMD rocm-smi JSON, and Intel DRM sysfs adapters implemented."},
+    {"id": "frontend", "task": "Implement ComfyUI dashboard UI with per-GPU vendor/name/ID separation.", "status": "completed", "files": ["js/dasiwa_system_monitor.js"], "evidence": "Dashboard creates an individual card for every backend GPU with vendor, GPU ID, load, memory, and temperature."},
+    {"id": "registration", "task": "Load the monitor backend during node-pack initialization.", "status": "completed", "files": ["__init__.py"], "evidence": "Package initialization imports nodes.system_monitor, registering routes and starting the telemetry worker when ComfyUI is present."},
+    {"id": "tests", "task": "Add adapter/normalization tests and execute focused tests plus Python compilation.", "status": "completed", "files": ["tests/test_system_monitor.py"], "evidence": "pytest tests/test_system_monitor.py -q: 3 passed; py_compile and JSON validation passed; live collector detected NVIDIA:0 NVIDIA GeForce RTX 5090."},
+    {"id": "windows-linux", "task": "Guarantee Linux and Windows telemetry discovery with a Windows Intel/AMD/NVIDIA fallback.", "status": "completed", "files": ["nodes/system_monitor.py", "tests/test_system_monitor.py"], "evidence": "Windows PowerShell/CIM parser implemented and covered by a multi-adapter Intel/AMD fixture. Linux live smoke test detected NVIDIA:0 and returned swap telemetry. Focused test suite: 4 passed."}
+  ],
+  "acceptance_criteria": [
+    "Dashboard receives CPU, RAM, swap/pagefile, and root-disk usage snapshots.",
+    "Every detected GPU is shown independently with vendor, stable GPU ID, name, utilization, memory, and temperature when the vendor reports it.",
+    "Linux and Windows use psutil for CPU, RAM, swap/pagefile, and disk usage.",
+    "NVIDIA uses nvidia-smi; AMD uses rocm-smi when available; Linux Intel devices use DRM sysfs; Windows uses PowerShell/CIM GPU discovery for NVIDIA, AMD, and Intel adapters.",
+    "Unavailable vendor tools or metrics do not break ComfyUI or suppress other telemetry."
+  ],
+  "validation": [
+    "pytest tests/test_system_monitor.py -q",
+    "python -m py_compile nodes/system_monitor.py __init__.py",
+    "Verify emitted snapshot on the running host using the collector."
+  ]
+}
