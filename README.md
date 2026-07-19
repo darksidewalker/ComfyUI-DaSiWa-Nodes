@@ -102,12 +102,16 @@ The **DaSiWa Metadata Image Saver** ensures your images are fully compatible wit
 
 ### 🎞️ Enhanced Video Combine
 
-The **DaSiWa Enhanced Video Combine** encodes an `IMAGE` batch into a high-quality video, with optional ComfyUI `AUDIO` muxing and an in-node VHS-style preview.
+The **DaSiWa Enhanced Video Combine** turns an `IMAGE` batch into a high-quality video with optional ComfyUI `AUDIO` muxing, an in-node VHS-style preview, and a set of enhanced automations that choose safe output settings instead of relying on a fixed encoder setup.
 
-- **Host-aware Auto codec:** Tests AV1 → H.265/HEVC → VP9 → H.264 and selects the first encoder that actually works on the current host, including NVIDIA, Intel, AMD, VAAPI, and software fallbacks.
-- **Safe containers:** Auto chooses compatible WebM/MKV/MP4 containers and retains a mandatory H.264/MP4 fallback.
-- **Browser-compatible HEVC preview:** H.265 output stays H.265 while an H.264 sidecar powers the ComfyUI preview where browsers cannot decode HEVC.
-- **Audio and metadata:** Mux connected audio, select audio codec/bitrate, crop to audio duration, and embed workflow metadata.
+![DaSiWa Enhanced Video Combine](assets/DaSiWa-Enhanced-Video-Combine.png)
+
+- **Enhanced host-aware encoding automation:** `Auto` runtime-tests AV1 → H.265/HEVC → VP9 → H.264 and selects the first encoder that actually works on the host, preferring NVIDIA NVENC, then other GPU encoders (Intel QSV, AMD AMF, VAAPI), then software.
+- **Enhanced container and codec safety automation:** Chooses compatible WebM/MKV/MP4 combinations per codec and retains a mandatory H.264/MP4 fallback if every preferred combination fails.
+- **Enhanced precision and preview automation:** Detects 8-bit versus 10-bit source-frame precision; H.265 keeps its requested final output while an H.264 sidecar is generated automatically for browsers without HEVC playback.
+- **Enhanced output automation:** The node always re-encodes when queued, supports ping-pong loops, preserves optional workflow metadata, and names audio outputs with `-audio`.
+- **Asset-panel frame automation:** Enable **Save first frame** and/or **Save last frame** to write PNGs next to the video with matching names and publish the video plus each generated PNG to ComfyUI Assets.
+- **Audio controls:** Mux connected audio, select audio codec/bitrate, and optionally crop the video to audio duration.
 - **Diagnostics:** Standard and Verbose CLI logging show codec selection, tested fallbacks, missing encoders, and final output details.
 - **Built-in help:** Click the small `?` at the right side of the node title for a concise setting reference.
 

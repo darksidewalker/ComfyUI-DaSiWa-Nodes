@@ -1,6 +1,6 @@
 # DaSiWa Enhanced Video Combine
 
-DaSiWa Enhanced Video Combine converts a ComfyUI `IMAGE` batch into a video, optionally muxes a connected `AUDIO` value, and provides an in-node playback preview after execution.
+DaSiWa Enhanced Video Combine converts a ComfyUI `IMAGE` batch into a video, optionally muxes a connected `AUDIO` value, and provides an in-node playback preview after execution. Its enhanced automations select a usable codec, container, encoder, precision, browser-preview path, and generated-asset payload at runtime.
 
 Click the small `?` at the right of the node title for the same concise in-app reference.
 
@@ -9,7 +9,19 @@ Click the small `?` at the right of the node title for the same concise in-app r
 1. Connect an `IMAGE` batch and set `frame_rate`.
 2. Leave `codec` and `container` on `Auto` for host-aware selection.
 3. Optionally connect `AUDIO`.
-4. Run the workflow. The node returns the generated file path and, when enabled, the input frame batch for downstream nodes.
+4. Optionally enable **Save first frame** and/or **Save last frame**.
+5. Run the workflow. The node returns the generated file path and, when enabled, the input frame batch for downstream nodes.
+
+## Enhanced automations
+
+The node is deliberately designed to avoid fixed, host-specific video settings:
+
+- **Codec and encoder selection:** `Auto` runtime-tests AV1, H.265/HEVC, VP9, then H.264. For every candidate it prefers NVIDIA NVENC, then Intel QSV, AMD AMF, VAAPI, and finally an appropriate software encoder. A listed FFmpeg encoder is not trusted until a real encode succeeds.
+- **Container safety:** Auto tries compatible container sequences for each codec and prevents an incompatible preference from being the only path. If all selected candidates fail, it attempts the mandatory H.264/MP4 fallback.
+- **Source precision:** `bit_depth=Auto` detects 8-bit versus 10-bit image-batch quantization before encoding.
+- **Browser preview:** A requested H.265 final output remains H.265. When needed, an H.264 MP4 preview sidecar is encoded automatically so the in-node player can work in browsers without HEVC support.
+- **Output freshness:** The output node deliberately executes again on every Queue Prompt, including when upstream IMAGE inputs were cached. This ensures a new video, preview, and any selected frame exports are produced for every queue.
+- **Asset publication:** The final video and every selected first/last-frame PNG are published to ComfyUI Assets together.
 
 ## Video encoding
 
@@ -51,7 +63,21 @@ Connect a ComfyUI `AUDIO` value to mux it with the video.
 
 ## Preview and frame controls
 
-The completed video is shown inside the node with source-native aspect ratio, play/pause, seek, mute, and optional first/last-frame PNG export.
+The completed video is shown inside the node with source-native aspect ratio, play/pause, seek, mute, Autoplay, and first/last-frame controls.
+
+`save_first_frame` and `save_last_frame` write the selected source frame as a native-resolution PNG beside the encoded video. The names retain the complete video basename, including the counter and optional audio marker:
+
+```text
+video_00001.mp4
+video_00001-first-frame.png
+video_00001-last-frame.png
+
+video_00002-audio.webm
+video_00002-audio-first-frame.png
+video_00002-audio-last-frame.png
+```
+
+No browser download or popup is used. The encoded video and each selected PNG are included in the `ui.images` payload, so all generated files appear in ComfyUI Assets.
 
 Many Chromium/Linux installations cannot decode H.265 in a canvas/video element. For a H.265 output, the node creates an H.264 MP4 sidecar used only by the ComfyUI preview; the returned output path remains the requested H.265 file.
 
