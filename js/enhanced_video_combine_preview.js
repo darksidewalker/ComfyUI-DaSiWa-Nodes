@@ -25,6 +25,13 @@ function syncBooleanWidget(node, name, checked) {
     widget.callback?.(checked);
 }
 
+function hideLegacyLogLevelWidget(node) {
+    const widget = node.widgets?.find((widget) => widget.name === "log_level");
+    if (!widget) return;
+    widget.draw = () => {};
+    widget.computeSize = () => [0, -4];
+}
+
 function formatTime(seconds) {
     if (!Number.isFinite(seconds)) return "0:00";
     const wholeSeconds = Math.max(0, Math.floor(seconds));
@@ -50,8 +57,7 @@ function showHelpDialog() {
             <dt><b>codec</b></dt><dd><b>Auto</b> tries AV1, H.265, VP9, then H.264 and keeps the first usable encoder. The other choices force that codec with hardware-to-software fallback.</dd>
             <dt><b>container</b></dt><dd>Auto selects compatible containers: WebM, MKV, then MP4 for AV1/VP9; MP4 then MKV for H.264/H.265.</dd>
             <dt><b>bit depth / quality</b></dt><dd>Auto bit depth detects 8- or 10-bit frame precision. Lower quality values retain more detail and create larger files.</dd>
-            <dt><b>audio</b></dt><dd>Connect AUDIO to mux it. Auto audio uses Opus for WebM and AAC for MKV/MP4. Crop to audio ends video at the audio duration.</dd>
-            <dt><b>log level</b></dt><dd>Standard logs compact selection and output details to the ComfyUI console. Verbose also logs missing and failed encoder attempts.</dd>
+            <dt><b>audio</b></dt><dd>Connect AUDIO to mux it. Choose Auto, AAC, Opus, or MP3 plus a target bitrate; Auto uses Opus for WebM and AAC for MKV/MP4. Crop to audio ends video at the audio duration. Preview sound is on only while the pointer is over the video.</dd>
             <dt><b>preview</b></dt><dd>H.265 outputs receive an H.264 preview sidecar so browsers without HEVC playback can show the canvas preview.</dd>
             <dt><b>other</b></dt><dd>Ping-pong reverses interior frames for a loop. Save metadata embeds the ComfyUI workflow. Pass frames keeps frames available downstream.</dd>
         </dl>`;
@@ -75,6 +81,7 @@ app.registerExtension({
 
         nodeType.prototype.onNodeCreated = function () {
             const result = originalOnNodeCreated ? originalOnNodeCreated.apply(this, arguments) : undefined;
+            hideLegacyLogLevelWidget(this);
             const previewNode = this;
             const originalOnDrawForeground = this.onDrawForeground;
             const originalOnMouseDown = this.onMouseDown;
@@ -134,10 +141,7 @@ app.registerExtension({
             const time = document.createElement("span");
             time.textContent = "0:00 / 0:00";
             time.style.cssText = "font:11px monospace;white-space:nowrap";
-            const mute = document.createElement("button");
-            mute.type = "button";
-            mute.textContent = "🔇";
-            controls.append(play, seek, time, mute);
+            controls.append(play, seek, time);
 
             const actions = document.createElement("div");
             actions.style.cssText = "display:flex;gap:5px;margin-top:4px";
@@ -177,6 +181,8 @@ app.registerExtension({
             const togglePlayback = () => preview.paused ? preview.play() : preview.pause();
             play.addEventListener("click", togglePlayback);
             preview.addEventListener("click", togglePlayback);
+            preview.addEventListener("mouseenter", () => { preview.muted = false; });
+            preview.addEventListener("mouseleave", () => { preview.muted = true; });
             preview.addEventListener("play", () => { play.textContent = "❚❚"; });
             preview.addEventListener("pause", () => { play.textContent = "▶"; });
             preview.addEventListener("timeupdate", () => {
@@ -186,11 +192,7 @@ app.registerExtension({
             seek.addEventListener("input", () => {
                 if (Number.isFinite(preview.duration)) preview.currentTime = preview.duration * Number(seek.value) / 1000;
             });
-            mute.addEventListener("click", () => {
-                preview.muted = !preview.muted;
-                mute.textContent = preview.muted ? "🔇" : "🔊";
-            });
-            [preview, controls, play, seek, mute, actions, saveFirstFrame, saveFirstFrameLabel, saveLastFrame, saveLastFrameLabel, autoPlay, autoPlayLabel].forEach(stopNodeInteraction);
+            [preview, controls, play, seek, actions, saveFirstFrame, saveFirstFrameLabel, saveLastFrame, saveLastFrameLabel, autoPlay, autoPlayLabel].forEach(stopNodeInteraction);
 
             root.append(preview, info, controls, actions);
             const previewHeight = () => (previewNode.size[0] - 20) / (previewWidget?.aspectRatio ?? 16 / 9) + 82;

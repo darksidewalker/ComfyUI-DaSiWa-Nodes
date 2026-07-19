@@ -37,6 +37,11 @@ def test_node_schema_and_registration():
     preview_source = (Path(__file__).parents[1] / "js" / "enhanced_video_combine_preview.js").read_text(encoding="utf-8")
 
     assert {"images", "bit_depth", "pass_frames", "save_first_frame", "save_last_frame", "crop_to_audio", "audio_codec", "audio_bitrate", "filename_prefix", "quality", "pingpong", "save_metadata", "log_level"} <= controls.keys()
+    assert list(controls).index("log_level") == 6
+    assert list(controls).index("crop_to_audio") == 12
+    assert list(controls).index("audio_codec") == 13
+    assert list(controls).index("audio_bitrate") == 14
+    assert list(controls).index("save_first_frame") > list(controls).index("audio_bitrate")
     assert enhanced_video_combine.DaSiWa_EnhancedVideoCombine.INPUT_TYPES()["optional"]["audio"][0] == "AUDIO"
     assert controls["codec"][0] == ["Auto", "AV1", "VP9", "H.265 (HEVC)", "H.264"]
     assert controls["container"][0] == ["Auto", "WebM", "MKV", "MP4"]
@@ -49,7 +54,8 @@ def test_node_schema_and_registration():
 
     assert controls["audio_codec"][0] == ["Auto", "AAC", "Opus", "MP3"]
     assert controls["audio_bitrate"][1]["default"] == "192k"
-    assert controls["log_level"][0] == ["Standard", "Verbose"]
+    assert "hideLegacyLogLevelWidget" in preview_source
+    assert 'widget.name === "log_level"' in preview_source
     assert "DaSiWa_EnhancedVideoCombine" in package_source
     assert 'name: "DaSiWa.EnhancedVideoCombinePreview"' in preview_source
     assert "this.addDOMWidget" in preview_source
@@ -75,6 +81,9 @@ def test_node_schema_and_registration():
     assert 'autoPlayLabel.style.marginLeft = "auto"' in preview_source
     assert "if (autoPlay.checked) preview.play().catch(() => {});" in preview_source
     assert 'preview.addEventListener("click", togglePlayback)' in preview_source
+    assert 'preview.addEventListener("mouseenter", () => { preview.muted = false; });' in preview_source
+    assert 'preview.addEventListener("mouseleave", () => { preview.muted = true; });' in preview_source
+    assert "const mute = document.createElement" not in preview_source
 
     assert 'preview.dataset.filename = video.filename' in preview_source
     assert "preview.addEventListener(\"error\"" in preview_source
@@ -248,7 +257,7 @@ def test_encoder_listing_extracts_encoder_names(monkeypatch):
     assert enhanced_video_combine._available_encoders("ffmpeg") == {"h264_nvenc", "libx264"}
 
 
-def test_verbose_encode_log_reports_unavailable_encoders(monkeypatch, capsys):
+def test_basic_encode_log_reports_the_actual_audio_codec(monkeypatch, capsys):
     class Result:
         returncode = 0
         stderr = b""
@@ -258,10 +267,12 @@ def test_verbose_encode_log_reports_unavailable_encoders(monkeypatch, capsys):
 
     enhanced_video_combine._encode_with_available_encoder(
         "ffmpeg", "H.264", 8, 2, 2, 24, b"frames", "output.mp4", "MP4", 20, 20, None,
-        log_level="Verbose",
+        audio_path=("audio.f32le", 48000, 2), audio_codec="Auto", audio_bitrate="192k",
     )
 
-    assert "[DaSiWa Enhanced Video Combine] H.264/MP4 missing: h264_nvenc, h264_qsv, h264_amf, h264_vaapi." in capsys.readouterr().out
+    log = capsys.readouterr().out
+    assert "audio=aac/192k" in log
+    assert "missing:" not in log
 
 
 def test_output_and_selected_frame_exports_are_published_to_comfyui_assets(tmp_path, monkeypatch):

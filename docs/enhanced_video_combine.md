@@ -57,13 +57,14 @@ If every requested combination fails, the node attempts its mandatory H.264/MP4 
 
 Connect a ComfyUI `AUDIO` value to mux it with the video.
 
-- `audio_codec=Auto` uses Opus for WebM and AAC for MKV/MP4.
-- `audio_bitrate` sets the target audio bitrate.
+- `audio_codec=Auto` uses Opus for WebM and AAC for MKV/MP4. You can instead select AAC, Opus, or MP3; the node falls back to a container-compatible audio encoder when necessary.
+- Select `audio_bitrate` from 64k through 320k (192k by default).
 - `crop_to_audio` ends video output at the connected audio duration.
+- Preview audio is muted by default, unmutes while the pointer is over the video, and mutes again when the pointer leaves.
 
 ## Preview and frame controls
 
-The completed video is shown inside the node with source-native aspect ratio, play/pause, seek, mute, Autoplay, and first/last-frame controls.
+The completed video is shown inside the node with source-native aspect ratio, play/pause, seek, Autoplay, and first/last-frame controls. Preview audio automatically unmutes while the pointer is over the video and mutes again when it leaves; there is no separate sound toggle.
 
 `save_first_frame` and `save_last_frame` write the selected source frame as a native-resolution PNG beside the encoded video. The names retain the complete video basename, including the counter and optional audio marker:
 
@@ -91,10 +92,7 @@ Many Chromium/Linux installations cannot decode H.265 in a canvas/video element.
 
 ## Console logging
 
-The node logs every encode to the ComfyUI CLI with the `[DaSiWa Enhanced Video Combine]` prefix.
-
-- `Standard` logs the input summary, Auto codec/container tests, selected encoder, and final output path.
-- `Verbose` additionally lists FFmpeg encoders absent from the host and the compact failure reason for each runtime encoder attempt.
+The node always emits concise progress to the ComfyUI CLI with the `[DaSiWa Enhanced Video Combine]` prefix: input summary, Auto codec/container tests, selected encoder, output path, and any audio fallback or selected frame exports. There is no logging-level toggle.
 
 Example:
 
@@ -109,7 +107,7 @@ Example:
 
 | Symptom | Cause / fix |
 |---|---|
-| Auto falls back to another codec | The higher-priority codec or its containers could not encode on this host. Select `Verbose` to see the attempted and missing encoders. |
+| Auto falls back to another codec | The higher-priority codec or its containers could not encode on this host. The final `No usable encoder` error includes the compact attempts when every fallback fails. |
 | No usable encoder was found | Install an FFmpeg build with at least a software encoder such as `libx264`; check the detailed CLI log. |
 | H.265 output has no preview | The H.264 preview-sidecar encode failed. The final H.265 output remains valid; check the CLI log for the preview fallback error. |
 | WebM mux fails | WebM requires VP8/VP9/AV1 video and compatible audio. Use `container=Auto` or select VP9/AV1. |

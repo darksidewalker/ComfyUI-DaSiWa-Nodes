@@ -222,13 +222,10 @@ def _audio_encoder_candidates(audio_codec, container):
 def _encode_with_available_encoder(
     ffmpeg, codec, bit_depth, width, height, frame_rate, payload, output_path,
     container, cq, crf, metadata_path, audio_path=None, audio_duration=None, crop_to_audio=False,
-    audio_codec="Auto", audio_bitrate="192k", log_level="Standard",
+    audio_codec="Auto", audio_bitrate="192k",
 ):
     available = _available_encoders(ffmpeg)
     attempts = []
-    missing_encoders = [encoder for encoder in _ENCODER_NAMES[codec] if encoder not in available]
-    if log_level == "Verbose" and missing_encoders:
-        _log(f"{codec}/{container} missing: {', '.join(missing_encoders)}.")
     for encoder in _ENCODER_NAMES[codec]:
         if encoder not in available:
             continue
@@ -259,12 +256,11 @@ def _encode_with_available_encoder(
             if result.returncode == 0:
                 if selected_audio_encoder and selected_audio_encoder != _audio_encoder(audio_codec, container):
                     _log(f"Audio fallback: {selected_audio_encoder}.")
-                _log(f"Encoded {codec}/{container} via {encoder} -> {os.path.basename(output_path)}.")
+                audio_details = f"; audio={selected_audio_encoder}/{audio_bitrate}" if selected_audio_encoder else ""
+                _log(f"Encoded {codec}/{container} via {encoder}{audio_details} -> {os.path.basename(output_path)}.")
                 return encoder
             error_lines = result.stderr.decode(errors="replace").splitlines()
             error = error_lines[0][:180] if error_lines else "unknown FFmpeg error"
-            if log_level == "Verbose":
-                _log(f"{codec}/{container} {encoder} failed: {error}")
             attempts.append(f"{encoder}/{selected_audio_encoder or 'no-audio'}: {error}")
     raise RuntimeError("No usable encoder was found. " + " | ".join(attempts))
 
@@ -285,17 +281,17 @@ class DaSiWa_EnhancedVideoCombine:
                 "container": (_CONTAINER_OPTIONS, {"default": "Auto", "description": "Auto tries the best container first: WebM, then MKV, then MP4 for AV1/VP9; MP4 then MKV for H.264/H.265."}),
                 "bit_depth": (["Auto", "8-bit", "10-bit"], {"default": "Auto"}),
                 "quality": ("INT", {"default": 20, "min": 0, "max": 51, "description": "Encoding quality for every encoder. 0 is no compression (largest files); higher values increase compression and reduce quality. 20 is the recommended default."}),
-                "log_level": (["Standard", "Verbose"], {"default": "Standard", "description": "Standard logs the selected output; Verbose also logs unavailable and failed encoder attempts."}),
+                "log_level": (["Standard", "Verbose"], {"default": "Standard", "description": "Legacy workflow compatibility; logging is always concise."}),
                 "pingpong": ("BOOLEAN", {"default": False, "description": "Append the interior frames in reverse order for seamless forward/reverse playback."}),
                 "save_metadata": ("BOOLEAN", {"default": True, "description": "Embed ComfyUI prompt and workflow metadata for workflow-aware video loaders."}),
                 "filename_prefix": ("STRING", {"default": "video_%date:hhmmss%", "description": "Output path/name prefix. Supports %date% and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%."}),
                 "save_output": ("BOOLEAN", {"default": True}),
                 "pass_frames": ("BOOLEAN", {"default": False, "description": "Return the encoded frame sequence for downstream processing."}),
-                "save_first_frame": ("BOOLEAN", {"default": False, "description": "Write the first frame as a PNG beside the encoded video."}),
-                "save_last_frame": ("BOOLEAN", {"default": False, "description": "Write the last frame as a PNG beside the encoded video."}),
                 "crop_to_audio": ("BOOLEAN", {"default": False, "description": "When audio is connected, end the output video at the audio duration."}),
                 "audio_codec": (_AUDIO_CODEC_OPTIONS, {"default": "Auto", "description": "Audio codec. Auto uses Opus for WebM and AAC for MKV/MP4."}),
                 "audio_bitrate": (_AUDIO_BITRATE_OPTIONS, {"default": "192k", "description": "Target bitrate for the connected audio stream."}),
+                "save_first_frame": ("BOOLEAN", {"default": False, "description": "Write the first frame as a PNG beside the encoded video."}),
+                "save_last_frame": ("BOOLEAN", {"default": False, "description": "Write the last frame as a PNG beside the encoded video."}),
             },
             "optional": {
                 "audio": ("AUDIO", {"description": "Optional ComfyUI audio to mux into the encoded video."}),
@@ -323,9 +319,8 @@ class DaSiWa_EnhancedVideoCombine:
 
     def combine(
         self, images, frame_rate, codec, container, bit_depth, quality, pingpong,
-        save_metadata, filename_prefix, save_output, pass_frames, save_first_frame=False, save_last_frame=False,
-        crop_to_audio=False, audio_codec="Auto",
-        audio_bitrate="192k", log_level="Standard", audio=None, prompt=None,
+        save_metadata, filename_prefix, save_output, pass_frames, crop_to_audio=False, audio_codec="Auto",
+        audio_bitrate="192k", log_level="Standard", save_first_frame=False, save_last_frame=False, audio=None, prompt=None,
         extra_pnginfo=None,
     ):
         if images.ndim != 4 or images.shape[-1] < 3:
@@ -363,7 +358,7 @@ class DaSiWa_EnhancedVideoCombine:
                         encoder = _encode_with_available_encoder(
                             ffmpeg, selected_codec, selected_bit_depth, width, height, frame_rate, payload,
                             output_path, selected_container, quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
-                            audio_codec, audio_bitrate, log_level,
+                            audio_codec, audio_bitrate,
                         )
                         break
                     except RuntimeError as error:
@@ -378,7 +373,7 @@ class DaSiWa_EnhancedVideoCombine:
                 encoder = _encode_with_available_encoder(
                     ffmpeg, "H.264", selected_bit_depth, width, height, frame_rate, payload,
                     fallback_path, "MP4", quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
-                    audio_codec, audio_bitrate, log_level,
+                    audio_codec, audio_bitrate,
                 )
                 output_path = fallback_path
                 selected_container = "MP4"
@@ -398,7 +393,7 @@ class DaSiWa_EnhancedVideoCombine:
             try:
                 _encode_with_available_encoder(
                     ffmpeg, "H.264", 8, width, height, frame_rate, _frame_bytes(images, 8), preview_path,
-                    "MP4", quality, quality, None, log_level=log_level,
+                    "MP4", quality, quality, None,
                 )
                 preview_codec = "H.264"
             except RuntimeError as error:
