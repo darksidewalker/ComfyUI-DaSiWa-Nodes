@@ -112,7 +112,7 @@ The **DaSiWa Enhanced Video Combine** turns an `IMAGE` batch into a high-quality
 - **Enhanced output automation:** The node always re-encodes when queued, supports ping-pong loops, preserves optional workflow metadata, and names audio outputs with `-audio`.
 - **Asset-panel frame automation:** Enable **Save first frame** and/or **Save last frame** to write PNGs next to the video with matching names and publish the video plus each generated PNG to ComfyUI Assets.
 - **Audio controls and preview behavior:** Mux connected audio, select audio codec/bitrate, optionally crop the video to audio duration, and hover the in-node preview to unmute it automatically.
-- **Concise diagnostics:** Always writes compact ComfyUI CLI logs for codec/container selection, the actual video encoder, the actual audio encoder and bitrate, output path, and relevant fallbacks—without a logging toggle.
+- **Concise diagnostics:** Always writes compact ComfyUI CLI logs for codec/container selection, the actual video encoder, and the resolved audio encoder/bitrate (for example, `audio=libopus/192k`), plus output path and relevant fallbacks—without a logging toggle.
 - **Built-in help:** Click the small `?` at the right side of the node title for a concise setting reference.
 
 [Full documentation →](docs/enhanced_video_combine.md)

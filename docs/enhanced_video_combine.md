@@ -92,14 +92,14 @@ Many Chromium/Linux installations cannot decode H.265 in a canvas/video element.
 
 ## Console logging
 
-The node always emits concise progress to the ComfyUI CLI with the `[DaSiWa Enhanced Video Combine]` prefix: input summary, Auto codec/container tests, selected encoder, output path, and any audio fallback or selected frame exports. There is no logging-level toggle.
+The node always emits concise progress to the ComfyUI CLI with the `[DaSiWa Enhanced Video Combine]` prefix: input summary, Auto codec/container tests, selected video encoder, resolved audio encoder and bitrate, output path, and any audio fallback or selected frame exports. There is no logging-level toggle.
 
 Example:
 
 ```text
 [DaSiWa Enhanced Video Combine] Encode 48f 1920x1080@24fps 8-bit; codec=Auto, container=Auto, audio=yes.
 [DaSiWa Enhanced Video Combine] Auto test: AV1/WebM.
-[DaSiWa Enhanced Video Combine] Encoded AV1/WebM via av1_nvenc -> video_00001-audio.webm.
+[DaSiWa Enhanced Video Combine] Encoded AV1/WebM via av1_nvenc; audio=libopus/192k -> video_00001-audio.webm.
 [DaSiWa Enhanced Video Combine] Output: .../video_00001-audio.webm (AV1, av1_nvenc, 8-bit).
 ```
 
