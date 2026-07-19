@@ -207,3 +207,6 @@ marimo/_lsp/
 __marimo__/
 
 graphify-out
+
+# Local Hermes Agent state and plans
+.hermes/
