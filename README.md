@@ -100,6 +100,21 @@ The **DaSiWa Metadata Image Saver** ensures your images are fully compatible wit
 
 ---
 
+### 🎞️ Enhanced Video Combine
+
+The **DaSiWa Enhanced Video Combine** encodes an `IMAGE` batch into a high-quality video, with optional ComfyUI `AUDIO` muxing and an in-node VHS-style preview.
+
+- **Host-aware Auto codec:** Tests AV1 → H.265/HEVC → VP9 → H.264 and selects the first encoder that actually works on the current host, including NVIDIA, Intel, AMD, VAAPI, and software fallbacks.
+- **Safe containers:** Auto chooses compatible WebM/MKV/MP4 containers and retains a mandatory H.264/MP4 fallback.
+- **Browser-compatible HEVC preview:** H.265 output stays H.265 while an H.264 sidecar powers the ComfyUI preview where browsers cannot decode HEVC.
+- **Audio and metadata:** Mux connected audio, select audio codec/bitrate, crop to audio duration, and embed workflow metadata.
+- **Diagnostics:** Standard and Verbose CLI logging show codec selection, tested fallbacks, missing encoders, and final output details.
+- **Built-in help:** Click the small `?` at the right side of the node title for a concise setting reference.
+
+[Full documentation →](docs/enhanced_video_combine.md)
+
+---
+
 ### 🎬 Watermark Overlay
 
 A professional-grade watermark tool optimized for image and video batches. It uses a stable CPU compositor with high-quality resampling and precise rotation.

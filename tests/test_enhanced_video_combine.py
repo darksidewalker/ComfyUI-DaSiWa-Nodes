@@ -35,9 +35,9 @@ def test_node_schema_and_registration():
     package_source = (Path(__file__).parents[1] / "__init__.py").read_text(encoding="utf-8")
     preview_source = (Path(__file__).parents[1] / "js" / "enhanced_video_combine_preview.js").read_text(encoding="utf-8")
 
-    assert {"images", "bit_depth", "pass_frames", "crop_to_audio", "audio_codec", "audio_bitrate", "filename_prefix", "quality", "pingpong", "save_metadata"} <= controls.keys()
+    assert {"images", "bit_depth", "pass_frames", "crop_to_audio", "audio_codec", "audio_bitrate", "filename_prefix", "quality", "pingpong", "save_metadata", "log_level"} <= controls.keys()
     assert enhanced_video_combine.DaSiWa_EnhancedVideoCombine.INPUT_TYPES()["optional"]["audio"][0] == "AUDIO"
-    assert controls["codec"][0] == ["AV1", "VP9", "H.265 (HEVC)", "H.264"]
+    assert controls["codec"][0] == ["Auto", "AV1", "VP9", "H.265 (HEVC)", "H.264"]
     assert controls["container"][0] == ["Auto", "WebM", "MKV", "MP4"]
     assert controls["quality"][1]["default"] == 20
     assert controls["pingpong"][1]["default"] is False
@@ -48,23 +48,38 @@ def test_node_schema_and_registration():
 
     assert controls["audio_codec"][0] == ["Auto", "AAC", "Opus", "MP3"]
     assert controls["audio_bitrate"][1]["default"] == "192k"
+    assert controls["log_level"][0] == ["Standard", "Verbose"]
     assert "DaSiWa_EnhancedVideoCombine" in package_source
     assert 'name: "DaSiWa.EnhancedVideoCombinePreview"' in preview_source
     assert "this.addDOMWidget" in preview_source
     assert "message?.gifs?.[0] ?? message?.videos?.[0]" in preview_source
     assert 'saveFirstFrame.type = "checkbox"' in preview_source
     assert 'saveLastFrame.type = "checkbox"' in preview_source
-    assert "this.setSize" not in preview_source
+    assert "previewWidget.aspectRatio = 16 / 9;" in preview_source
+    assert "requestAnimationFrame(() => fitPreviewHeight(previewNode));" in preview_source
+    assert "getHeight: () => previewHeight()," in preview_source
+    assert "Math.max(node.size[1], requiredSize[1])" in preview_source
     assert "video.fps" in preview_source
     assert '"Video preview"' not in preview_source
     assert "preview.controls = true" not in preview_source
     assert "previewWidget.aspectRatio = preview.videoWidth / preview.videoHeight" in preview_source
     assert "fitPreviewHeight(previewNode)" in preview_source
-    assert "actions.append(saveFirstFrameLabel, saveLastFrameLabel)" in preview_source
+    assert "actions.append(saveFirstFrameLabel, saveLastFrameLabel, autoPlayLabel)" in preview_source
+    assert 'autoPlay.type = "checkbox"' in preview_source
+    assert "autoPlay.checked = true;" in preview_source
+    assert 'autoPlayLabel.append(autoPlay, " Autoplay")' in preview_source
+    assert 'autoPlayLabel.style.marginLeft = "auto"' in preview_source
+    assert "if (autoPlay.checked) preview.play().catch(() => {});" in preview_source
     assert 'preview.addEventListener("click", togglePlayback)' in preview_source
     assert "if (saveFirstFrame.checked) saveFrame(preview, false);" in preview_source
     assert "if (saveLastFrame.checked) saveFrame(preview, true);" in preview_source
     assert 'preview.dataset.filename = video.filename' in preview_source
+    assert "preview.addEventListener(\"error\"" in preview_source
+    assert "H.265/HEVC playback is not supported by this browser" in preview_source
+    assert "function showHelpDialog()" in preview_source
+    assert "Enhanced Video Combine Help" in preview_source
+    assert "onDrawForeground" in preview_source
+    assert "isHelpIconHit" in preview_source
     assert 'link.download = `${filename}-${lastFrame ? "last" : "first"}-frame.png`;' in preview_source
 
 
@@ -99,6 +114,11 @@ def test_encoder_priority_prefers_nvenc_then_other_hardware_then_software():
     assert enhanced_video_combine._ENCODER_NAMES["H.265 (HEVC)"][:2] == ("hevc_nvenc", "hevc_qsv")
     assert enhanced_video_combine._ENCODER_NAMES["AV1"][:2] == ("av1_nvenc", "av1_qsv")
     assert enhanced_video_combine._ENCODER_NAMES["VP9"] == ("vp9_qsv", "vp9_vaapi", "libvpx-vp9")
+
+
+def test_auto_codec_tries_av1_then_hevc_then_vp9_then_h264():
+    assert enhanced_video_combine._codec_candidates("Auto") == ("AV1", "H.265 (HEVC)", "VP9", "H.264")
+    assert enhanced_video_combine._codec_candidates("H.264") == ("H.264",)
 
 
 def test_auto_container_prioritizes_webm_then_mkv_then_mp4_for_av1_and_vp9():
@@ -203,6 +223,38 @@ def test_encoder_listing_extracts_encoder_names(monkeypatch):
     monkeypatch.setattr(enhanced_video_combine.subprocess, "run", lambda *args, **kwargs: Result())
 
     assert enhanced_video_combine._available_encoders("ffmpeg") == {"h264_nvenc", "libx264"}
+
+
+def test_verbose_encode_log_reports_unavailable_encoders(monkeypatch, capsys):
+    class Result:
+        returncode = 0
+        stderr = b""
+
+    monkeypatch.setattr(enhanced_video_combine, "_available_encoders", lambda _ffmpeg: {"libx264"})
+    monkeypatch.setattr(enhanced_video_combine.subprocess, "run", lambda *args, **kwargs: Result())
+
+    enhanced_video_combine._encode_with_available_encoder(
+        "ffmpeg", "H.264", 8, 2, 2, 24, b"frames", "output.mp4", "MP4", 20, 20, None,
+        log_level="Verbose",
+    )
+
+    assert "[DaSiWa Enhanced Video Combine] H.264/MP4 missing: h264_nvenc, h264_qsv, h264_amf, h264_vaapi." in capsys.readouterr().out
+
+
+def test_output_is_published_to_comfyui_assets(monkeypatch):
+    monkeypatch.setattr(enhanced_video_combine, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(enhanced_video_combine, "_encode_with_available_encoder", lambda *args, **kwargs: "libx264")
+    images = torch.rand((2, 4, 6, 3), dtype=torch.float32)
+
+    result = enhanced_video_combine.DaSiWa_EnhancedVideoCombine().combine(
+        images, 24.0, "H.264", "MP4", "8-bit", 20, False, False, "asset-video", True, False,
+    )
+
+    asset = result["ui"]["images"][0]
+    assert asset["filename"] == "asset-video_00001.mp4"
+    assert asset["subfolder"] == ""
+    assert asset["type"] == "output"
+    assert asset["format"] == "video/mp4"
 
 
 def test_missing_ffmpeg_reports_required_mp4_fallback(tmp_path, monkeypatch):

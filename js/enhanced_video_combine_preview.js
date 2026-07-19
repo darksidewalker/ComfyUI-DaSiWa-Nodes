@@ -51,8 +51,37 @@ function formatTime(seconds) {
 }
 
 function fitPreviewHeight(node) {
-    node.setSize([node.size[0], node.computeSize([node.size[0], node.size[1]])[1]]);
-    node.graph?.setDirtyCanvas(true);
+    requestAnimationFrame(() => {
+        const requiredSize = node.computeSize();
+        node.setSize([node.size[0], Math.max(node.size[1], requiredSize[1])]);
+        node.graph?.setDirtyCanvas(true);
+    });
+}
+
+function showHelpDialog() {
+    const dialog = document.createElement("dialog");
+    dialog.style.cssText = "max-width:620px;color:#ddd;background:#202225;border:1px solid #555;border-radius:8px;padding:18px;font:13px sans-serif;line-height:1.45";
+    dialog.innerHTML = `
+        <form method="dialog" style="float:right"><button title="Close">×</button></form>
+        <h3 style="margin:0 28px 10px 0">Enhanced Video Combine Help</h3>
+        <p>Encodes a connected IMAGE batch into a video. It returns the frames optionally and shows an in-node preview after execution.</p>
+        <dl style="margin:0;display:grid;grid-template-columns:max-content 1fr;gap:6px 12px">
+            <dt><b>codec</b></dt><dd><b>Auto</b> tries AV1, H.265, VP9, then H.264 and keeps the first usable encoder. The other choices force that codec with hardware-to-software fallback.</dd>
+            <dt><b>container</b></dt><dd>Auto selects compatible containers: WebM, MKV, then MP4 for AV1/VP9; MP4 then MKV for H.264/H.265.</dd>
+            <dt><b>bit depth / quality</b></dt><dd>Auto bit depth detects 8- or 10-bit frame precision. Lower quality values retain more detail and create larger files.</dd>
+            <dt><b>audio</b></dt><dd>Connect AUDIO to mux it. Auto audio uses Opus for WebM and AAC for MKV/MP4. Crop to audio ends video at the audio duration.</dd>
+            <dt><b>log level</b></dt><dd>Standard logs compact selection and output details to the ComfyUI console. Verbose also logs missing and failed encoder attempts.</dd>
+            <dt><b>preview</b></dt><dd>H.265 outputs receive an H.264 preview sidecar so browsers without HEVC playback can show the canvas preview.</dd>
+            <dt><b>other</b></dt><dd>Ping-pong reverses interior frames for a loop. Save metadata embeds the ComfyUI workflow. Pass frames keeps frames available downstream.</dd>
+        </dl>`;
+    document.body.append(dialog);
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    dialog.showModal();
+}
+
+function isHelpIconHit(node, pos) {
+    const titleHeight = globalThis.LiteGraph?.NODE_TITLE_HEIGHT ?? 30;
+    return pos[0] >= node.size[0] - 24 && pos[0] <= node.size[0] - 4 && pos[1] >= -titleHeight && pos[1] <= 0;
 }
 
 app.registerExtension({
@@ -66,6 +95,32 @@ app.registerExtension({
         nodeType.prototype.onNodeCreated = function () {
             const result = originalOnNodeCreated ? originalOnNodeCreated.apply(this, arguments) : undefined;
             const previewNode = this;
+            const originalOnDrawForeground = this.onDrawForeground;
+            const originalOnMouseDown = this.onMouseDown;
+            this.onDrawForeground = function (ctx) {
+                originalOnDrawForeground?.apply(this, arguments);
+                const titleHeight = globalThis.LiteGraph?.NODE_TITLE_HEIGHT ?? 30;
+                const x = this.size[0] - 14;
+                const y = -titleHeight / 2;
+                ctx.save();
+                ctx.fillStyle = "#d9e8ff";
+                ctx.beginPath();
+                ctx.arc(x, y, 8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = "#1e293b";
+                ctx.font = "bold 12px sans-serif";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("?", x, y + 0.5);
+                ctx.restore();
+            };
+            this.onMouseDown = function (event, pos) {
+                if (isHelpIconHit(this, pos)) {
+                    showHelpDialog();
+                    return true;
+                }
+                return originalOnMouseDown?.apply(this, arguments);
+            };
             const root = document.createElement("div");
             root.className = "dasiwa-enhanced-video-preview";
             root.style.width = "100%";
@@ -113,7 +168,13 @@ app.registerExtension({
             saveLastFrame.type = "checkbox";
             const saveLastFrameLabel = document.createElement("label");
             saveLastFrameLabel.append(saveLastFrame, " Save last frame");
-            actions.append(saveFirstFrameLabel, saveLastFrameLabel);
+            const autoPlay = document.createElement("input");
+            autoPlay.type = "checkbox";
+            autoPlay.checked = true;
+            const autoPlayLabel = document.createElement("label");
+            autoPlayLabel.style.marginLeft = "auto";
+            autoPlayLabel.append(autoPlay, " Autoplay");
+            actions.append(saveFirstFrameLabel, saveLastFrameLabel, autoPlayLabel);
 
             preview.addEventListener("loadedmetadata", () => {
                 previewWidget.aspectRatio = preview.videoWidth / preview.videoHeight;
@@ -123,6 +184,12 @@ app.registerExtension({
                 fitPreviewHeight(previewNode);
                 if (saveFirstFrame.checked) saveFrame(preview, false);
                 if (saveLastFrame.checked) saveFrame(preview, true);
+                if (autoPlay.checked) preview.play().catch(() => {});
+            });
+            preview.addEventListener("error", () => {
+                resolution.textContent = "H.265/HEVC playback is not supported by this browser";
+                duration.textContent = "";
+                fps.textContent = "";
             });
             const togglePlayback = () => preview.paused ? preview.play() : preview.pause();
             play.addEventListener("click", togglePlayback);
@@ -140,17 +207,21 @@ app.registerExtension({
                 preview.muted = !preview.muted;
                 mute.textContent = preview.muted ? "🔇" : "🔊";
             });
-            [preview, controls, play, seek, mute, actions, saveFirstFrame, saveFirstFrameLabel, saveLastFrame, saveLastFrameLabel].forEach(stopNodeInteraction);
+            [preview, controls, play, seek, mute, actions, saveFirstFrame, saveFirstFrameLabel, saveLastFrame, saveLastFrameLabel, autoPlay, autoPlayLabel].forEach(stopNodeInteraction);
 
             root.append(preview, info, controls, actions);
+            const previewHeight = () => (previewNode.size[0] - 20) / (previewWidget?.aspectRatio ?? 16 / 9) + 82;
             previewWidget = this.addDOMWidget("video_preview", "preview", root, {
                 serialize: false,
                 hideOnZoom: false,
+                getHeight: () => previewHeight(),
             });
+            previewWidget.aspectRatio = 16 / 9;
             previewWidget.computeSize = function (width) {
-                if (!this.aspectRatio || root.hidden) return [width, -4];
-                return [width, (previewNode.size[0] - 20) / this.aspectRatio + 82];
+                if (root.hidden) return [width, -4];
+                return [width, previewHeight()];
             };
+            requestAnimationFrame(() => fitPreviewHeight(previewNode));
             this.dasiwaVideoPreview = preview;
             return result;
         };

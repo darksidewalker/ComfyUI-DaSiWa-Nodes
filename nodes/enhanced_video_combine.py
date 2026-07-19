@@ -11,7 +11,8 @@ import torch
 import folder_paths
 
 
-_CODEC_OPTIONS = ["AV1", "VP9", "H.265 (HEVC)", "H.264"]
+_CODEC_OPTIONS = ["Auto", "AV1", "VP9", "H.265 (HEVC)", "H.264"]
+_AUTO_CODEC_CANDIDATES = ("AV1", "H.265 (HEVC)", "VP9", "H.264")
 _CONTAINER_OPTIONS = ["Auto", "WebM", "MKV", "MP4"]
 _ENCODER_NAMES = {
     "H.264": ("h264_nvenc", "h264_qsv", "h264_amf", "h264_vaapi", "libx264"),
@@ -23,6 +24,10 @@ _CONTAINER_EXTENSIONS = {"WebM": ".webm", "MKV": ".mkv", "MP4": ".mp4"}
 _AUDIO_CODEC_OPTIONS = ["Auto", "AAC", "Opus", "MP3"]
 _AUDIO_ENCODERS = {"AAC": "aac", "Opus": "libopus", "MP3": "libmp3lame"}
 _AUDIO_BITRATE_OPTIONS = ["64k", "96k", "128k", "160k", "192k", "256k", "320k"]
+
+
+def _log(message):
+    print(f"[DaSiWa Enhanced Video Combine] {message}")
 
 
 def find_ffmpeg():
@@ -59,6 +64,10 @@ def _container_candidates(codec, container):
     if codec in {"AV1", "VP9"}:
         return ("WebM", "MKV", "MP4")
     return ("MP4", "MKV")
+
+
+def _codec_candidates(codec):
+    return _AUTO_CODEC_CANDIDATES if codec == "Auto" else (codec,)
 
 
 def _available_encoders(ffmpeg):
@@ -192,10 +201,13 @@ def _audio_encoder_candidates(audio_codec, container):
 def _encode_with_available_encoder(
     ffmpeg, codec, bit_depth, width, height, frame_rate, payload, output_path,
     container, cq, crf, metadata_path, audio_path=None, audio_duration=None, crop_to_audio=False,
-    audio_codec="Auto", audio_bitrate="192k",
+    audio_codec="Auto", audio_bitrate="192k", log_level="Standard",
 ):
     available = _available_encoders(ffmpeg)
     attempts = []
+    missing_encoders = [encoder for encoder in _ENCODER_NAMES[codec] if encoder not in available]
+    if log_level == "Verbose" and missing_encoders:
+        _log(f"{codec}/{container} missing: {', '.join(missing_encoders)}.")
     for encoder in _ENCODER_NAMES[codec]:
         if encoder not in available:
             continue
@@ -225,9 +237,14 @@ def _encode_with_available_encoder(
             result = subprocess.run(command + [output_path], input=payload, capture_output=True, timeout=3600)
             if result.returncode == 0:
                 if selected_audio_encoder and selected_audio_encoder != _audio_encoder(audio_codec, container):
-                    print(f"[DaSiWa Enhanced Video Combine] Audio fallback: {selected_audio_encoder}.")
+                    _log(f"Audio fallback: {selected_audio_encoder}.")
+                _log(f"Encoded {codec}/{container} via {encoder} -> {os.path.basename(output_path)}.")
                 return encoder
-            attempts.append(f"{encoder}/{selected_audio_encoder or 'no-audio'}: {result.stderr.decode(errors='replace')[:300]}")
+            error_lines = result.stderr.decode(errors="replace").splitlines()
+            error = error_lines[0][:180] if error_lines else "unknown FFmpeg error"
+            if log_level == "Verbose":
+                _log(f"{codec}/{container} {encoder} failed: {error}")
+            attempts.append(f"{encoder}/{selected_audio_encoder or 'no-audio'}: {error}")
     raise RuntimeError("No usable encoder was found. " + " | ".join(attempts))
 
 
@@ -243,10 +260,11 @@ class DaSiWa_EnhancedVideoCombine:
             "required": {
                 "images": ("IMAGE", {"description": "Frames to encode as a video."}),
                 "frame_rate": ("FLOAT", {"default": 24.0, "min": 0.1, "max": 240.0, "step": 0.01}),
-                "codec": (_CODEC_OPTIONS, {"default": "AV1"}),
+                "codec": (_CODEC_OPTIONS, {"default": "Auto", "description": "Auto tests AV1, H.265, VP9, then H.264 encoders and uses the first working codec."}),
                 "container": (_CONTAINER_OPTIONS, {"default": "Auto", "description": "Auto tries the best container first: WebM, then MKV, then MP4 for AV1/VP9; MP4 then MKV for H.264/H.265."}),
                 "bit_depth": (["Auto", "8-bit", "10-bit"], {"default": "Auto"}),
                 "quality": ("INT", {"default": 20, "min": 0, "max": 51, "description": "Encoding quality for every encoder. 0 is no compression (largest files); higher values increase compression and reduce quality. 20 is the recommended default."}),
+                "log_level": (["Standard", "Verbose"], {"default": "Standard", "description": "Standard logs the selected output; Verbose also logs unavailable and failed encoder attempts."}),
                 "pingpong": ("BOOLEAN", {"default": False, "description": "Append the interior frames in reverse order for seamless forward/reverse playback."}),
                 "save_metadata": ("BOOLEAN", {"default": True, "description": "Embed ComfyUI prompt and workflow metadata for workflow-aware video loaders."}),
                 "filename_prefix": ("STRING", {"default": "video_%date:hhmmss%", "description": "Output path/name prefix. Supports %date% and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%."}),
@@ -278,7 +296,7 @@ class DaSiWa_EnhancedVideoCombine:
     def combine(
         self, images, frame_rate, codec, container, bit_depth, quality, pingpong,
         save_metadata, filename_prefix, save_output, pass_frames, crop_to_audio=False, audio_codec="Auto",
-        audio_bitrate="192k", audio=None, prompt=None,
+        audio_bitrate="192k", log_level="Standard", audio=None, prompt=None,
         extra_pnginfo=None,
     ):
         if images.ndim != 4 or images.shape[-1] < 3:
@@ -299,30 +317,43 @@ class DaSiWa_EnhancedVideoCombine:
         audio_path, audio_duration = _audio_file(audio)
         payload = _frame_bytes(images, selected_bit_depth)
         attempts = []
+        _log(
+            f"Encode {len(images)}f {width}x{height}@{frame_rate:g}fps {selected_bit_depth}-bit; "
+            f"codec={codec}, container={container}, audio={'yes' if audio_path else 'no'}."
+        )
         try:
-            for selected_container in _container_candidates(codec, container):
-                output_path = os.path.join(
-                    output_folder,
-                    _output_filename(filename, counter, _CONTAINER_EXTENSIONS[selected_container], audio_path is not None),
-                )
-                try:
-                    encoder = _encode_with_available_encoder(
-                        ffmpeg, codec, selected_bit_depth, width, height, frame_rate, payload,
-                        output_path, selected_container, quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
-                        audio_codec, audio_bitrate,
+            for selected_codec in _codec_candidates(codec):
+                for selected_container in _container_candidates(selected_codec, container):
+                    if codec == "Auto":
+                        _log(f"Auto test: {selected_codec}/{selected_container}.")
+                    output_path = os.path.join(
+                        output_folder,
+                        _output_filename(filename, counter, _CONTAINER_EXTENSIONS[selected_container], audio_path is not None),
                     )
-                    break
-                except RuntimeError as error:
-                    attempts.append(f"{selected_container}: {error}")
+                    try:
+                        encoder = _encode_with_available_encoder(
+                            ffmpeg, selected_codec, selected_bit_depth, width, height, frame_rate, payload,
+                            output_path, selected_container, quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
+                            audio_codec, audio_bitrate, log_level,
+                        )
+                        break
+                    except RuntimeError as error:
+                        attempts.append(f"{selected_codec}/{selected_container}: {error}")
+                        if codec == "Auto":
+                            _log(f"Auto miss: {selected_codec}/{selected_container}; trying next.")
+                else:
+                    continue
+                break
             else:
                 fallback_path = os.path.join(output_folder, _output_filename(filename, counter, ".mp4", audio_path is not None))
                 encoder = _encode_with_available_encoder(
                     ffmpeg, "H.264", selected_bit_depth, width, height, frame_rate, payload,
                     fallback_path, "MP4", quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
-                    audio_codec, audio_bitrate,
+                    audio_codec, audio_bitrate, log_level,
                 )
                 output_path = fallback_path
                 selected_container = "MP4"
+                selected_codec = "H.264"
         finally:
             if metadata_path:
                 os.unlink(metadata_path)
@@ -330,7 +361,27 @@ class DaSiWa_EnhancedVideoCombine:
                 os.unlink(audio_path[0])
 
         output_frames = images if pass_frames else images[:0]
-        mime_type = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4"}[selected_container]
-        ui = {"gifs": [{"filename": os.path.basename(output_path), "subfolder": subfolder, "type": output_type, "format": mime_type, "width": width, "height": height, "fps": frame_rate}]}
-        print(f"[DaSiWa Enhanced Video Combine] Saved {output_path} with {encoder}, {selected_bit_depth}-bit.")
+        preview_path = output_path
+        preview_codec = selected_codec
+        if selected_codec == "H.265 (HEVC)":
+            preview_path = f"{os.path.splitext(output_path)[0]}-preview.mp4"
+            try:
+                _encode_with_available_encoder(
+                    ffmpeg, "H.264", 8, width, height, frame_rate, _frame_bytes(images, 8), preview_path,
+                    "MP4", quality, quality, None, log_level=log_level,
+                )
+                preview_codec = "H.264"
+            except RuntimeError as error:
+                if os.path.exists(preview_path):
+                    os.unlink(preview_path)
+                preview_path = output_path
+                _log(f"Browser preview fallback failed: {error}")
+        preview_container = "MP4" if preview_codec == "H.264" and preview_path != output_path else selected_container
+        preview_mime_type = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4"}[preview_container]
+        output_mime_type = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4"}[selected_container]
+        ui = {
+            "gifs": [{"filename": os.path.basename(preview_path), "subfolder": subfolder, "type": output_type, "format": preview_mime_type, "width": width, "height": height, "fps": frame_rate}],
+            "images": [{"filename": os.path.basename(output_path), "subfolder": subfolder, "type": output_type, "format": output_mime_type, "width": width, "height": height}],
+        }
+        _log(f"Output: {output_path} ({selected_codec}, {encoder}, {selected_bit_depth}-bit).")
         return {"ui": ui, "result": (output_frames, output_path)}
