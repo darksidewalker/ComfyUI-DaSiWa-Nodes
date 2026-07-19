@@ -290,6 +290,11 @@ class DaSiWa_EnhancedVideoCombine:
     def VALIDATE_INPUTS(cls, **kwargs):
         return True
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        """Always encode again when the output node is queued with unchanged frames."""
+        return float("nan")
+
     def validate_inputs(self, *args, **kwargs):
         return True
 

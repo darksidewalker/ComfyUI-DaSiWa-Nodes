@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import os
 import sys
 import types
@@ -99,6 +100,10 @@ def test_validate_inputs_accepts_comfyui_positional_signature():
     assert enhanced_video_combine.DaSiWa_EnhancedVideoCombine.__dict__["validate_inputs"](
         node, "images", "IMAGE", object(), object()
     ) is True
+
+
+def test_output_node_is_changed_for_each_queued_prompt():
+    assert math.isnan(enhanced_video_combine.DaSiWa_EnhancedVideoCombine.IS_CHANGED())
 
 
 def test_10_bit_frame_data_uses_rgb48le_values():
