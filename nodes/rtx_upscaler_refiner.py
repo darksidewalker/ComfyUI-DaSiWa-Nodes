@@ -1,8 +1,14 @@
 import math
+import os
+import shutil
+import tempfile
+import weakref
 import torch
 import torch.nn.functional as F
 import contextlib
 from typing import Tuple
+
+import folder_paths
 
 # --- Constants ---
 
@@ -13,6 +19,9 @@ DIVISIBLE_BY_VALUES = ["8", "16", "32", "64", "128"]
 COMMON_RATIOS = ["1:1", "4:3", "3:2", "16:9", "21:9"]
 RESIZE_METHODS = ["Center Crop (Fill)", "Letterbox (Fit)"]
 MAX_CHUNK_OUTPUT_PIXELS = 1024 * 1024 * 16
+MAX_IN_MEMORY_OUTPUT_BYTES = 8 * 1024 * 1024 * 1024
+MAX_DISK_BACKED_OUTPUT_BYTES = 64 * 1024 * 1024 * 1024
+TEMP_DISK_RESERVE_BYTES = 1024 * 1024 * 1024
 
 # --- Helpers ---
 
@@ -21,6 +30,65 @@ def round_up(value: float, alignment: int) -> int:
 
 def round_nearest(value: float, alignment: int) -> int:
     return max(alignment, int(math.floor((float(value) / alignment) + 0.5) * alignment))
+
+
+def _projected_output_bytes(batch_size: int, width: int, height: int, dtype: torch.dtype) -> int:
+    return int(batch_size) * int(width) * int(height) * 3 * torch.empty((), dtype=dtype).element_size()
+
+
+def _temporary_output_directory() -> str:
+    directory = folder_paths.get_temp_directory()
+    os.makedirs(directory, exist_ok=True)
+    return directory
+
+
+def _has_free_disk_space(directory: str, required_bytes: int) -> bool:
+    return shutil.disk_usage(directory).free >= required_bytes + TEMP_DISK_RESERVE_BYTES
+
+
+def _remove_temporary_output(path: str):
+    try:
+        os.unlink(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _allocate_output_tensor(shape: Tuple[int, int, int, int], dtype: torch.dtype, device: torch.device):
+    required_bytes = _projected_output_bytes(shape[0], shape[2], shape[1], dtype)
+    if device.type != "cpu":
+        if required_bytes > MAX_IN_MEMORY_OUTPUT_BYTES:
+            raise RuntimeError(
+                f"RTX output requires {required_bytes / 1024 ** 3:.2f} GiB on {device}. "
+                "Disk-backed output is only available for CPU IMAGE batches."
+            )
+        return torch.zeros(shape, device=device, dtype=dtype), None
+
+    if required_bytes <= MAX_IN_MEMORY_OUTPUT_BYTES:
+        return torch.zeros(shape, device=device, dtype=dtype), None
+    if required_bytes > MAX_DISK_BACKED_OUTPUT_BYTES:
+        raise RuntimeError(
+            f"RTX output requires {required_bytes / 1024 ** 3:.2f} GiB, exceeding the "
+            f"{MAX_DISK_BACKED_OUTPUT_BYTES / 1024 ** 3:.0f} GiB disk-backed safety limit. "
+            "Reduce frame count, scale, or target resolution."
+        )
+
+    directory = _temporary_output_directory()
+    if not _has_free_disk_space(directory, required_bytes):
+        raise RuntimeError(
+            f"ComfyUI temporary directory '{directory}' lacks space for the projected "
+            f"{required_bytes / 1024 ** 3:.2f} GiB RTX output plus a 1 GiB reserve."
+        )
+    descriptor, path = tempfile.mkstemp(prefix="dasiwa_rtx_output_", suffix=".mmap", dir=directory)
+    os.close(descriptor)
+    try:
+        output = torch.from_file(path, shared=True, size=math.prod(shape), dtype=dtype).reshape(shape)
+    except Exception:
+        _remove_temporary_output(path)
+        raise
+    weakref.finalize(output, _remove_temporary_output, path)
+    return output, path
 
 def _aligned_aspect_size(
     target_width: float,
@@ -434,14 +502,18 @@ class DaSiWa_RTX_UpscalerRefiner:
             source_width, source_height, target_width, target_height
         )
 
-        # Preallocate output tensor on the same device as input (usually CPU in ComfyUI)
         out_device = images.device
         out_dtype = images.dtype
-        out = torch.zeros(
-            (batch_size, target_height, target_width, 3),
-            device=out_device,
-            dtype=out_dtype,
+        output_shape = (batch_size, target_height, target_width, 3)
+        projected_bytes = _projected_output_bytes(batch_size, target_width, target_height, out_dtype)
+        print(
+            "[DaSiWa RTX Upscaler & Refiner] "
+            f"Input={source_width}x{source_height}, target={target_width}x{target_height}, "
+            f"frames={batch_size}, output={projected_bytes / 1024 ** 3:.2f} GiB."
         )
+        out, mmap_path = _allocate_output_tensor(output_shape, out_dtype, out_device)
+        if mmap_path:
+            print(f"[DaSiWa RTX Upscaler & Refiner] Disk-backed output: {mmap_path}")
 
         with torch.cuda.device(cuda_device), torch.inference_mode():
             # Pass 1: Denoise

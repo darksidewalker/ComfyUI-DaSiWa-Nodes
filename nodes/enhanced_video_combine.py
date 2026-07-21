@@ -26,6 +26,7 @@ _ANIMATED_IMAGE_SETTINGS = {
     "Animated WebP": (".webp", "libwebp_anim", "image/webp"),
     "Animated AVIF": (".avif", "libaom-av1", "image/avif"),
 }
+_ANIMATED_AVIF_ENCODERS = ("av1_nvenc", "av1_qsv", "av1_amf", "av1_vaapi", "libsvtav1", "libaom-av1")
 _AUDIO_CODEC_OPTIONS = ["Auto", "AAC", "Opus", "MP3"]
 _AUDIO_ENCODERS = {"AAC": "aac", "Opus": "libopus", "MP3": "libmp3lame"}
 _AUDIO_BITRATE_OPTIONS = ["64k", "96k", "128k", "160k", "192k", "256k", "320k"]
@@ -78,6 +79,13 @@ def _codec_candidates(codec):
 def _animated_image_settings(container):
     settings = _ANIMATED_IMAGE_SETTINGS.get(container)
     return settings[:2] if settings else None
+
+
+def _animated_image_encoder_candidates(container):
+    if container == "Animated AVIF":
+        return _ANIMATED_AVIF_ENCODERS
+    settings = _animated_image_settings(container)
+    return (settings[1],) if settings else ()
 
 
 def _available_encoders(ffmpeg):
@@ -275,27 +283,31 @@ def _encode_with_available_encoder(
 
 
 def _encode_animated_image(ffmpeg, container, bit_depth, width, height, frame_rate, payload, output_path, quality):
-    _, encoder, _ = _ANIMATED_IMAGE_SETTINGS[container]
-    if encoder not in _available_encoders(ffmpeg):
-        raise RuntimeError(f"FFmpeg does not provide the required {encoder} encoder for {container}.")
-
-    command = [
-        ffmpeg, "-y", "-v", "error", "-f", "rawvideo",
-        "-pix_fmt", "rgb48le" if bit_depth == 10 else "rgb24",
-        "-s", f"{width}x{height}", "-framerate", str(frame_rate), "-i", "-",
-        "-c:v", encoder,
-    ]
-    if container == "Animated WebP":
-        command.extend(["-loop", "0", "-q:v", str(quality)])
-    else:
-        command.extend(["-still-picture", "0", "-crf", str(quality), "-b:v", "0", "-f", "avif"])
-    result = subprocess.run(command + [output_path], input=payload, capture_output=True, timeout=3600)
-    if result.returncode != 0:
+    available = _available_encoders(ffmpeg)
+    attempts = []
+    for encoder in _animated_image_encoder_candidates(container):
+        if encoder not in available:
+            continue
+        command = [
+            ffmpeg, "-y", "-v", "error", "-f", "rawvideo",
+            "-pix_fmt", "rgb48le" if bit_depth == 10 else "rgb24",
+            "-s", f"{width}x{height}", "-framerate", str(frame_rate), "-i", "-",
+        ]
+        if container == "Animated WebP":
+            command.extend(["-c:v", encoder, "-loop", "0", "-q:v", str(quality)])
+        else:
+            command.extend(_encoder_arguments("AV1", encoder, bit_depth, quality, quality))
+            command.extend(["-still-picture", "0", "-f", "avif"])
+        result = subprocess.run(command + [output_path], input=payload, capture_output=True, timeout=3600)
+        if result.returncode == 0:
+            _log(f"Encoded {container} via {encoder} -> {os.path.basename(output_path)}.")
+            return encoder
         error_lines = result.stderr.decode(errors="replace").splitlines()
         error = error_lines[0][:180] if error_lines else "unknown FFmpeg error"
-        raise RuntimeError(f"{container} encode failed via {encoder}: {error}")
-    _log(f"Encoded {container} via {encoder} -> {os.path.basename(output_path)}.")
-    return encoder
+        attempts.append(f"{encoder}: {error}")
+    if not attempts:
+        raise RuntimeError(f"FFmpeg does not provide a usable encoder for {container}.")
+    raise RuntimeError(f"{container} encode failed. " + " | ".join(attempts))
 
 
 class DaSiWa_EnhancedVideoCombine:

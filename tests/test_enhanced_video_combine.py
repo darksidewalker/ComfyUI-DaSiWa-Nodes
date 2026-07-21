@@ -167,6 +167,30 @@ def test_animated_image_outputs_are_manual_only_and_use_dedicated_encoders():
     assert enhanced_video_combine._animated_image_settings("Animated WebP") == (".webp", "libwebp_anim")
     assert enhanced_video_combine._animated_image_settings("Animated AVIF") == (".avif", "libaom-av1")
     assert enhanced_video_combine._animated_image_settings("Auto") is None
+    assert enhanced_video_combine._animated_image_encoder_candidates("Animated AVIF") == (
+        "av1_nvenc", "av1_qsv", "av1_amf", "av1_vaapi", "libsvtav1", "libaom-av1",
+    )
+    assert enhanced_video_combine._animated_image_encoder_candidates("Animated WebP") == ("libwebp_anim",)
+
+
+def test_animated_avif_prefers_nvenc_over_software(monkeypatch):
+    captured = []
+
+    class Result:
+        returncode = 0
+        stderr = b""
+
+    monkeypatch.setattr(enhanced_video_combine, "_available_encoders", lambda _ffmpeg: {"av1_nvenc", "libaom-av1"})
+    monkeypatch.setattr(
+        enhanced_video_combine.subprocess, "run",
+        lambda command, **kwargs: captured.append(command) or Result(),
+    )
+
+    assert enhanced_video_combine._encode_animated_image(
+        "ffmpeg", "Animated AVIF", 8, 1024, 1280, 8, b"frames", "output.avif", 20,
+    ) == "av1_nvenc"
+    assert ["-c:v", "av1_nvenc"] == captured[0][captured[0].index("-c:v"):captured[0].index("-c:v") + 2]
+    assert ["-still-picture", "0", "-f", "avif"] == captured[0][captured[0].index("-still-picture"):captured[0].index("-still-picture") + 4]
 
 
 def test_pingpong_appends_reverse_interior_frames():

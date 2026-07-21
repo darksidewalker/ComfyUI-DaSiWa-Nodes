@@ -49,7 +49,7 @@ If every requested combination fails, the node attempts its mandatory H.264/MP4 
 
 ### Animated image outputs
 
-Select **Animated WebP** or **Animated AVIF** explicitly from `container` to write an animated image rather than a video container. Both choices are deliberately excluded from `codec=Auto` and `container=Auto`; they use their dedicated FFmpeg encoders (`libwebp_anim` and `libaom-av1`) and ignore the `codec` dropdown. Animated image formats cannot mux the connected `AUDIO` value, so the node logs that audio is omitted.
+Select **Animated WebP** or **Animated AVIF** explicitly from `container` to write an animated image rather than a video container. Both choices are deliberately excluded from `codec=Auto` and `container=Auto` and ignore the `codec` dropdown. Animated AVIF runtime-tests AV1 encoders in GPU-first order (`av1_nvenc`, Intel QSV, AMD AMF, VAAPI), then falls back to `libsvtav1` or `libaom-av1`. Animated WebP requires the CPU `libwebp_anim` encoder; FFmpeg has no NVENC WebP encoder. Animated image formats cannot mux the connected `AUDIO` value, so the node logs that audio is omitted.
 
 ### Bit depth and quality
 
