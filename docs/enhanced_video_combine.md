@@ -47,6 +47,10 @@ With `container=Auto`:
 
 If every requested combination fails, the node attempts its mandatory H.264/MP4 fallback.
 
+### Animated image outputs
+
+Select **Animated WebP** or **Animated AVIF** explicitly from `container` to write an animated image rather than a video container. Both choices are deliberately excluded from `codec=Auto` and `container=Auto`; they use their dedicated FFmpeg encoders (`libwebp_anim` and `libaom-av1`) and ignore the `codec` dropdown. Animated image formats cannot mux the connected `AUDIO` value, so the node logs that audio is omitted.
+
 ### Bit depth and quality
 
 - `bit_depth=Auto` detects whether the frame values represent 8-bit or 10-bit precision.

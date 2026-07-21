@@ -44,7 +44,7 @@ def test_node_schema_and_registration():
     assert list(controls).index("save_first_frame") > list(controls).index("audio_bitrate")
     assert enhanced_video_combine.DaSiWa_EnhancedVideoCombine.INPUT_TYPES()["optional"]["audio"][0] == "AUDIO"
     assert controls["codec"][0] == ["Auto", "AV1", "VP9", "H.265 (HEVC)", "H.264"]
-    assert controls["container"][0] == ["Auto", "WebM", "MKV", "MP4"]
+    assert controls["container"][0] == ["Auto", "WebM", "MKV", "MP4", "Animated WebP", "Animated AVIF"]
     assert controls["quality"][1]["default"] == 20
     assert controls["pingpong"][1]["default"] is False
     assert controls["pass_frames"][1]["default"] is False
@@ -90,6 +90,7 @@ def test_node_schema_and_registration():
     assert "H.265/HEVC playback is not supported by this browser" in preview_source
     assert "function showHelpDialog()" in preview_source
     assert "Enhanced Video Combine Help" in preview_source
+    assert "Animated WebP and Animated AVIF are manual image-animation outputs" in preview_source
     assert "onDrawForeground" in preview_source
     assert "isHelpIconHit" in preview_source
 
@@ -158,6 +159,14 @@ def test_auto_container_prioritizes_webm_then_mkv_then_mp4_for_av1_and_vp9():
     assert enhanced_video_combine._container_candidates("VP9", "Auto") == ("WebM", "MKV", "MP4")
     assert enhanced_video_combine._container_candidates("H.264", "Auto") == ("MP4", "MKV")
     assert enhanced_video_combine._container_candidates("H.265 (HEVC)", "MKV") == ("MKV",)
+    assert "Animated WebP" not in enhanced_video_combine._container_candidates("AV1", "Auto")
+    assert "Animated AVIF" not in enhanced_video_combine._container_candidates("AV1", "Auto")
+
+
+def test_animated_image_outputs_are_manual_only_and_use_dedicated_encoders():
+    assert enhanced_video_combine._animated_image_settings("Animated WebP") == (".webp", "libwebp_anim")
+    assert enhanced_video_combine._animated_image_settings("Animated AVIF") == (".avif", "libaom-av1")
+    assert enhanced_video_combine._animated_image_settings("Auto") is None
 
 
 def test_pingpong_appends_reverse_interior_frames():
