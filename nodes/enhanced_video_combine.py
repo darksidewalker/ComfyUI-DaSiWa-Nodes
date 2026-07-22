@@ -31,6 +31,14 @@ _AUDIO_CODEC_OPTIONS = ["Auto", "AAC", "Opus", "MP3"]
 _AUDIO_ENCODERS = {"AAC": "aac", "Opus": "libopus", "MP3": "libmp3lame"}
 _AUDIO_BITRATE_OPTIONS = ["64k", "96k", "128k", "160k", "192k", "256k", "320k"]
 
+# Frames per chunk when streaming raw video to ffmpeg's stdin. Converting and
+# byte-serializing the whole batch at once (as a single payload) means several
+# full-size copies (float32 cast, rounding, uint8/uint16 cast, .tobytes()) all
+# live in RAM simultaneously - for a long/high-res batch that's the same
+# uncapped-buffer problem the RTX Upscaler node had. Streaming small chunks
+# keeps peak RAM bounded to one chunk regardless of total frame count.
+_FRAME_CHUNK_SIZE = 32
+
 
 def _log(message):
     print(f"[DaSiWa Enhanced Video Combine] {message}")
@@ -119,6 +127,28 @@ def _frame_bytes(images, bit_depth):
     if bit_depth == 10:
         return torch.round(frames * 1023).to(torch.int32).mul_(64).to(torch.uint16).numpy().tobytes()
     return torch.round(frames * 255).to(torch.uint8).numpy().tobytes()
+
+
+def _run_streaming(command, images, bit_depth, output_path, timeout=3600):
+    """Runs ffmpeg with raw video piped to stdin in small chunks instead of a
+    single in-memory payload covering the whole batch. Returns a result-like
+    object with .returncode and .stderr so callers can keep their existing
+    error-handling code unchanged."""
+    proc = subprocess.Popen(
+        command + [output_path], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        for start in range(0, len(images), _FRAME_CHUNK_SIZE):
+            proc.stdin.write(_frame_bytes(images[start:start + _FRAME_CHUNK_SIZE], bit_depth))
+    except BrokenPipeError:
+        pass  # ffmpeg exited early (usually an error); .communicate() below surfaces it.
+    finally:
+        try:
+            proc.stdin.close()
+        except BrokenPipeError:
+            pass
+    stdout, stderr = proc.communicate(timeout=timeout)
+    return subprocess.CompletedProcess(command + [output_path], proc.returncode, stdout, stderr)
 
 
 def _save_frame_exports(images, output_path, save_first_frame, save_last_frame):
@@ -237,7 +267,7 @@ def _audio_encoder_candidates(audio_codec, container):
 
 
 def _encode_with_available_encoder(
-    ffmpeg, codec, bit_depth, width, height, frame_rate, payload, output_path,
+    ffmpeg, codec, bit_depth, width, height, frame_rate, images, output_path,
     container, cq, crf, metadata_path, audio_path=None, audio_duration=None, crop_to_audio=False,
     audio_codec="Auto", audio_bitrate="192k",
 ):
@@ -269,7 +299,7 @@ def _encode_with_available_encoder(
                 command.extend(["-t", f"{audio_duration:.9f}"])
             if container == "MP4":
                 command.extend(["-movflags", "+use_metadata_tags"])
-            result = subprocess.run(command + [output_path], input=payload, capture_output=True, timeout=3600)
+            result = _run_streaming(command, images, bit_depth, output_path)
             if result.returncode == 0:
                 if selected_audio_encoder and selected_audio_encoder != _audio_encoder(audio_codec, container):
                     _log(f"Audio fallback: {selected_audio_encoder}.")
@@ -282,7 +312,7 @@ def _encode_with_available_encoder(
     raise RuntimeError("No usable encoder was found. " + " | ".join(attempts))
 
 
-def _encode_animated_image(ffmpeg, container, bit_depth, width, height, frame_rate, payload, output_path, quality):
+def _encode_animated_image(ffmpeg, container, bit_depth, width, height, frame_rate, images, output_path, quality):
     available = _available_encoders(ffmpeg)
     attempts = []
     for encoder in _animated_image_encoder_candidates(container):
@@ -298,7 +328,7 @@ def _encode_animated_image(ffmpeg, container, bit_depth, width, height, frame_ra
         else:
             command.extend(_encoder_arguments("AV1", encoder, bit_depth, quality, quality))
             command.extend(["-still-picture", "0", "-f", "avif"])
-        result = subprocess.run(command + [output_path], input=payload, capture_output=True, timeout=3600)
+        result = _run_streaming(command, images, bit_depth, output_path)
         if result.returncode == 0:
             _log(f"Encoded {container} via {encoder} -> {os.path.basename(output_path)}.")
             return encoder
@@ -384,7 +414,6 @@ class DaSiWa_EnhancedVideoCombine:
 
         metadata_path = _metadata_file(prompt, extra_pnginfo) if save_metadata else None
         audio_path, audio_duration = _audio_file(audio)
-        payload = _frame_bytes(images, selected_bit_depth)
         attempts = []
         _log(
             f"Encode {len(images)}f {width}x{height}@{frame_rate:g}fps {selected_bit_depth}-bit; "
@@ -397,7 +426,7 @@ class DaSiWa_EnhancedVideoCombine:
                     _log(f"{container} does not support audio; connected audio is omitted.")
                 output_path = os.path.join(output_folder, _output_filename(filename, counter, animated_settings[0], False))
                 encoder = _encode_animated_image(
-                    ffmpeg, container, selected_bit_depth, width, height, frame_rate, payload, output_path, quality,
+                    ffmpeg, container, selected_bit_depth, width, height, frame_rate, images, output_path, quality,
                 )
                 selected_container = container
                 selected_codec = container
@@ -412,7 +441,7 @@ class DaSiWa_EnhancedVideoCombine:
                         )
                         try:
                             encoder = _encode_with_available_encoder(
-                                ffmpeg, selected_codec, selected_bit_depth, width, height, frame_rate, payload,
+                                ffmpeg, selected_codec, selected_bit_depth, width, height, frame_rate, images,
                                 output_path, selected_container, quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
                                 audio_codec, audio_bitrate,
                             )
@@ -427,7 +456,7 @@ class DaSiWa_EnhancedVideoCombine:
                 else:
                     fallback_path = os.path.join(output_folder, _output_filename(filename, counter, ".mp4", audio_path is not None))
                     encoder = _encode_with_available_encoder(
-                        ffmpeg, "H.264", selected_bit_depth, width, height, frame_rate, payload,
+                        ffmpeg, "H.264", selected_bit_depth, width, height, frame_rate, images,
                         fallback_path, "MP4", quality, quality, metadata_path, audio_path, audio_duration, crop_to_audio,
                         audio_codec, audio_bitrate,
                     )
@@ -449,7 +478,7 @@ class DaSiWa_EnhancedVideoCombine:
             preview_path = f"{os.path.splitext(output_path)[0]}-preview.mp4"
             try:
                 _encode_with_available_encoder(
-                    ffmpeg, "H.264", 8, width, height, frame_rate, _frame_bytes(images, 8), preview_path,
+                    ffmpeg, "H.264", 8, width, height, frame_rate, images, preview_path,
                     "MP4", quality, quality, None,
                 )
                 preview_codec = "H.264"
