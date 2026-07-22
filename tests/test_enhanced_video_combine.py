@@ -1,6 +1,8 @@
 import importlib.util
 import math
 import os
+import shutil
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -93,6 +95,9 @@ def test_node_schema_and_registration():
     assert "Animated WebP and Animated AVIF are manual image-animation outputs" in preview_source
     assert "onDrawForeground" in preview_source
     assert "isHelpIconHit" in preview_source
+    assert "ProgressBar(_encoded_frame_count(images, pingpong))" in (Path(__file__).parents[1] / "nodes" / "enhanced_video_combine.py").read_text(encoding="utf-8")
+    assert '"-progress", "pipe:2", "-nostats"' in (Path(__file__).parents[1] / "nodes" / "enhanced_video_combine.py").read_text(encoding="utf-8")
+    assert "now - last_report >= 0.5" in (Path(__file__).parents[1] / "nodes" / "enhanced_video_combine.py").read_text(encoding="utf-8")
 
 
 
@@ -124,6 +129,47 @@ def test_10_bit_frame_data_uses_rgb48le_values():
 
     assert len(payload) == 6
     assert torch.frombuffer(bytearray(payload), dtype=torch.uint16).tolist() == [0, 32768, 65472]
+
+
+def test_frame_byte_chunks_are_bounded_and_preserve_frame_order():
+    images = torch.tensor([0, 1, 2, 3], dtype=torch.float32).reshape(4, 1, 1, 1).repeat(1, 1, 1, 3) / 255
+
+    chunks = list(enhanced_video_combine._iter_frame_byte_chunks(images, 8, False, max_chunk_bytes=6))
+
+    assert [len(chunk) for chunk in chunks] == [6, 6]
+    assert torch.frombuffer(bytearray(b"".join(chunks)), dtype=torch.uint8).reshape(-1, 3)[:, 0].tolist() == [0, 1, 2, 3]
+
+
+def test_frame_byte_chunks_emit_pingpong_frames_without_materializing_a_batch():
+    images = torch.tensor([0, 1, 2, 3], dtype=torch.float32).reshape(4, 1, 1, 1).repeat(1, 1, 1, 3) / 255
+
+    chunks = enhanced_video_combine._iter_frame_byte_chunks(images, 8, True, max_chunk_bytes=3)
+
+    assert torch.frombuffer(bytearray(b"".join(chunks)), dtype=torch.uint8).reshape(-1, 3)[:, 0].tolist() == [0, 1, 2, 3, 2, 1]
+
+
+def test_ffmpeg_streaming_encode_writes_all_chunked_frames(tmp_path):
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        pytest.skip("FFmpeg and FFprobe are required")
+    images = torch.tensor([0, 1, 2, 3], dtype=torch.float32).reshape(4, 1, 1, 1).repeat(1, 1, 1, 3) / 255
+    output_path = tmp_path / "chunked.mkv"
+    command = [
+        ffmpeg, "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", "1x1", "-framerate", "24", "-i", "-",
+        "-c:v", "ffv1", str(output_path),
+    ]
+
+    result = enhanced_video_combine._run_ffmpeg(
+        command, lambda: enhanced_video_combine._iter_frame_byte_chunks(images, 8, False, max_chunk_bytes=3), lambda _seconds: None,
+    )
+
+    assert result.returncode == 0
+    probe = subprocess.run(
+        [ffprobe, "-v", "error", "-count_frames", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0", str(output_path)],
+        capture_output=True, text=True, check=True,
+    )
+    assert probe.stdout.strip() == "4"
 
 
 def test_frame_exports_are_written_as_pngs_beside_the_video(tmp_path):
