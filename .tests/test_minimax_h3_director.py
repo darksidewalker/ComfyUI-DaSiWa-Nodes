@@ -42,6 +42,18 @@ def test_ref_prompt_builder_emits_all_required_sections():
     assert "Picture 1 (fox): fully_preserved - keep fur" in prompt
 
 
+def test_director_builds_a_ref2va_guide_from_the_default_builder_state():
+    """REF2VA defaults carry no top-level imd — prompt_payload must cope."""
+    builder = default_builder_state("REF2VA")
+
+    guide = director.MiniMaxH3Director().build_guide(
+        "REF2VA", "", 1344, 768, 5, "match", json.dumps({"items": []}),
+        json.dumps(builder))[0]
+
+    assert guide["prompt_payload"]["is_ref_mode"] is True
+    assert guide["prompt_payload"]["imd"] == ""
+
+
 def test_director_emits_v2_consolidated_prompt_for_i2va_builder_state():
     state = {"items": [{"type": "image", "value": "opening.png", "slot": 0}]}
     builder = default_builder_state("I2VA")
