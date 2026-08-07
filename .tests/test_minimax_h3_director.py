@@ -203,6 +203,109 @@ def test_load_audio_applies_timeline_crop(tmp_path):
     assert audio_duration(audio) == 15
 
 
+def _write_packed_stereo_wav(path, seconds, sample_rate=8_000, frames=None):
+    """Write a PCM s16 stereo file — a packed (interleaved) PyAV sample format."""
+    if frames is None:
+        frames = np.zeros((seconds * sample_rate, 2), dtype=np.int16)
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(2)
+        output.setsampwidth(2)
+        output.setframerate(sample_rate)
+        output.writeframes(frames.tobytes())
+
+
+def test_load_audio_deinterleaves_packed_stereo(tmp_path):
+    path = tmp_path / "stereo.wav"
+    _write_packed_stereo_wav(path, seconds=10)
+
+    audio = load_audio(path.name, str(tmp_path))
+
+    assert audio["waveform"].shape[1] == 2
+    assert audio_duration(audio) == 10
+
+
+def test_load_audio_crops_packed_stereo_on_real_seconds(tmp_path):
+    path = tmp_path / "stereo.wav"
+    _write_packed_stereo_wav(path, seconds=20)
+
+    audio = load_audio(path.name, str(tmp_path), trim_start=2, trim_end=17)
+
+    assert audio["waveform"].shape[1] == 2
+    assert audio_duration(audio) == 15
+
+
+def test_load_embedded_video_audio_deinterleaves_packed_stereo(tmp_path):
+    av = pytest.importorskip("av")
+    path = tmp_path / "stereo_packed.mkv"
+    sample_rate = 8_000
+    with av.open(str(path), "w") as output:
+        stream = output.add_stream("pcm_s16le", rate=sample_rate)
+        stream.layout = "stereo"
+        for _ in range(10 * sample_rate // 1024):
+            frame = av.AudioFrame.from_ndarray(np.zeros((1, 1024 * 2), dtype=np.int16), format="s16", layout="stereo")
+            frame.sample_rate = sample_rate
+            for packet in stream.encode(frame):
+                output.mux(packet)
+        for packet in stream.encode():
+            output.mux(packet)
+
+    audio = load_embedded_video_audio(path.name, str(tmp_path))
+
+    assert audio["waveform"].shape[1] == 2
+    assert audio_duration(audio) == pytest.approx(10, abs=0.1)
+
+
+def test_load_audio_keeps_full_scale_pcm_inside_the_unit_range(tmp_path):
+    path = tmp_path / "fullscale.wav"
+    sample_rate = 8_000
+    frames = np.tile(np.array([[-32768, 32767]], dtype=np.int16), (3 * sample_rate, 1))
+    _write_packed_stereo_wav(path, seconds=3, sample_rate=sample_rate, frames=frames)
+
+    audio = load_audio(path.name, str(tmp_path))
+
+    assert float(audio["waveform"].abs().max()) <= 1.0
+    assert float(audio["waveform"].min()) == pytest.approx(-1.0, abs=1e-4)
+
+
+def test_load_audio_centres_unsigned_pcm_on_silence(tmp_path):
+    """8-bit PCM is unsigned: its silence sits at 128, not at 0."""
+    path = tmp_path / "unsigned.wav"
+    sample_rate = 8_000
+    with wave.open(str(path), "wb") as output:
+        output.setnchannels(1)
+        output.setsampwidth(1)
+        output.setframerate(sample_rate)
+        output.writeframes(np.full(3 * sample_rate, 128, dtype=np.uint8).tobytes())
+
+    waveform = load_audio(path.name, str(tmp_path))["waveform"]
+
+    assert float(waveform.abs().max()) == pytest.approx(0.0, abs=1e-6)
+
+
+def test_load_embedded_video_audio_keeps_its_amplitude_at_full_scale(tmp_path):
+    """A single -32768 sample must not trip the legacy int16 rescale on the rest."""
+    av = pytest.importorskip("av")
+    path = tmp_path / "fullscale.mkv"
+    sample_rate = 8_000
+    block = np.full((1, 1024), 16_384, dtype=np.int16)
+    block[0, 0] = -32_768
+    with av.open(str(path), "w") as output:
+        stream = output.add_stream("pcm_s16le", rate=sample_rate)
+        stream.layout = "mono"
+        for _ in range(3 * sample_rate // 1024):
+            frame = av.AudioFrame.from_ndarray(block, format="s16", layout="mono")
+            frame.sample_rate = sample_rate
+            for packet in stream.encode(frame):
+                output.mux(packet)
+        for packet in stream.encode():
+            output.mux(packet)
+
+    waveform = load_embedded_video_audio(path.name, str(tmp_path))["waveform"]
+
+    assert float(waveform.abs().max()) <= 1.0
+    assert float(waveform.max()) == pytest.approx(0.5, abs=1e-3)
+
+
 def test_load_embedded_video_audio_applies_the_video_crop(tmp_path):
     av = pytest.importorskip("av")
     path = tmp_path / "reference.m4a"
