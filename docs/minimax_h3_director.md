@@ -1,5 +1,33 @@
 # MiniMax H3 Director
 
+## Person RefMods
+
+In `REF2VA` mode, the Director can select standalone visual RefMods from the
+registered `models/refmods` folders. Open **RefMods · People references**, add a
+slot, choose a file, and edit the person description if needed. The description
+is stored in the workflow; the `.safetensors` file is not modified.
+
+Use **Insert tag** to place a stable alias such as `<RefMod 1>` in the currently
+focused prompt field. At execution, the Director maps each alias to the native
+H3 label that matches the complete reference order. For example, if the
+timeline already contains `<Video 1>`, two photo-stack RefMods become
+`<Video 2>` and `<Video 3>` while the prompt can continue to use `<RefMod 1>`
+and `<RefMod 2>`. Removing one slot does not rename the remaining aliases.
+
+The prompt preview shows the resolved native labels and the descriptions sent
+to the text/vision encoder. An alias without an enabled, nonzero-strength slot
+raises an error instead of silently referring to another person. Do not inject
+the same selected references again with Apply H3 RefMod or Continuum RefMod
+Bridge.
+
+The integrated picker accepts standalone image/video-kind RefMods. Photo stacks
+saved as video-kind RefMods are treated as one person reference, not as one
+picture per source photo. The old experimental Director RefMods Setup and
+Director RefMod Guide nodes are no longer registered; use the standard Director
+and Director Guide pair. The installed ComfyUI-MiniMaxH3Mod package remains as
+the file-format/runtime backend, but its original node mappings are hidden from
+the ComfyUI menu. The integrated picker is the only visible RefMod workflow.
+
 A timeline-based authoring node for ComfyUI's native MiniMax H3 models. It centralizes media management, ordering, trimming, per-reference prompts, and the global prompt into one workflow node, validates H3 constraints before execution, and routes everything to the installed native MiniMax H3 implementation — no duplicate backend logic.
 
 [News & Changelog — collection-wide news and change history →](news_and_changelog.md)

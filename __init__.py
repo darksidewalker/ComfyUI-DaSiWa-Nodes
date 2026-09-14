@@ -17,6 +17,8 @@ if __package__:
     from .nodes.nodes_minimax_h3_cache import MiniMaxH3Cache
 
     from .nodes import nodes_system_monitor
+    from .nodes.helper_director_refmods import register_routes as register_refmod_routes
+    register_refmod_routes()
     from .nodes import input_images  # registers /dasiwa/input-images route
     from .nodes import lora_info  # registers /dasiwa/ltx2/lorainfo + /dasiwa/ltx2/loraimg
     from .nodes.helper_logging import log_startup_summary

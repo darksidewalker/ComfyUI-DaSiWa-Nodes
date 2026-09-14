@@ -39,6 +39,7 @@ class NormalizedGuide:
     ref_videos: dict = None
     ref_video_audios: dict = None
     ref_audios: dict = None
+    ref_mods: Any = None
 
     def __post_init__(self):
         for name in ("ref_images", "ref_videos", "ref_video_audios", "ref_audios"):
@@ -126,7 +127,7 @@ def _duration(value, label):
     return result
 
 
-def validate_reference_limits(images=(), videos=(), audios=(), *, audio_has_visual=True):
+def validate_reference_limits(images=(), videos=(), audios=(), *, audio_has_visual=True, external_visual=False):
     images = list(images or [])
     videos = list(videos or [])
     audios = list(audios or [])
@@ -138,9 +139,9 @@ def validate_reference_limits(images=(), videos=(), audios=(), *, audio_has_visu
         raise ValueError("REF2VA supports at most 3 audio clips")
     if len(images) + len(videos) + len(audios) > 12:
         raise ValueError("REF2VA supports at most 12 reference files")
-    if audios and not images and not videos:
+    if audios and not images and not videos and not external_visual:
         raise ValueError("REF2VA audio must be accompanied by an image or video")
-    if audios and not audio_has_visual:
+    if audios and not audio_has_visual and not external_visual:
         raise ValueError("REF2VA audio must be accompanied by an image or video")
 
     video_total = sum(_duration(item.get("duration"), f"video {i + 1}") for i, item in enumerate(videos))
@@ -164,6 +165,7 @@ def normalize_guide(data: dict) -> NormalizedGuide:
         mode=mode, prompt=prompt, resolved_prompt=resolved,
         width=int(data.get("width", 1344)), height=int(data.get("height", 768)),
         length=int(data.get("length", 124)), ref_image_size=data.get("ref_image_size", "match"),
+        ref_mods=data.get("ref_mods"),
     )
     if mode in {"T2VA", "I2VA", "FL2VA", "L2VA"}:
         if data.get("ref_images") or data.get("ref_videos") or data.get("ref_audios") or data.get("ref_video_audios"):

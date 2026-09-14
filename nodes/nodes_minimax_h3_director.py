@@ -1,5 +1,6 @@
 """MiniMax H3 Director guide node."""
 import json
+import copy
 
 from .helper_logging import log_dasiwa
 from .helper_minimax_h3_director import (
@@ -20,6 +21,19 @@ def _describe_model(model) -> str:
         return "none"
     model_type = type(model)
     return f"{model_type.__module__}.{model_type.__name__}"
+
+
+from .helper_director_refmods import (
+    load_selections, active_mods, mappings, translate, selection_stamp,
+)
+
+
+def process_refmod_mappings(ref_mods, ref_images, ref_videos, ref_audios):
+    return mappings(ref_mods, ref_images, ref_videos)
+
+
+def translate_prompt_tags(text, tag_map):
+    return translate(text, tag_map)
 
 
 class MiniMaxH3Director:
@@ -50,6 +64,10 @@ class MiniMaxH3Director:
     RETURN_NAMES = ("guide", "duration", "positive_prompt", "width", "height", "model", "fl2va_requested", "inpaint_requested", "frame_rate")
     FUNCTION = "build_guide"
     CATEGORY = "DaSiWa/MiniMax H3"
+
+    @classmethod
+    def IS_CHANGED(cls, timeline_data="{}", mode="REF2VA", **kwargs):
+        return selection_stamp(timeline_data) if mode == "REF2VA" else ()
 
     def check_lazy_status(self, mode, prompt, width, height, duration, ref_image_size, timeline_data, builder_state,
                           fl2va_model=None, ref2va_model=None, external_width_overwrite=None,
@@ -93,6 +111,14 @@ class MiniMaxH3Director:
             raise ValueError(f"MiniMax Director timeline_data is invalid JSON: {exc}") from exc
         if not isinstance(state, dict):
             raise ValueError("MiniMax Director timeline_data must contain an object")
+        selected_rows = state.get("refmods", []) if mode == "REF2VA" else []
+        ref_mods = load_selections(selected_rows) if selected_rows else []
+        normalized_mods = []
+        for mod, strength, slot in active_mods(ref_mods):
+            selected = copy.copy(mod)
+            selected.director_slot = slot
+            normalized_mods.append((selected, strength))
+        ref_mods = normalized_mods
         input_scaling = "Off" if external_canvas else (state.get("resolution") or {}).get("input_scaling", "Auto")
         try:
             builder = json.loads(builder_state) if builder_state else state.get("builder_state", {})
@@ -210,24 +236,52 @@ class MiniMaxH3Director:
                         else:
                             ref_audios[f"ref_audio_{len(ref_audios) + 1}"] = attached_audio
                         audios.append({**item, "duration": audio_duration(attached_audio) if isinstance(attached_audio, dict) else item.get("duration")})
-            validate_reference_limits(images=images, videos=videos, audios=audios)
+            validate_reference_limits(images=images, videos=videos, audios=audios, external_visual=bool(ref_mods))
+
+        tag_map, desc_map, name_map, refmod_summary = process_refmod_mappings(ref_mods, ref_images, ref_videos, ref_audios)
+        if refmod_summary:
+            log_dasiwa("MiniMax H3 Director", f"RefMod tag mappings: {refmod_summary}")
+
+        translated_prompt = translate_prompt_tags(prompt, tag_map)
+        for key in ("simple_prompt", "imd", "soundscape", "music"):
+            if key in merged and isinstance(merged[key], str):
+                merged[key] = translate_prompt_tags(merged[key], tag_map)
+        if "ref" in merged and isinstance(merged["ref"], dict):
+            ref_sec = merged["ref"]
+            for rkey in ("subject_definitions", "summary", "retention_analysis", "detailed_description", "soundscape", "music"):
+                if rkey in ref_sec and isinstance(ref_sec[rkey], str):
+                    ref_sec[rkey] = translate_prompt_tags(ref_sec[rkey], tag_map)
 
         blocks = state.get("prompt_blocks", [])
         if isinstance(external_prompt_overwrite, str) and external_prompt_overwrite.strip():
-            resolved = external_prompt_overwrite
+            resolved = translate_prompt_tags(external_prompt_overwrite, tag_map)
         else:
             resolved = build_prompt(merged)
             if (not migrated_legacy_prompt and
                     not any(str(merged.get(key) or "").strip() for key in ("imd", "soundscape")) and
                     mode != "REF2VA"):
-                resolved = assemble_prompt(prompt, blocks)
+                resolved = assemble_prompt(translated_prompt, blocks)
+            resolved = translate_prompt_tags(resolved, tag_map)
+
+        descriptions = [f"{tag_map[slot]}: {translate_prompt_tags(desc, tag_map)}"
+                        for slot, desc in desc_map.items() if desc.strip()]
+        if descriptions:
+            resolved += "\n\nReference descriptions:\n" + "\n".join(descriptions)
+
         for issue in validate_builder_state(merged):
             log_dasiwa("MiniMax H3 Director", f"[{issue['level'].upper()}] {issue['msg']}")
         guide = {
-            "version": 2, "mode": mode, "prompt": prompt, "prompt_blocks": blocks, "resolved_prompt": resolved,
+            "version": 2, "mode": mode, "prompt": translated_prompt, "prompt_blocks": blocks, "resolved_prompt": resolved,
             "width": width, "height": height, "length": length, "ref_image_size": ref_image_size, "input_scaling": input_scaling,
             "first_frame": first_frame, "last_frame": last_frame, "ref_images": ref_images, "ref_videos": ref_videos,
             "ref_video_audios": ref_video_audios, "ref_audios": ref_audios, "builder_state": merged,
+            "ref_mods": ref_mods,
+            "refmod_mapping": {
+                "tag_map": tag_map,
+                "desc_map": desc_map,
+                "name_map": name_map,
+                "summary": refmod_summary,
+            },
             "timeline": [{key: item.get(key) for key in ("id", "type", "start", "duration", "order", "trim_start", "trim_end") if key in item} for _, item in items],
             "prompt_payload": {"mode": mode, "full_prompt": resolved, "is_ref_mode": mode == "REF2VA", "subject_definitions": merged["ref"]["subject_defs"], "summary": merged["ref"]["summary_text"], "retention_analysis": merged["ref"]["retention"], "detailed_description": {"style_line": merged["ref"]["style_line"], "detail": merged["ref"]["detail"]}, "overall_soundscape": merged["ref"]["soundscape"] if mode == "REF2VA" else merged["soundscape"], "non_diegetic_music": merged["ref"]["music"] if mode == "REF2VA" else merged["music"], "imd": merged.get("imd", ""), "p2_shot": merged.get("p2_shot", ""), "last_shot": merged.get("last_shot", "")},
         }

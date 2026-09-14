@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { renderRefMods, refModPreview } from "./director_refmods.js";
 
 let h3VaeErrorPopupInstalled = false;
 
@@ -194,6 +195,8 @@ function install(node) {
   dataWidget.hidden = true; dataWidget.options = { ...(dataWidget.options || {}), hidden: true };
   dataWidget.draw = () => {}; dataWidget.computeSize = () => [0, -4];
   let state = parseState(dataWidget.value);
+  const refModLibrary = { entries: null, loading: false, error: null };
+  let refModPromptField = null;
   // Resized prompt text-box heights, kept per node so a re-render (media add,
   // mode/resolution change, workflow reload) restores the user's layout.
   const fieldHeights = {};
@@ -395,6 +398,8 @@ function install(node) {
       subjLines.push(`<Audio ${audioIdx}> is the voice-timbre and audio reference.`);
       audioIdx++;
     });
+    const personRefs = (state.refmods || []).filter(row => row.name && row.enabled !== false && Number(row.strength ?? 1) > 0);
+    personRefs.forEach(row => subjLines.push(`<RefMod ${row.slot}>: ${row.description || "Describe this person."}`));
     const subjArea = panel.querySelector("[data-ref2va-target='subj']")?.querySelector("textarea") || panel.querySelectorAll(".ds-h3-prompt")[0]?.querySelector("textarea") || panel.querySelectorAll(".ds-h3-prompt")[0];
     if (subjArea && subjLines.length > 0) {
       subjArea.value = subjLines.join("\n");
@@ -406,8 +411,9 @@ function install(node) {
       pictures.forEach((_, i) => refs.push(`<Picture ${i + 1}>`));
       videos.forEach((_, i) => refs.push(`<Video ${i + 1}>`));
       audios.forEach((_, i) => refs.push(`<Audio ${i + 1}>`));
+      personRefs.forEach(row => refs.push(`<RefMod ${row.slot}>`));
       const taskPrefixes = [];
-      if (pictures.length > 0) taskPrefixes.push("reference generation");
+      if (pictures.length > 0 || personRefs.length > 0) taskPrefixes.push("reference generation");
       if (videos.length > 0) taskPrefixes.push("video editing");
       if (audios.length > 0) taskPrefixes.push("audio reference");
       const prefix = taskPrefixes.length ? `[${taskPrefixes.join(" + ")}] ` : "";
@@ -420,7 +426,11 @@ function install(node) {
 
   function showPromptPreview() {
     const m = mode();
-    const promptText = previewTextFor(m, hasExternalPrompt());
+    let promptText = previewTextFor(m, hasExternalPrompt());
+    if (m === "REF2VA" && !hasExternalPrompt()) {
+      try { promptText = refModPreview(promptText, state, refModLibrary.entries); }
+      catch (error) { setStatus(error.message, true); const notice = timeline.querySelector(".ds-h3-refmods [role=status]"); if (notice) { notice.textContent = error.message; notice.style.color = "#ffb5a8"; notice.scrollIntoView({ block: "nearest" }); } return; }
+    }
     let overlay = document.createElement("div"); overlay.style.cssText = "position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.7);";
     overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
     const panel = document.createElement("div"); panel.style.cssText = "width:min(720px,90vw);max-height:85vh;display:flex;flex-direction:column;background:#111820;border:1px solid #40515e;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px #000;";
@@ -694,7 +704,7 @@ function install(node) {
   const remove = id => mutate(s => { s.items = s.items.filter(x => x.id !== id); if (selectedId === id) selectedId = null; });
   const resetBuilderState = () => { builderState = DEFAULT_BUILDER_STATE(mode()); builderState.mode = mode(); };
   const hasBuilderContent = () => [builderState.imd, builderState.soundscape, builderState.simple_prompt, ...Object.values(builderState.ref || {})].some(value => typeof value === "string" && value !== "N/A" && value.trim());
-  const clearAll = () => { selectedId = null; resetBuilderState(); if (promptWidget) { promptWidget.value = ""; promptWidget.callback?.(promptWidget.value); } mutate(s => { s.items = []; s.prompt_blocks = []; }); setStatus("All media and prompts cleared."); };
+  const clearAll = () => { selectedId = null; resetBuilderState(); if (promptWidget) { promptWidget.value = ""; promptWidget.callback?.(promptWidget.value); } mutate(s => { s.items = []; s.prompt_blocks = []; s.refmods = []; }); setStatus("All media and prompts cleared."); };
 
   // --- Reference-pack save/load ---
   const REFERENCE_PACK_MARKER = "dasiwa_minimax_h3_reference_pack";
@@ -1030,7 +1040,7 @@ function install(node) {
     const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { if (modeWidget) { modeWidget.value = value; modeWidget.callback?.(value); } if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; render(); }; modesSide.append(button); });
     const promptSide = controlGroup(); promptSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const promptLabel = document.createElement("span"); promptLabel.textContent = "Prompt Mode:"; promptLabel.style.cssText = "color:#9fb3c2;font-weight:600"; promptSide.append(promptLabel); const styleLabel = promptStyle(); [["simple", "Simple"], ["structured", "Structured"]].forEach(([value, label]) => { const promptButton = document.createElement("button"); promptButton.className = "ds-h3-prompt-mode-btn"; promptButton.textContent = label; promptButton.classList.toggle("active", styleLabel === value); promptButton.title = `Use the ${label.toLowerCase()} prompt editor`; promptButton.onclick = () => { if (styleLabel === value) return; if (value === "simple") builderState.simple_prompt = previewTextFor(mode(), false); builderState.prompt_mode = value; emit(); render(); }; promptSide.append(promptButton); });
     const ioSide = controlGroup(); ioSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452";
-    const actionsSide = controlGroup(); actionsSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const hasContent = state.items.length || state.prompt_blocks?.length || hasBuilderContent() || String(promptWidget?.value || "").trim(); if (selected) { if (!isLockedSlot(selected)) { const removeButton = document.createElement("button"); removeButton.className = "ds-h3-remove-btn"; removeButton.textContent = "Remove"; removeButton.title = `Remove selected ${selected.type}`; removeButton.onclick = () => remove(selected.id); actionsSide.append(removeButton); } else { setStatus(`${mediaReferenceName(selected.type)} ${selected.slot + 1} is locked in L2VA mode`, true); } } if (hasContent) { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn"; clearButton.textContent = "Clear"; clearButton.title = "Remove all media and prompts"; clearButton.onclick = clearAll; actionsSide.append(clearButton); } else { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn ds-h3-clear-btn-empty"; clearButton.textContent = "Clear"; clearButton.title = "Nothing to clear yet"; clearButton.onclick = () => setStatus("Nothing to clear."); actionsSide.append(clearButton); }
+    const actionsSide = controlGroup(); actionsSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const hasContent = state.items.length || state.refmods?.length || state.prompt_blocks?.length || hasBuilderContent() || String(promptWidget?.value || "").trim(); if (selected) { if (!isLockedSlot(selected)) { const removeButton = document.createElement("button"); removeButton.className = "ds-h3-remove-btn"; removeButton.textContent = "Remove"; removeButton.title = `Remove selected ${selected.type}`; removeButton.onclick = () => remove(selected.id); actionsSide.append(removeButton); } else { setStatus(`${mediaReferenceName(selected.type)} ${selected.slot + 1} is locked in L2VA mode`, true); } } if (hasContent) { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn"; clearButton.textContent = "Clear"; clearButton.title = "Remove all media and prompts"; clearButton.onclick = clearAll; actionsSide.append(clearButton); } else { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn ds-h3-clear-btn-empty"; clearButton.textContent = "Clear"; clearButton.title = "Nothing to clear yet"; clearButton.onclick = () => setStatus("Nothing to clear."); actionsSide.append(clearButton); }
     const spacer = document.createElement("span"); spacer.style.flex = "1";
     const docsButton = document.createElement("button"); docsButton.className = "ds-h3-docs"; docsButton.textContent = "?"; docsButton.title = "Open MiniMax H3 Director documentation on GitHub"; docsButton.onclick = () => window.open(REPOSITORY_URL, "_blank", "noopener,noreferrer");
     topRow.append(modesSide, promptSide, spacer, ioSide, actionsSide, docsButton); modeGroup.append(topRow);
@@ -1090,6 +1100,15 @@ function install(node) {
       const leftGrip = document.createElement("span"); leftGrip.className = "ds-h3-grip left"; leftGrip.onpointerdown = event => { if (isLockedSlot(item)) return; resize("left", event); }; const rightGrip = document.createElement("span"); rightGrip.className = "ds-h3-grip right"; rightGrip.onpointerdown = event => { if (isLockedSlot(item)) return; resize("right", event); }; clip.append(leftGrip, rightGrip); if (item.type === "video" || item.type === "audio") { leftGrip.style.display = "none"; rightGrip.style.display = "none"; clip.querySelectorAll(".ds-h3-crop-marker, .ds-h3-audio-crop-marker").forEach(marker => { marker.onpointerdown = event => { if (isLockedSlot(item)) return; resize(marker.classList.contains("start") ? "left" : "right", event); }; }); }
       if (!isLockedSlot(item)) { const editBtn = document.createElement("button"); editBtn.textContent = "☰"; editBtn.className = "ds-h3-edit-btn"; editBtn.title = "Open preview and details"; editBtn.onclick = event => { event.stopPropagation(); openPreview(item); }; clip.append(editBtn); }
       clip.onclick = event => { if (event.target !== clip) return; selectedId = item.id; render(); }; clip.onpointerdown = event => { selectedId = item.id; if (event.target !== clip) return; if (isLockedSlot(item) || item._audioEcho) return; event.stopPropagation(); clip.setPointerCapture?.(event.pointerId); const origin = event.clientX; const originalLeft = slotLeft(laneNameFor(item), item.slot); const lane = laneNameFor(item); const slotCount = lane === "audio" ? MAX.audio : lane === "Video" ? videoSlotCount() : imageSlotCount(); let dragged = false; const onMove = moveEvent => { dragged ||= Math.abs(moveEvent.clientX - origin) >= 4; if (dragged) clip.style.left = `${originalLeft + moveEvent.clientX - origin}px`; }; const onUp = moveEvent => { clip.removeEventListener("pointermove", onMove); clip.removeEventListener("pointerup", onUp); if (!dragged) return; const rect = trackInner.getBoundingClientRect(); const x = moveEvent.clientX - rect.left; const slotOptions = (mode() === "L2VA" && lane === "Image") ? [1] : Array.from({ length: slotCount }, (_, slot) => slot); const targetSlot = slotOptions.reduce((nearest, slot) => Math.abs((slotLeft(lane, slot) + slotWidthFor(slotItem(lane, slot)) / 2) - x) < Math.abs((slotLeft(lane, nearest) + slotWidthFor(slotItem(lane, nearest)) / 2) - x) ? slot : nearest, slotOptions[0]); mutate(s => { const moved = s.items.find(x => x.id === item.id); if (!moved) return; const occupant = s.items.find(x => x.id !== moved.id && laneForItem(x) === laneForItem(moved) && x.slot === targetSlot); if (occupant && isLockedSlot(occupant)) return; const previousSlot = moved.slot; moved.slot = targetSlot; moved.start = targetSlot; if (occupant) { occupant.slot = previousSlot; occupant.start = previousSlot; } }); }; clip.addEventListener("pointermove", onMove); clip.addEventListener("pointerup", onUp); }; lanes.get(laneNameFor(item)).append(clip); }); track.append(trackInner); timeline.append(track);
+    timeline.append(renderRefMods({ state, mode: mode(), library: refModLibrary,
+      commit: (redraw = true) => { emit(); if (redraw) { render(); syncNodeBounds(); } },
+      insert: tag => {
+        const field = refModPromptField?.isConnected ? refModPromptField : timeline.querySelector(".ds-h3-prompt-panel textarea:not(:disabled)");
+        if (!field || field.disabled) { setStatus("Select a prompt field to insert the reference tag."); return; }
+        field.focus(); field.setRangeText(tag, field.selectionStart, field.selectionEnd, "end");
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }));
     // Unified prompt-builder form replacing legacy per-item/global prompts
     const promptPanel = document.createElement("div"); promptPanel.className = "ds-h3-prompt-panel";
     if (promptStyle() === "simple") {
@@ -1106,6 +1125,7 @@ function install(node) {
       note.textContent = "External prompt detected — builder fields are disabled.";
       promptPanel.prepend(note);
     }
+    promptPanel.addEventListener("focusin", event => { if (event.target.tagName === "TEXTAREA") refModPromptField = event.target; });
     timeline.append(promptPanel);
     // Prompt text is edited on the corresponding media row and synchronized to prompt_blocks.
     timeline.append(status); if (domWidget) domWidget.computeSize = () => [Math.max(420, node.size?.[0] || 520), uiHeight()];

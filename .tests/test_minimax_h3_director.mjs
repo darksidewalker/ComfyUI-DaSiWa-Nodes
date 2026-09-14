@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const sourcePath = new URL("../js/minimax_h3_director.js", import.meta.url);
-let source = await readFile(sourcePath, "utf8");
+let source = (await readFile(sourcePath, "utf8")).replace(/\r\n/g, "\n");
 source = source.replace(
     'import { app } from "../../scripts/app.js";\nimport { api } from "../../scripts/api.js";',
     "const app = { registerExtension() {} }; const api = { addEventListener() {} };"
 );
+source = source.replace('import { renderRefMods, refModPreview } from "./director_refmods.js";', 'const renderRefMods = () => {}; const refModPreview = text => text;');
 source += "\nexport { mediaTypeFor, wavDurationFromBuffer, REPOSITORY_URL, MINIMAX_MULTIPLE, ASPECT_OPTIONS, RESOLUTION_PRESETS };";
 
 assert.match(source, /lane\.ondrop = event => \{ if \(!supported\)/, "each timeline lane must own its direct drop handler");
@@ -56,11 +57,11 @@ assert.match(source, /function buildSimpleForm\(panel\)/, "simple mode must rend
 assert.match(source, /createBuilderField\("Prompt", builderState\.simple_prompt/, "simple mode must bind the visible field to serialized simple_prompt state");
 assert.match(source, /if \(value === "simple"\) builderState\.simple_prompt = previewTextFor\(mode\(\), false\);/, "switching into simple mode must seed the single field from the current builder prompt");
 assert.match(source, /promptButton\.className = "ds-h3-prompt-mode-btn"/, "prompt-style choices must use the prompt-mode button styling");
-assert.match(source, /function showPromptPreview\(\) \{[\s\S]*?const promptText = previewTextFor\(m, hasExternalPrompt\(\)\);/, "the prompt preview must render the selected style");
+assert.match(source, /function showPromptPreview\(\) \{[\s\S]*?let promptText = previewTextFor\(m, hasExternalPrompt\(\)\);/, "the prompt preview must render the selected style");
 assert.match(source, /builderState\.prompt_mode = value/, "prompt-style buttons must set the explicitly selected mode");
 assert.match(source, /const resetBuilderState = \(\) => \{ builderState = DEFAULT_BUILDER_STATE\(mode\(\)\); builderState\.mode = mode\(\); \};/, "Clear must reset all serialized builder fields to the current mode defaults");
 assert.match(source, /const clearAll = \(\) => \{ selectedId = null; resetBuilderState\(\);/, "Clear must reset prompt/text fields as well as selected media");
-assert.match(source, /const hasContent = state\.items\.length \|\| state\.prompt_blocks\?\.length \|\| hasBuilderContent\(\) \|\| String\(promptWidget\?\.value \|\| ""\)\.trim\(\);/, "Clear must remain available when only builder text is filled");
+assert.match(source, /const hasContent = state\.items\.length \|\| state\.refmods\?\.length \|\| state\.prompt_blocks\?\.length \|\| hasBuilderContent\(\) \|\| String\(promptWidget\?\.value \|\| ""\)\.trim\(\);/, "Clear must remain available when only builder text is filled");
 
 assert.match(source, /function probeDimensions\(value, type\)/, "visual uploads must probe image and video source dimensions");
 assert.match(source, /source_width: width, source_height: height/, "source dimensions must persist with the media item");
