@@ -1406,6 +1406,8 @@ class DaSiWa_MiniMaxH3LatentUpscaler:
                 # Normalize
                 norm_mean, norm_std = _make_norm_tensors(dev, compute_dtype)
                 s_norm = (s - norm_mean) / norm_std
+                log_dasiwa("MiniMaxH3 Upscaler", f"  Input range: [{s.min().item():.4f}, {s.max().item():.4f}]")
+                log_dasiwa("MiniMaxH3 Upscaler", f"  Normalized range: [{s_norm.min().item():.4f}, {s_norm.max().item():.4f}]")
                 del s
 
                 with torch.inference_mode():
@@ -1418,7 +1420,9 @@ class DaSiWa_MiniMaxH3LatentUpscaler:
                                     enable_chunking=enable_temporal_chunking)
 
                 del s_norm
+                log_dasiwa("MiniMaxH3 Upscaler", f"  Model output range: [{out.min().item():.4f}, {out.max().item():.4f}]")
                 out = out * norm_std + norm_mean
+                log_dasiwa("MiniMaxH3 Upscaler", f"  Denormalized range: [{out.min().item():.4f}, {out.max().item():.4f}]")
 
             # Restore dimensions
             if was_4d:
