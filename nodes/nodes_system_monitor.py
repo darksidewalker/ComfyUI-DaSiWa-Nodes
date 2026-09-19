@@ -280,7 +280,13 @@ class DaSiWaSystemMonitor:
         target = os.path.normcase(os.path.realpath(path))
         matches = []
         for partition in partitions:
-            mountpoint = os.path.normcase(os.path.realpath(partition.mountpoint))
+            # A stale drive letter (e.g. a phone/USB drive unplugged since boot)
+            # can still show up here on Windows; realpath() on it raises OSError
+            # (WinError 1005) instead of a plain "not found", so it needs the
+            # same _probe() treatment as the other hardware probes in this file.
+            mountpoint = _probe(lambda p=partition: os.path.normcase(os.path.realpath(p.mountpoint)), None)
+            if mountpoint is None:
+                continue
             try:
                 if os.path.commonpath((target, mountpoint)) == mountpoint:
                     matches.append(partition)
