@@ -1335,8 +1335,10 @@ class DaSiWa_MiniMaxH3LatentUpscaler:
 
         # Handle NestedTensor (AV latent) - extract video component
         src = latent["samples"]
+        log_dasiwa("MiniMaxH3 Upscaler", f"Input samples type: {type(src).__name__}")
         is_nested = _is_nested_tensor(src)
         video_samples = _extract_video_component(src)
+        log_dasiwa("MiniMaxH3 Upscaler", f"Extracted video type: {type(video_samples).__name__}, shape: {video_samples.shape if hasattr(video_samples, 'shape') else 'N/A'}")
 
         orig_dtype = video_samples.dtype
         was_4d = (video_samples.dim() == 4)
