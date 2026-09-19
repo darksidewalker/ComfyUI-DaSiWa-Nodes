@@ -15,7 +15,6 @@ if __package__:
     from .nodes.nodes_minimax_h3_director import MiniMaxH3Director
     from .nodes.nodes_minimax_h3_director_guide import MiniMaxH3DirectorGuide
     from .nodes.nodes_minimax_h3_cache import MiniMaxH3Cache
-    from .nodes.nodes_minimax_h3_latent_upscaler import DaSiWa_MiniMaxH3LatentUpscaler
 
     from .nodes import nodes_system_monitor
     from .nodes import input_images  # registers /dasiwa/input-images route
@@ -47,7 +46,6 @@ if __package__:
         "MiniMaxH3Director": MiniMaxH3Director,
         "MiniMaxH3DirectorGuide": MiniMaxH3DirectorGuide,
         "MiniMaxH3Cache": MiniMaxH3Cache,
-        "DaSiWa_MiniMaxH3LatentUpscaler": DaSiWa_MiniMaxH3LatentUpscaler,
 
     }
 
@@ -74,7 +72,6 @@ if __package__:
         "MiniMaxH3Director": "MiniMax H3 Director",
         "MiniMaxH3DirectorGuide": "MiniMax H3 Director Guide",
         "MiniMaxH3Cache": "MiniMax H3 Cache",
-        "DaSiWa_MiniMaxH3LatentUpscaler": "Minimax H3 Latent Upscaler",
 
     }
     log_startup_summary(len(NODE_CLASS_MAPPINGS))
