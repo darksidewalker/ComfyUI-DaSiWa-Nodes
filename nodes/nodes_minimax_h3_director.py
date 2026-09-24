@@ -152,6 +152,13 @@ class MiniMaxH3Director:
                 raise ValueError("builder_state must be JSON text")
         if mode not in BASE_MODES | {"REF2VA", "Image Inpaint"}:
             raise ValueError(f"unsupported MiniMax Director mode: {mode}")
+        # H3 Forge unloads its LLM after every request; this is the backstop for
+        # one that was cut off, so it never shares VRAM with the video model.
+        try:
+            from .h3_forge import unload_forge_models
+            unload_forge_models()
+        except Exception as exc:
+            log_dasiwa("H3 Forge", f"backstop unload skipped: {exc}")
         # A non-numeric frame_rate (e.g. a stale 9th widgets_value shifted in by an
         # older save, or an empty string) falls back to the default instead of crashing
         # the queue; genuinely out-of-range numbers still raise.
