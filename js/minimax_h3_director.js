@@ -7,19 +7,37 @@ function installH3VaeErrorPopup() {
   if (h3VaeErrorPopupInstalled) return;
   h3VaeErrorPopupInstalled = true;
 
+  const H3_KNOWN_ERRORS = [
+    { match: "Audio VAE is connected to the 'vae'", title: "VAE MISMATCH",
+      text: "The Audio VAE is plugged into the video 'vae' input. Swap your VAE connections: video VAE -> vae, audio VAE -> audio_vae." },
+    { match: "Video VAE is connected to the 'audio_vae'", title: "VAE MISMATCH",
+      text: "The Video VAE is plugged into the 'audio_vae' input. Swap your VAE connections: video VAE -> vae, audio VAE -> audio_vae." },
+    { match: "REF2VA supports at most 9 images", title: "TOO MANY IMAGE REFERENCES",
+      text: "REF2VA allows at most 9 image references total. Remove some before queuing." },
+    { match: "REF2VA supports at most 3 video clips", title: "TOO MANY VIDEO REFERENCES",
+      text: "REF2VA allows at most 3 video references total (RefMods included). Remove some before queuing." },
+    { match: "REF2VA supports at most 3 audio clips", title: "TOO MANY AUDIO REFERENCES",
+      text: "REF2VA allows at most 3 audio references total (RefMods included). Remove some before queuing." },
+    { match: "REF2VA supports at most 12 reference files", title: "TOO MANY REFERENCES OVERALL",
+      text: "REF2VA allows at most 12 reference files combined, across images, videos, and audio. Remove some before queuing." },
+    { match: "REF2VA audio must be accompanied by an image or video", title: "AUDIO REFERENCE NEEDS A VISUAL",
+      text: "An audio reference can't be used on its own in REF2VA. Add at least one image or video reference (a RefMod counts) alongside it." },
+    { match: "REF2VA video duration total must not exceed 15 seconds", title: "VIDEO REFERENCES TOO LONG",
+      text: "Your video references add up to more than 15 seconds combined. REF2VA caps total reference video length at 15 seconds — trim one down." },
+    { match: "REF2VA audio duration total must not exceed 15 seconds", title: "AUDIO REFERENCES TOO LONG",
+      text: "Your audio references add up to more than 15 seconds combined. REF2VA caps total reference audio length at 15 seconds — trim one down." },
+  ];
+
   api.addEventListener("execution_error", ({ detail }) => {
-    if (detail?.node_type !== "MiniMaxH3DirectorGuide") return;
+    if (detail?.node_type !== "MiniMaxH3Director" && detail?.node_type !== "MiniMaxH3DirectorGuide") return;
 
     const message = String(detail?.exception_message || "");
+    const known = H3_KNOWN_ERRORS.find(entry => message.includes(entry.match));
 
-    if (
-      message.includes("Audio VAE is connected to the 'vae'") ||
-      message.includes("Video VAE is connected to the 'audio_vae'")
-    ) {
-      window.alert(
-        "MiniMax H3 VAE MISMATCH\n\n" +
-        message
-      );
+    if (known) {
+      window.alert(`MINIMAX H3: ${known.title}\n\n${known.text}\n\n(raw: ${message})`);
+    } else if (detail?.node_type === "MiniMaxH3Director" || detail?.node_type === "MiniMaxH3DirectorGuide") {
+      window.alert(`MINIMAX H3 ERROR (${detail.node_type})\n\n${message}`);
     }
   });
 }
