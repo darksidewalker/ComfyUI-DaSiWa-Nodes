@@ -35,7 +35,7 @@ function installH3VaeErrorPopup() {
     const known = H3_KNOWN_ERRORS.find(entry => message.includes(entry.match));
 
     if (known) {
-      window.alert(`MINIMAX H3: ${known.title}\n\n${known.text}\n\n(raw: ${message})`);
+      window.alert(`MINIMAX H3: ${known.title}\n\n${known.text}\n\n(raw console error: ${message})`);
     } else if (detail?.node_type === "MiniMaxH3Director" || detail?.node_type === "MiniMaxH3DirectorGuide") {
       window.alert(`MINIMAX H3 ERROR (${detail.node_type})\n\n${message}`);
     }
