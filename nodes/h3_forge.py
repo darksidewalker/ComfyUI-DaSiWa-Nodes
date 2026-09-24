@@ -123,6 +123,37 @@ def format_references(references, mode):
 
 # ── The user message: the h3 path of PromptForge's buildUserMessage ───────
 
+# PromptForge's h3 detail ladder is written for a ~10 s clip (see its
+# config/models.yaml). Forge scales the word range to the clip actually
+# set on the node, so Detail 6 on a 5 s clip asks for half the words instead
+# of cramming a 10 s clip's worth of shots into it. Only the first "N-M words"
+# is the ladder's own number; "350-500 word range" later is a quote of
+# MiniMax's guide and stays.
+LADDER_SECONDS = 10
+# ~5,000 characters of description, leaving room for the soundscape and music
+# inside H3's 7,000-character prompt.
+MAX_DESCRIPTION_WORDS = 800
+_WORD_RANGE = re.compile(r"(\d+)-(\d+) words")
+
+
+def scale_detail_rule(rule, duration):
+    try:
+        factor = float(duration) / LADDER_SECONDS
+    except (TypeError, ValueError):
+        return rule
+    if factor <= 0 or abs(factor - 1) < 0.05:
+        return rule
+
+    def scaled(m):
+        lo, hi = (max(10, int(round(int(n) * factor / 5.0) * 5)) for n in m.groups())
+        hi = min(max(hi, lo + 10), MAX_DESCRIPTION_WORDS)
+        return f"{min(lo, hi - 10)}-{hi} words"
+
+    out = _WORD_RANGE.sub(scaled, rule, count=1)
+    # Level 7 calls its range the guide's own, which stops being true once scaled.
+    return out.replace(", the reference guide's own range", f" for this {float(duration):g}-second clip")
+
+
 def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image):
     lines = [f'Brief: "{str(brief).strip()}"']
     settings = [f"Creativity: {title_case(creativity)}", f"Mode: {mode}"]
@@ -144,7 +175,7 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
     entry = table.get(str(detail)) or table.get(str(bundle["default_detail"]))
     if entry and entry.get("rule"):
         level = detail if str(detail) in table else bundle["default_detail"]
-        lines.append(f"Detail level {level} of {len(table)} - {entry.get('label', level)}. {entry['rule']}")
+        lines.append(f"Detail level {level} of {len(table)} - {entry.get('label', level)}. {scale_detail_rule(entry['rule'], duration)}")
 
     if references:
         ref_lines, pictures = format_references(references, mode)
@@ -457,7 +488,10 @@ class Local:
             if gguf and not has_llama_cpp:
                 out.append({"id": f"local:{name}", "label": f"{name} (GGUF - needs llama-cpp-python installed)", "disabled": True})
             else:
-                out.append({"id": f"local:{name}", "label": f"{name} ({'GGUF' if gguf else 'transformers'})"})
+                # "org--Model" is how Hugging Face downloads name folders; the
+                # org prefix makes the model hard to find in the list.
+                shown = name.split("--", 1)[-1]
+                out.append({"id": f"local:{name}", "label": f"{shown} ({'GGUF' if gguf else 'transformers'})"})
         return out
 
     def can_see(self, name):
