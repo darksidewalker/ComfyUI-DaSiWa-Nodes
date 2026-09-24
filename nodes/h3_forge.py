@@ -403,7 +403,13 @@ class Ollama:
     def models(self):
         out = []
         for m in _http(self.base + "/api/tags").get("models", []):
-            params = (m.get("details") or {}).get("parameter_size")
+            details = m.get("details") or {}
+            # Embedding models (nomic-embed-text and the like: BERT family)
+            # cannot write, so they are not offered.
+            families = " ".join([details.get("family") or "", *(details.get("families") or [])]).lower()
+            if "bert" in families or "embed" in m["name"].lower():
+                continue
+            params = details.get("parameter_size")
             out.append({"id": f"ollama:{m['name']}", "label": f"{m['name']}{f' ({params})' if params else ''}"})
         return out
 
