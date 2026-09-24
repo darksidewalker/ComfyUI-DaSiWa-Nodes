@@ -90,7 +90,10 @@ async function open(node) {
   const overlay = el("div", { className: "ds-forge-overlay" });
   const box = el("div", { className: "ds-forge" });
   overlay.append(box);
-  const close = () => { overlay.remove(); document.removeEventListener("keydown", onKey); };
+  // A run in flight, so Cancel and closing the pop-out can stop it.
+  let running = null;
+  const cancelRun = () => { if (running) { const id = running; running = null; api.fetchApi("/dasiwa/h3/forge/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: id }) }).catch(() => {}); } };
+  const close = () => { cancelRun(); overlay.remove(); document.removeEventListener("keydown", onKey); };
   const onKey = e => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
   overlay.addEventListener("pointerdown", e => { if (e.target === overlay) close(); });
@@ -177,19 +180,23 @@ async function open(node) {
 
   let result = null;
   genBtn.onclick = async () => {
+    if (running) { cancelRun(); genBtn.disabled = true; setStatus("Cancelling… the model stops at its next token, then unloads."); return; }
     const text = brief.value.trim();
     if (!text) { setStatus("Write the idea first.", true); return; }
     briefs.set(node.id, text);
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
-    genBtn.disabled = true; applyBtn.disabled = true; result = null;
+    applyBtn.disabled = true; result = null;
+    const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    running = requestId;
+    genBtn.textContent = "Cancel";
     const started = Date.now();
-    const tick = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (the model unloads when it finishes)`), 500);
+    const tick = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (Cancel stops it; the model unloads either way)`), 500);
     try {
       const res = await api.fetchApi("/dasiwa/h3/forge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          brief: text, mode, duration: hook.duration(), model: modelSel.value,
+          request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           detail: Number(detail.value), creativity: creativity.value,
           references: refs.map(({ item, ...r }) => r), settings: forgeSettings(),
         }),
@@ -207,6 +214,7 @@ async function open(node) {
       setStatus(err.message, true);
     } finally {
       clearInterval(tick);
+      running = null;
       genBtn.disabled = false;
       genBtn.textContent = "Regenerate";
     }

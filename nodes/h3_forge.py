@@ -363,6 +363,27 @@ def _http(url, payload=None, timeout=10):
         return json.loads(resp.read().decode() or "{}")
 
 
+CANCELLED = "Cancelled. Nothing was applied to the node."
+
+
+def _stream_lines(url, payload, timeout, cancel):
+    """POST and yield the response line by line, stopping when Cancel is pressed.
+
+    Leaving the `with` closes the connection, which is what makes a server
+    stop: Ollama and llama.cpp both abort a generation whose client is gone.
+    The check runs between lines, so a cancel lands at the next token - or,
+    during the prompt read before the first token, as soon as one arrives.
+    """
+    req = urlrequest.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    with urlrequest.urlopen(req, timeout=timeout) as resp:
+        for raw in resp:
+            if cancel is not None and cancel.is_set():
+                raise ForgeError("cancelled", CANCELLED)
+            line = raw.decode("utf-8", "replace").strip()
+            if line:
+                yield line
+
+
 def _image_b64(path):
     from PIL import Image
     with Image.open(path) as im:
@@ -405,18 +426,24 @@ class Ollama:
             log_dasiwa("H3 Forge", f"unload of {name} failed: {exc}")
         return name not in self.loaded()
 
-    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
         message = {"role": "user", "content": user}
         if images_b64:
             message["images"] = images_b64
-        result = _http(self.base + "/api/chat", {
-            "model": name, "stream": False, "think": False, "keep_alive": 0,
+        parts, stats = [], {}
+        for line in _stream_lines(self.base + "/api/chat", {
+            "model": name, "stream": True, "think": False, "keep_alive": 0,
             "messages": [{"role": "system", "content": system}, message],
             "options": {"num_ctx": num_ctx, "num_predict": NUM_PREDICT,
                         "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8)},
-        }, timeout=timeout)
-        stats = {"prompt_tokens": result.get("prompt_eval_count"), "output_tokens": result.get("eval_count")}
-        return (result.get("message") or {}).get("content") or "", stats
+        }, timeout, cancel):
+            chunk = json.loads(line)
+            if chunk.get("error"):
+                raise ForgeError("backend", f"Ollama: {chunk['error']}")
+            parts.append((chunk.get("message") or {}).get("content") or "")
+            if chunk.get("done"):
+                stats = {"prompt_tokens": chunk.get("prompt_eval_count"), "output_tokens": chunk.get("eval_count")}
+        return "".join(parts), stats
 
 
 class OpenAICompatible:
@@ -446,21 +473,29 @@ class OpenAICompatible:
         except Exception:
             return False
 
-    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
         content = user
         if images_b64:
             content = [{"type": "text", "text": user}] + [
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images_b64]
-        result = _http(self.api + "/chat/completions", {
-            "model": name, "stream": False, "max_tokens": NUM_PREDICT,
+        parts, usage = [], {}
+        for line in _stream_lines(self.api + "/chat/completions", {
+            "model": name, "stream": True, "stream_options": {"include_usage": True}, "max_tokens": NUM_PREDICT,
             "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             # llama.cpp server honours this; others ignore unknown fields.
             "chat_template_kwargs": {"enable_thinking": False},
-        }, timeout=timeout)
-        usage = result.get("usage") or {}
-        text = ((result.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
-        return text, {"prompt_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
+        }, timeout, cancel):
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            chunk = json.loads(data)
+            usage = chunk.get("usage") or usage
+            for choice in chunk.get("choices") or []:
+                parts.append((choice.get("delta") or {}).get("content") or "")
+        return "".join(parts), {"prompt_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
 
 
 class _NoGqaWithoutFlash:
@@ -569,7 +604,7 @@ class Local:
         self._llm()._release_all_model_memory()
         return True
 
-    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
         llm = self._llm()
         gguf = name.lower().endswith(".gguf")
         config = {
@@ -587,16 +622,39 @@ class Local:
         try:
             if gguf:
                 loaded = llm._load_llama_cpp_model(config, need_vision=False)
-                text, _ = llm._run_llama_cpp_generation(loaded, system, user, NUM_PREDICT, temperature, top_p, 1.0, -1)
+                # Streamed here rather than through _run_llama_cpp_generation so
+                # Cancel can stop it between tokens.
+                parts = []
+                for chunk in loaded.model.create_chat_completion(
+                        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+                        max_tokens=NUM_PREDICT, temperature=temperature, top_p=top_p, stream=True):
+                    if cancel is not None and cancel.is_set():
+                        raise ForgeError("cancelled", CANCELLED)
+                    parts.append(((chunk.get("choices") or [{}])[0].get("delta") or {}).get("content") or "")
+                text = "".join(parts)
             else:
                 pil = []
                 if images_b64:
                     from PIL import Image
                     pil = [Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB") for b in images_b64]
                 loaded = llm._load_transformers_model(config, need_vision=bool(pil))
+                if cancel is not None:
+                    # _run_generation calls model.generate itself; hand it a stop
+                    # check through that call. This model instance is Forge's own
+                    # (unload_after_run), so nothing else sees the wrapper.
+                    from transformers import StoppingCriteria, StoppingCriteriaList
+
+                    class _Stop(StoppingCriteria):
+                        def __call__(self, input_ids, scores, **kwargs):
+                            return cancel.is_set()
+
+                    plain = loaded.model.generate
+                    loaded.model.generate = lambda *a, **k: plain(*a, stopping_criteria=StoppingCriteriaList([_Stop()]), **k)
                 with _NoGqaWithoutFlash():
                     text, _ = llm._run_generation(loaded, config, system, user, pil, NUM_PREDICT,
                                                   temperature, top_p, 1.0, -1, 0, True)
+                if cancel is not None and cancel.is_set():
+                    raise ForgeError("cancelled", CANCELLED)
         finally:
             if loaded is not None:
                 try:
@@ -652,8 +710,32 @@ def list_all(settings):
     return models, errors
 
 
+# request_id -> threading.Event, set by POST /dasiwa/h3/forge/cancel.
+_CANCELS = {}
+
+
+def cancel(request_id):
+    event = _CANCELS.get(str(request_id or ""))
+    if event is None:
+        return False
+    event.set()
+    return True
+
+
 def generate(body, input_directory=None, release_memory=None):
     """One Forge run. Blocking: call it off the event loop."""
+    import threading
+    request_id = str(body.get("request_id") or "")
+    stop = threading.Event()
+    if request_id:
+        _CANCELS[request_id] = stop
+    try:
+        return _generate(body, input_directory, release_memory, stop)
+    finally:
+        _CANCELS.pop(request_id, None)
+
+
+def _generate(body, input_directory, release_memory, stop):
     bundle = load_bundle()
     mode = body.get("mode")
     if mode not in bundle["modes"]:
@@ -694,7 +776,7 @@ def generate(body, input_directory=None, release_memory=None):
 
     def run(with_images):
         user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images))
-        return backend.chat(name, spec["system"], user, with_images, sampling, num_ctx, timeout)
+        return backend.chat(name, spec["system"], user, with_images, sampling, num_ctx, timeout, stop)
 
     if kind != "local":
         _FORGE_LOADED.add((backend, name))
@@ -775,6 +857,11 @@ def register_routes():
             "default_detail": bundle["default_detail"],
             "default_creativity": bundle["default_creativity"],
         })
+
+    @server.routes.post("/dasiwa/h3/forge/cancel")
+    async def forge_cancel(request):
+        body = await request.json()
+        return web.json_response({"cancelled": cancel(body.get("request_id"))})
 
     @server.routes.post("/dasiwa/h3/forge")
     async def forge(request):
