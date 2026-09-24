@@ -1,4 +1,4 @@
-// MiniMax H3 Forge: the overlay behind the Director's "✨ Forge" button.
+// MiniMax H3 Forge: the overlay behind the Director's "Forge" button.
 //
 // Write an idea, pick a local model, get a prompt in the Director's own
 // fields. Runs through /dasiwa/h3/forge (nodes/h3_forge.py), outside the
@@ -77,7 +77,7 @@ async function open(node) {
   overlay.addEventListener("pointerdown", e => { if (e.target === overlay) close(); });
 
   const closeBtn = el("button", { textContent: "×", title: "Close (Esc)", onclick: close });
-  box.append(el("h3", {}, el("span", { textContent: `✨ H3 Forge — ${mode}` }), closeBtn));
+  box.append(el("h3", {}, el("span", { textContent: `H3 Forge — ${mode}` }), closeBtn));
 
   const brief = el("textarea", { placeholder: "What should the clip be? A sentence or two is enough.", value: briefs.get(node.id) || "" });
   box.append(el("div", { className: "field" }, el("label", { textContent: "Idea" }), brief));
