@@ -28,6 +28,42 @@ def test_director_uses_legacy_prompt_when_builder_is_absent():
     assert guide["builder_state"]["simple_prompt"] == prompt
 
 
+def test_empty_new_director_prompt_stays_empty():
+    guide = MiniMaxH3Director().build_guide(
+        "T2VA", "", 1344, 768, 5, "match", "{}", "",
+    )[0]
+    assert guide["resolved_prompt"] == ""
+    assert guide["builder_state"]["simple_prompt"] == ""
+
+
+def test_old_structured_ref_builder_remains_executable_without_frontend():
+    old_builder = _real_ref2va_builder_state()
+    guide = MiniMaxH3Director().build_guide(
+        "REF2VA", "", 1344, 768, 5, "match", "{}", old_builder,
+    )[0]
+    assert "red sandstone lion" in guide["resolved_prompt"]
+    assert "subject_definitions:" in guide["resolved_prompt"]
+
+
+def test_new_single_prompt_takes_precedence_over_stale_structured_fields():
+    old = json.loads(_real_ref2va_builder_state())
+    old.update(prompt_mode="simple", simple_prompt="My new prompt")
+    guide = MiniMaxH3Director().build_guide(
+        "REF2VA", "My new prompt", 1344, 768, 5, "match", "{}", json.dumps(old),
+    )[0]
+    assert guide["resolved_prompt"] == "My new prompt"
+
+
+def test_frontend_single_editor_and_legacy_reference_pack_migration():
+    source = open("js/minimax_h3_director.js", encoding="utf-8").read()
+    assert "topRow.append(modesSide, spacer, ioSide" in source
+    assert "buildSimpleForm(promptPanel);" in source
+    assert "Insert Prompt Structure" in source
+    assert 'forgeButton.textContent = "Prompt Forge"' in source
+    assert "portablePromptText(saved)" in source
+    assert 'builderState.simple_prompt = joinText(builderState.simple_prompt, portablePromptText(saved))' in source
+
+
 def test_frontend_keeps_standard_prompt_widget_serialized():
     source = open("js/minimax_h3_director.js", encoding="utf-8").read()
 

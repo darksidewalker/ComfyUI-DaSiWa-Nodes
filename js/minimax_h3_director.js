@@ -60,6 +60,7 @@ function installStyles() {
     .ds-h3 button{background:#202b35;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;padding:4px 7px;cursor:pointer}.ds-h3 button:hover{background:#2c3c49}.ds-h3-lane-add{position:absolute;right:6px;z-index:3;width:22px;height:22px;padding:0!important;border-radius:50%!important;font-size:17px;line-height:18px;background:rgba(70,150,105,.3)!important;border-color:rgba(126,210,157,.75)!important;color:#bff3d0!important}
     .ds-h3-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ds-h3-modebar{display:flex;gap:4px;padding:4px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-modebar button{padding:4px 9px!important;border-radius:999px!important;background:transparent!important;color:#9fb3c2!important}.ds-h3-modebar button:hover{background:rgba(126,235,167,.10)!important;box-shadow:0 0 10px rgba(126,235,167,.5)}.ds-h3-modebar button.active{color:#efe6ff!important;border-color:rgba(177,128,255,.8)!important;box-shadow:0 0 10px rgba(151,91,255,.6);font-weight:700}.ds-h3-clear-btn,.ds-h3-remove-btn{padding:3px 7px!important;font-size:11px;border-radius:999px!important}.ds-h3-modebar .ds-h3-clear-btn{background:rgba(255,100,100,.08)!important;color:#ffb0b0!important;border:1px solid rgba(255,100,100,.35)!important}.ds-h3-modebar .ds-h3-remove-btn{background:rgba(255,150,60,.08)!important;color:#ffcfab!important;border:1px solid rgba(255,150,60,.3)!important}.ds-h3-modebar .ds-h3-clear-btn:hover{background:rgba(255,100,100,.35)!important;color:#ffe2e2!important;border-color:rgba(255,100,100,.95)!important;box-shadow:0 0 14px rgba(255,100,100,.75)}.ds-h3-modebar .ds-h3-remove-btn:hover{background:rgba(255,150,60,.35)!important;color:#ffeadb!important;border-color:rgba(255,150,60,.95)!important;box-shadow:0 0 14px rgba(255,150,60,.75)}.ds-h3-modebar .ds-h3-clear-btn-empty{opacity:.45}.ds-h3-modebar .ds-h3-clear-btn-empty:hover{opacity:1}.ds-h3-modebar .ds-h3-io-dropdown{min-width:0!important;display:inline-flex!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-btn{min-height:0!important;padding:3px 8px!important;font-size:11px!important;border-radius:999px!important;gap:4px!important;font-weight:400}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn{background:rgba(90,160,255,.08)!important;border:1px solid rgba(90,160,255,.35)!important;color:#bcd9ff!important}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn:hover{background:rgba(90,160,255,.35)!important;border-color:rgba(90,160,255,.95)!important;box-shadow:0 0 14px rgba(90,160,255,.75)!important;color:#e5f1ff!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn{background:rgba(90,220,140,.08)!important;border:1px solid rgba(90,220,140,.35)!important;color:#bdf5d3!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn:hover{background:rgba(90,220,140,.35)!important;border-color:rgba(90,220,140,.95)!important;box-shadow:0 0 14px rgba(90,220,140,.75)!important;color:#e3fff0!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-caret{color:inherit!important;font-size:8px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-menu.cols.open{gap:4px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-col{min-width:110px!important}.ds-h3-prompt{width:100%;min-height:88px;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;resize:vertical}.ds-h3-prompt-panel{width:100%;box-sizing:border-box;border:0;border-radius:0;padding:0;display:flex;flex-direction:column;gap:6px;background:transparent;flex-shrink:0}.ds-h3-status{min-height:16px;color:#f3c67a;flex-shrink:0}.ds-h3-info-field{box-sizing:border-box;min-height:28px;border:1px solid #40515e;border-radius:4px;padding:6px 7px;background:#0d1217}.ds-h3-status.error{color:#ff6f6f;font-weight:700}.ds-h3-small{font-size:11px;color:#9fb3c2}.ds-h3-ruler{position:relative;height:19px;color:#8fa3b2;font-size:10px;white-space:nowrap;overflow:hidden}.ds-h3-ruler span{position:absolute;top:1px;border-left:1px solid #587084;padding-left:2px;height:16px}.ds-h3-track{position:relative;min-height:0;max-width:100%;overflow-x:auto;overflow-y:auto;background:#0b1015;border:1px solid #344452;border-radius:5px;padding:7px 6px 6px;flex-shrink:0}.ds-h3-track::before{content:none}.ds-h3-track-inner{position:relative;min-width:100%;height:360px;overflow:visible;background:repeating-linear-gradient(90deg,#111a21 0,#111a21 49px,#1b2933 50px)}.ds-h3-track-inner::after{content:'';position:absolute;left:var(--insert-x,-8px);top:0;height:100%;border-left:2px solid #f3c67a;pointer-events:none}.ds-h3-track-inner.over{outline:2px solid #8dd7ff;outline-offset:-2px}.ds-h3-timeline-lane{position:absolute;left:0;right:0;height:120px;box-sizing:border-box;border-bottom:1px solid #344452;cursor:pointer}.ds-h3-empty-slot{position:absolute;top:21px;height:88px;box-sizing:border-box;border:1px dashed #587084;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#7890a0;font-size:10px;pointer-events:none}.ds-h3-timeline-lane.disabled .ds-h3-empty-slot{display:none}.ds-h3-timeline-lane.visual{top:0;background:rgba(17,30,39,.72)}.ds-h3-timeline-lane.audio{top:120px;background:rgba(22,49,36,.55)}.ds-h3-timeline-lane.selected{box-shadow:inset 0 0 0 2px #8dd7ff}.ds-h3-timeline-lane.disabled{background:rgba(51,55,60,.72);filter:grayscale(1);cursor:not-allowed}.ds-h3-timeline-lane.disabled::after{content:"Not supported by the selected mode";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a1a8ad;font-size:11px;font-weight:600;background:rgba(0,0,0,.35);pointer-events:none}.ds-h3-lane-label{position:absolute;left:5px;top:2px;color:#8fa3b2;font-size:10px;text-transform:uppercase;pointer-events:none;z-index:1}.ds-h3-grip{position:absolute;top:0;width:11px;height:100%;cursor:ew-resize;background:rgba(255,255,255,.22);z-index:4}.ds-h3-grip.left{left:0;border-right:1px solid rgba(255,255,255,.65)}.ds-h3-grip.right{right:0;border-left:1px solid rgba(255,255,255,.65)}.ds-h3-clip{position:absolute;top:18px;height:48px;min-width:64px;box-sizing:border-box;border:1px solid #73c7ef;border-radius:4px;background:#1b4558;color:#e5eef4;padding:6px 14px 19px;cursor:grab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-clip.image,.ds-h3-clip.video{min-width:112px!important;width:112px!important;height:112px;top:7px}.ds-h3-clip.audio{border-color:#7ecf9d;background:#254b38;top:7px;height:112px}.ds-h3-waveform{position:absolute;inset:22px 12px 55px;width:calc(100% - 24px);height:calc(100% - 77px);pointer-events:none;opacity:.9}.ds-h3-crop-marker,.ds-h3-audio-crop-marker{position:absolute;top:20px;bottom:18px;width:4px;background:#fff;box-shadow:0 0 4px #000;cursor:ew-resize;z-index:6}.ds-h3-crop-marker.start,.ds-h3-audio-crop-marker.start{background:#f3c67a}.ds-h3-crop-marker.end,.ds-h3-audio-crop-marker.end{background:#8dd7ff;transform:translateX(-4px)}.ds-h3-crop-readout{position:absolute;left:14px;right:14px;bottom:3px;font-size:10px;line-height:12px;color:#d9f5e2;background:rgba(0,0,0,.36);pointer-events:none;text-align:center;overflow:hidden;white-space:nowrap}.ds-h3-clip-close{position:absolute!important;right:2px;top:2px;width:18px;height:18px;padding:0!important;line-height:15px!important;font-size:16px;color:#fff!important;background:rgba(105,28,28,.9)!important;border-color:#f08080!important;z-index:5}.ds-h3-clip.video{border-color:#b887d8;background:#432e52}.ds-h3-clip.text{border-color:#83c98a;background:#27442d}
   `;
+  style.textContent += `.ds-h3-prompt-toolbar{width:100%;box-sizing:border-box;flex-wrap:wrap;gap:6px;padding:6px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-prompt-toolbar .ds-h3-small{color:#9fb3c2;font-weight:600;margin-right:6px}.ds-h3-prompt-toolbar button{white-space:nowrap;transition:background .16s ease,box-shadow .16s ease}`;
   style.textContent += `.ds-h3-preview-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.6)}.ds-h3-preview-panel{width:min(600px,90vw);max-height:85vh;display:flex;flex-direction:column;background:#111820;border:1px solid #40515e;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px #000}.ds-h3-preview-header,.ds-h3-preview-meta{padding:8px 12px;background:#0d1217;color:#dbe7f0}.ds-h3-preview-header{display:flex;justify-content:space-between;border-bottom:1px solid #344452}.ds-h3-preview-body{padding:12px;background:#090d11;display:flex;justify-content:center}.ds-h3-preview-media{max-width:100%;max-height:40vh;object-fit:contain}.ds-h3-preview-controls{padding:8px 12px;background:#0d1217;display:flex;flex-direction:column;gap:6px}.ds-h3-preview-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:#9fb3c2}.ds-h3-preview-row input[type="number"]{width:60px;padding:2px 4px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:3px}.ds-h3-preview-row input[type="text"],.ds-h3-preview-row textarea{flex:1;min-width:150px;padding:3px 5px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:3px;font-size:11px}.ds-h3-preview-row textarea{resize:vertical;min-height:30px}.ds-h3-preview-meta{font-size:11px;color:#9fb3c2;border-top:1px solid #344452}`;
   style.textContent += `.ds-h3-refmod-overlay{position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(5,9,13,.76);backdrop-filter:blur(3px);box-sizing:border-box}.ds-h3-refmod-panel{width:min(920px,96vw);max-height:min(860px,92vh);display:flex;flex-direction:column;overflow:hidden;background:#101820;color:#dbe7f0;border:1px solid #416079;border-radius:10px;box-shadow:0 18px 60px rgba(0,0,0,.72);font:12px system-ui,sans-serif}.ds-h3-refmod-header{display:flex;justify-content:space-between;gap:24px;padding:18px 20px;background:#0b1218;border-bottom:1px solid #2d4558}.ds-h3-refmod-header h2{margin:0 0 5px;font-size:18px;color:#f0f7fb}.ds-h3-refmod-header p{margin:0;max-width:650px;color:#91a9ba;line-height:1.45}.ds-h3-refmod-close{width:32px;height:32px;padding:0;border:1px solid #405b6e;border-radius:5px;background:#16232d;color:#b9ccd9;font-size:22px;cursor:pointer}.ds-h3-refmod-content{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;gap:10px;padding:16px 20px;overflow:auto;scrollbar-gutter:stable}.ds-h3-refmod-help{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:#0d2027;border-left:3px solid #56a7c7;color:#93acbb}.ds-h3-refmod-help strong{color:#ccebf5}.ds-h3-refmod-card{flex-shrink:0;border:1px solid #314b5d;border-radius:7px;background:#111c24;overflow:hidden}.ds-h3-refmod-cardhead{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#0c151c;border-bottom:1px solid #2a404f}.ds-h3-refmod-cardhead h3{margin:0;font-size:13px}.ds-h3-refmod-cardhead code{color:#7ee19d}.ds-h3-refmod-cardhead .ds-h3-refmod-insert{margin-left:0;min-height:0;padding:4px 8px}.ds-h3-refmod-cardhead .ds-h3-refmod-remove{margin-left:auto}.ds-h3-refmod-grid{display:flex;flex-direction:column}.ds-h3-refmod-field{display:grid;grid-template-columns:140px minmax(180px,1fr) minmax(220px,1.25fr);gap:14px;align-items:center;min-width:0;padding:10px 12px;border-top:1px solid rgba(49,75,93,.7)}.ds-h3-refmod-field:first-child{border-top:0}.ds-h3-refmod-field strong{font-size:11px;color:#dce9ef}.ds-h3-refmod-field>span:not(.ds-h3-refmod-toggle){min-height:0;color:#829ba9;font-size:10px;line-height:1.4}.ds-h3-refmod-field select,.ds-h3-refmod-field input[type="number"],.ds-h3-refmod-field textarea{box-sizing:border-box;width:100%;min-width:0;padding:7px 8px;background:#091117;color:#e4edf2;border:1px solid #38556a;border-radius:4px}.ds-h3-refmod-field textarea{resize:vertical;min-height:72px}.ds-h3-refmod-field:has(textarea){min-height:92px}.ds-h3-refmod-toggle{display:flex;align-items:center;gap:7px;min-height:32px}.ds-h3-refmod-button{justify-content:space-between}.ds-h3-refmod-badge{margin-left:auto;padding:2px 6px;border-radius:999px;background:#173b29;color:#83e7a7;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0}.ds-h3-refmod-panel button{padding:6px 10px;background:#172833;color:#dceaf1;border:1px solid #3d6075;border-radius:4px;cursor:pointer}.ds-h3-refmod-panel button:hover:not(:disabled){background:#203a49;border-color:#61a1c2}.ds-h3-refmod-panel button:disabled{opacity:.4;cursor:not-allowed}.ds-h3-refmod-add{align-self:flex-start}.ds-h3-refmod-insert{min-height:32px}.ds-h3-refmod-footer{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:#0b1218;border-top:1px solid #2d4558;color:#91a9ba}@media(max-width:720px){.ds-h3-refmod-overlay{padding:8px}.ds-h3-refmod-field{grid-template-columns:1fr;gap:5px;align-items:start}.ds-h3-refmod-field>span:not(.ds-h3-refmod-toggle){margin-bottom:3px}}`;
   style.textContent += `
@@ -74,10 +75,11 @@ function parseState(value) { try { const s = JSON.parse(value || "{}"); return {
 function textValue(value) { return typeof value === "string" ? value.trim() : ""; }
 function builderHasContent(builder) {
   if (!builder || typeof builder !== "object") return false;
-  if (textValue(builder.simple_prompt) || textValue(builder.imd) || textValue(builder.soundscape)) return true;
+  if (textValue(builder.simple_prompt) || textValue(builder.imd) || textValue(builder.soundscape) || (textValue(builder.music) && textValue(builder.music) !== "N/A")) return true;
   const ref = builder.ref;
   return !!(ref && typeof ref === "object" && (
     ["subject_definitions", "summary", "retention_analysis", "detailed_description", "soundscape"].some(key => textValue(ref[key])) ||
+    (textValue(ref.music) && textValue(ref.music) !== "N/A") ||
     (Array.isArray(ref.subject_defs) && ref.subject_defs.length) || (Array.isArray(ref.retention) && ref.retention.length)
   ));
 }
@@ -148,7 +150,8 @@ function insertAtCursor(textarea, text) {
   textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
   textarea.selectionStart = textarea.selectionEnd = start + text.length;
   textarea.focus();
-  textarea.dispatchEvent(new Event("change"));
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  textarea.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 function createBuilderField(label, value, opts = {}, fieldHeights = {}) {
@@ -261,6 +264,21 @@ function install(node) {
     }));
   }, { passive: false });
   const setStatus = (message, isError = false) => { status.textContent = message; status.classList.toggle("error", isError); };
+  function migratePromptToSingleField() {
+    if (builderState.prompt_mode === "structured" || typeof builderState.simple_prompt !== "string") {
+      const preserved = legacyPrompt(state, promptWidget?.value);
+      if (!preserved && mode() === "REF2VA" && builderHasContent(builderState)) {
+        const ref = builderState.ref || {};
+        if (!ref.subject_definitions && Array.isArray(ref.subject_defs)) ref.subject_definitions = ref.subject_defs.map(row => row?.text).filter(Boolean).join("\n");
+        if (!ref.summary && ref.summary_text) ref.summary = `[${(ref.summary_types || ["reference generation"]).join(" + ")}] ${ref.summary_text}`;
+        if (!ref.retention_analysis && Array.isArray(ref.retention)) ref.retention_analysis = ref.retention.map(row => `${row.label || ""}${row.context ? ` (${row.context})` : ""}: ${row.marker || ""} - ${row.note || ""}`).join("\n");
+        if (!ref.detailed_description) ref.detailed_description = [ref.style_line, ref.detail].filter(Boolean).join("\n");
+      }
+      builderState.simple_prompt = preserved || (builderHasContent(builderState) ? builderPromptForWidget({ ...builderState, simple_prompt: undefined }, mode()) : "");
+    }
+    builderState.prompt_mode = "simple";
+  }
+  migratePromptToSingleField();
   const emit = () => { builderState.mode = mode(); const duration = Number(node.widgets?.find(w => w.name === "duration")?.value); if (Number.isFinite(duration)) builderState.duration = duration; const resolved = builderPromptForWidget(builderState, mode()); if (promptWidget && promptWidget.value !== resolved) { promptWidget.value = resolved; promptWidget.callback?.(resolved); } state.field_heights = { ...fieldHeights }; state.builder_state = builderState; state.resolved_prompt = resolved; dataWidget.value = JSON.stringify(state); dataWidget.callback?.(dataWidget.value); if (builderWidget) { builderWidget.value = JSON.stringify(builderState); builderWidget.callback?.(builderWidget.value); } node.graph?.setDirtyCanvas(true, true); };
   const refModLibrary = { loaded: false, loading: false, entries: [], error: "" };
   let refModPromptField = null;
@@ -320,7 +338,7 @@ function install(node) {
         const cardHead = document.createElement("div"); cardHead.className = "ds-h3-refmod-cardhead";
         const cardTitle = document.createElement("h3"); cardTitle.textContent = `Reference ${row.slot}`;
         const alias = document.createElement("code"); alias.textContent = `<RefMod ${row.slot}>`;
-        const insert = document.createElement("button"); insert.type = "button"; insert.className = "ds-h3-refmod-insert"; insert.textContent = "INSERT IN PROMPT"; insert.disabled = !row.name || row.enabled === false || Number(row.strength) === 0; insert.onpointerdown = event => event.preventDefault(); let insertTarget = null; insert.addEventListener("mousedown", () => { const active = document.activeElement; insertTarget = (active && active.tagName === "TEXTAREA" ? active : null); }); insert.onclick = () => { const promptField = insertTarget || refModPromptField || timeline.querySelector(".ds-h3-prompt-panel textarea:not(:disabled)"); insertExpandedRefMod(promptField, row.slot); };
+        const insert = document.createElement("button"); insert.type = "button"; insert.className = "ds-h3-refmod-insert"; insert.textContent = "INSERT IN PROMPT"; insert.disabled = !row.name || row.enabled === false || Number(row.strength) === 0; insert.onpointerdown = event => event.preventDefault(); insert.onclick = () => { const promptField = refModPromptField?.isConnected ? refModPromptField : timeline.querySelector(".ds-h3-prompt-panel textarea:not(:disabled)"); insertExpandedRefMod(promptField, row.slot); };
         const remove = document.createElement("button"); remove.type = "button"; remove.className = "ds-h3-refmod-remove"; remove.textContent = "Remove"; remove.onclick = () => { state.refmods = rows.filter(item => item !== row); emit(); redraw(); render(); };
         cardHead.append(cardTitle, alias, insert, remove); card.append(cardHead);
         const grid = document.createElement("div"); grid.className = "ds-h3-refmod-grid";
@@ -348,60 +366,9 @@ function install(node) {
     redraw(); close.focus();
     if (!refModLibrary.loaded) refreshLibrary();
   }
-  const promptStyle = () => { const v = builderState?.prompt_mode; return v === "simple" || v === "structured" ? v : "structured"; };
-  function legacySimplePromptFor(m) {
-    if (m === "REF2VA") {
-      const r = builderState.ref || {};
-      return [
-        r.subject_definitions ? `subject_definitions: ${r.subject_definitions}` : "",
-        r.summary ? `summary: ${r.summary}` : "",
-        r.retention_analysis ? `retention_analysis: ${r.retention_analysis}` : "",
-        r.detailed_description ? `detailed_description: ${r.detailed_description}` : "",
-        r.soundscape ? `overall_soundscape: ${r.soundscape}` : "",
-        `non_diegetic_music: ${r.music || "N/A"}`,
-      ].filter(Boolean).join("\n");
-    }
-    return [
-      builderState.imd ? `integrated_multimodal_description: ${builderState.imd}` : "",
-      builderState.soundscape ? `overall_soundscape: ${builderState.soundscape}` : "",
-      `non_diegetic_music: ${builderState.music || "N/A"}`,
-    ].filter(Boolean).join("\n");
-  }
-  function parseSimplePromptToStructured(text, m) {
-    const fields = {};
-    if (m === "REF2VA") {
-      const labels = ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"];
-      let rest = text;
-      for (const label of labels) {
-        const idx = rest.indexOf(`${label}:`);
-        if (idx === -1) { fields[label] = ""; continue; }
-        rest = rest.slice(idx + label.length + 1).trimStart();
-        const nextLabelIdx = labels.slice(labels.indexOf(label) + 1).reduce((min, l) => { const i = rest.indexOf(`${l}:`); return i !== -1 && (min === -1 || i < min) ? i : min; }, -1);
-        fields[label] = nextLabelIdx === -1 ? rest.trim() : rest.slice(0, nextLabelIdx).trim();
-        if (nextLabelIdx !== -1) rest = rest.slice(nextLabelIdx);
-      }
-    } else {
-      const labels = ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
-      let rest = text;
-      for (const label of labels) {
-        const idx = rest.indexOf(`${label}:`);
-        if (idx === -1) { fields[label] = ""; continue; }
-        rest = rest.slice(idx + label.length + 1).trimStart();
-        const nextLabelIdx = labels.slice(labels.indexOf(label) + 1).reduce((min, l) => { const i = rest.indexOf(`${l}:`); return i !== -1 && (min === -1 || i < min) ? i : min; }, -1);
-        fields[label] = nextLabelIdx === -1 ? rest.trim() : rest.slice(0, nextLabelIdx).trim();
-        if (nextLabelIdx !== -1) rest = rest.slice(nextLabelIdx);
-      }
-    }
-    const anyFilled = Object.values(fields).some(v => v && v.trim());
-    if (!anyFilled && text && text.trim()) {
-      if (m === "REF2VA") fields.detailed_description = text.trim();
-      else fields.integrated_multimodal_description = text.trim();
-    }
-    return fields;
-  }
-
+  const promptStyle = () => "simple";
   function builderPromptForWidget(builder, m) {
-    if (builder?.prompt_mode === "simple" && typeof builder.simple_prompt === "string") return builder.simple_prompt;
+    if (typeof builder?.simple_prompt === "string") return builder.simple_prompt;
     const r = builder?.ref || {};
     if (m === "REF2VA") return `subject_definitions:\n${r.subject_definitions || ""}\n\nsummary:\n${r.summary || ""}\n\nretention_analysis:\n${r.retention_analysis || ""}\n\ndetailed_description:\n${r.detailed_description || ""}\n\noverall_soundscape:\n${r.soundscape || ""}\n\nnon_diegetic_music:\n${r.music || "N/A"}`;
     const music = builder?.music || "N/A";
@@ -414,42 +381,10 @@ function install(node) {
   }
   function previewTextFor(m, external) {
     if (external) {
-      const t = String(externalPromptWidget()?.value || "").trim();
-      return t || "(External prompt detected — the prompt is supplied by the upstream node at execution time.)";
+      const text = String(externalPromptWidget()?.value || "").trim();
+      return text || "(External prompt detected — the prompt is supplied by the upstream node at execution time.)";
     }
-    if (promptStyle() === "simple") return typeof builderState.simple_prompt === "string" ? builderState.simple_prompt : legacySimplePromptFor(m);
-    const areas = timeline.querySelectorAll(".ds-h3-prompt-panel .ds-h3-prompt");
-    if (m === "REF2VA") {
-      const vals = []; areas.forEach(a => vals.push(String(a.value || "").trim()));
-      const subj = vals[0] || ""; const summ = vals[1] || ""; const ret = vals[2] || ""; const detail = vals[3] || ""; const sound = vals[4] || ""; const music = vals[5] || "N/A";
-      if (promptStyle() === "simple") {
-        const parts = [
-          subj ? `subject_definitions: ${subj}` : "",
-          summ ? `summary: ${summ}` : "",
-          ret ? `retention_analysis: ${ret}` : "",
-          detail ? `detailed_description: ${detail}` : "",
-          sound ? `overall_soundscape: ${sound}` : "",
-          `non_diegetic_music: ${music || "N/A"}`,
-        ].filter(Boolean);
-        return parts.join("\n");
-      }
-      return `subject_definitions:\n${subj}\n\nsummary:\n${summ}\n\nretention_analysis:\n${ret}\n\ndetailed_description:\n${detail}\n\noverall_soundscape:\n${sound}\n\nnon_diegetic_music:\n${music}`;
-    }
-    const imd = String(areas[0]?.value || "").trim(); const sound = String(areas[1]?.value || "").trim(); const music = String(areas[2]?.value || "N/A").trim();
-    let head = "";
-    if (m === "I2VA") head = "For the target video, at 0.00 seconds into the target video, <Picture 1> (from [Shot 1]) is fully referenced.";
-    else if (m === "FL2VA") head = "How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 2) aligns with the end mark of the target video.";
-    else if (m === "L2VA") head = "How the reference pictures align with the target video — <Picture 1> (from [Shot 1]) aligns with the end mark of the target video.";
-    if (promptStyle() === "simple") {
-      const parts = [
-        imd ? `integrated_multimodal_description: ${imd}` : "",
-        sound ? `overall_soundscape: ${sound}` : "",
-        `non_diegetic_music: ${music || "N/A"}`,
-      ].filter(Boolean);
-      return parts.join("\n");
-    }
-    const body = `integrated_multimodal_description: ${imd}\n\noverall_soundscape: ${sound}\n\nnon_diegetic_music: ${music}`;
-    return head ? `${head}\n\n${body}` : body;
+    return String(builderState.simple_prompt || "");
   }
   const allowNativeTextEditing = element => { ["pointerdown","mousedown","keydown","keypress","keyup","copy","cut","paste"].forEach(type => element.addEventListener(type, event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") return; event.stopPropagation(); })); };
 
@@ -475,51 +410,37 @@ function install(node) {
     return counter;
   }
 
-  function buildBaseForm(panel) {
-    panel.replaceChildren();
-    const label = document.createElement("div"); label.className = "ds-h3-small"; label.textContent = `${mode()} prompt builder`; panel.appendChild(label);
-    const imdArea = createBuilderField("integrated_multimodal_description", builderState.imd, { rows: 6, placeholder: "[Shot 1] Start your scene description here...", onChange: val => { builderState.imd = val; emit(); }, fieldKey: "imd" }, fieldHeights);
-    allowNativeTextEditing(imdArea.querySelector("textarea"));
-    const helpers = document.createElement("div"); helpers.className = "ds-h3-actions";
-    const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]"; shotBtn.onclick = () => { const n = window.prompt("Shot number:", "1"); if (n) insertAtCursor(imdArea.querySelector("textarea"), `[Shot ${n}] `); }; helpers.appendChild(shotBtn);
-    const refmodBtn = document.createElement("button"); refmodBtn.textContent = "Insert RefMod #"; let baseRefTarget = null; refmodBtn.addEventListener("mousedown", () => { const active = document.activeElement; baseRefTarget = (active && active.tagName === "TEXTAREA" ? active : null); }); refmodBtn.onclick = () => { const n = window.prompt("RefMod number:", "1"); if (n) insertExpandedRefMod(baseRefTarget || imdArea.querySelector("textarea"), n); }; helpers.appendChild(refmodBtn);
-    panel.appendChild(helpers); panel.appendChild(imdArea);
-    const soundscape = createBuilderField("overall_soundscape", builderState.soundscape, { rows: 3, placeholder: "Describe ambient sounds, dialogue, effects...", onChange: val => { builderState.soundscape = val; emit(); }, fieldKey: "soundscape" }, fieldHeights); allowNativeTextEditing(soundscape.querySelector("textarea")); panel.appendChild(soundscape);
-    const music = createBuilderField("non_diegetic_music", builderState.music, { rows: 2, placeholder: 'N/A or describe background score...', onChange: val => { builderState.music = val; emit(); }, fieldKey: "music" }, fieldHeights); allowNativeTextEditing(music.querySelector("textarea")); panel.appendChild(music);
-    addCharCounter(panel);
-  }
-
   function buildSimpleForm(panel) {
     panel.replaceChildren();
-    const label = document.createElement("div"); label.className = "ds-h3-small"; label.textContent = `${mode()} simple prompt`; panel.appendChild(label);
-    const helpers = document.createElement("div"); helpers.className = "ds-h3-actions";
-    const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]"; helpers.appendChild(shotBtn);
-    const refmodBtn = document.createElement("button"); refmodBtn.textContent = "Insert RefMod #"; helpers.appendChild(refmodBtn);
-    panel.appendChild(helpers);
+    const helpers = document.createElement("div"); helpers.className = "ds-h3-actions ds-h3-prompt-toolbar ds-h3-modebar";
+    const label = document.createElement("span"); label.className = "ds-h3-small"; label.textContent = `${mode()} simple prompt`; helpers.append(label);
     const simplePrompt = createBuilderField("Prompt", builderState.simple_prompt, { rows: 10, placeholder: "Write the complete MiniMax H3 prompt...", onChange: val => { builderState.simple_prompt = val; emit(); }, fieldKey: "simple_prompt" }, fieldHeights);
-    allowNativeTextEditing(simplePrompt.querySelector("textarea"));
-    shotBtn.onclick = () => { const n = window.prompt("Shot number:", "1"); if (n) insertAtCursor(simplePrompt.querySelector("textarea"), `[Shot ${n}] `); };
-    refmodBtn.textContent = "Insert RefMod #"; let simpleRefTarget = null; refmodBtn.addEventListener("mousedown", () => { const active = document.activeElement; simpleRefTarget = (active && active.tagName === "TEXTAREA" ? active : null); }); refmodBtn.onclick = () => { const n = window.prompt("RefMod number:", "1"); if (n) insertExpandedRefMod(simpleRefTarget || simplePrompt.querySelector("textarea"), n); };
-    panel.appendChild(simplePrompt);
-    addCharCounter(panel);
-  }
-
-  function buildRefForm(panel) {
-    panel.replaceChildren();
-    const r = builderState.ref || {};
-    const label = document.createElement("div"); label.className = "ds-h3-small"; label.textContent = "REF2VA prompt builder — write freely; headers are added automatically"; panel.appendChild(label);
-    const helpers = document.createElement("div"); helpers.className = "ds-h3-actions";
-    const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]"; shotBtn.onclick = () => { const wrapper = panel.querySelector("[data-ref2va-target='detail']"); const ta = wrapper?.querySelector("textarea") ?? wrapper; const n = window.prompt("Shot number:", "1"); if (n && ta) insertAtCursor(ta, `[Shot ${n}] `); }; helpers.appendChild(shotBtn);
-    const refmodInsertBtn = document.createElement("button"); refmodInsertBtn.textContent = "Insert RefMod #"; refmodInsertBtn.title = "Insert a selected RefMod's expanded native label and description at cursor position"; let refmodBuilderTarget = null; refmodInsertBtn.addEventListener("mousedown", () => { const active = document.activeElement; refmodBuilderTarget = (active && active.tagName === "TEXTAREA" ? active : null); }); refmodInsertBtn.onclick = () => { const target = refmodBuilderTarget || panel.querySelector("[data-ref2va-target='detail'] textarea") || panel.querySelector("[data-ref2va-target='detail']"); if (!target) return; const n = window.prompt("RefMod number:", "1"); if (n) insertExpandedRefMod(target, n); }; helpers.appendChild(refmodInsertBtn);
-    const prefillBtn = document.createElement("button"); prefillBtn.textContent = "Prefill Labels & Summary"; prefillBtn.title = "Generate Subject/Picture/Video/Audio labels from inserted media and fill summary template"; prefillBtn.onclick = () => { generateRefLabelsAndSummary(panel); }; helpers.appendChild(prefillBtn);
-    const previewBtn = document.createElement("button"); previewBtn.textContent = "Preview Prompt"; previewBtn.title = "Show the full prompt that will be sent upstream"; previewBtn.onclick = () => { showPromptPreview(); }; helpers.appendChild(previewBtn);
-    panel.appendChild(helpers);
-    const subjField = createBuilderField("subject_definitions:", r.subject_definitions, { rows: 4, placeholder: "<Subject 1> is the woman in <Picture 1>, with short dark hair and a red coat.\n<Picture 1> is the opening-frame anchor for [Shot 1].\n<Subject 2> is the walking motion taken from <Video 1>.\n<Video 1> provides the camera path and pacing structure.\n<Audio 1> is the voice-timbre reference for <Subject 1>.", onChange: val => { r.subject_definitions = val; emit(); }, fieldKey: "ref_subject_definitions" }, fieldHeights); allowNativeTextEditing(subjField.querySelector("textarea")); panel.appendChild(subjField);
-    const summaryField = createBuilderField("summary:", r.summary, { rows: 3, placeholder: "[reference generation + audio reference] Use <Subject 1> from <Picture 1>, the motion and pacing of <Video 1>, and the voice character of <Audio 1>.", onChange: val => { r.summary = val; emit(); }, fieldKey: "ref_summary" }, fieldHeights); allowNativeTextEditing(summaryField.querySelector("textarea")); panel.appendChild(summaryField);
-    const retField = createBuilderField("retention_analysis:", r.retention_analysis, { rows: 4, placeholder: "<Subject 1> (appears in [Shot 1], [Shot 2]): fully_preserved - identity and clothing remain consistent.\n<Picture 1> ([Shot 1] first frame): fully_preserved - opening composition anchor.\n<Subject 2> (motion transferred to <Subject 1>): attribute_transfer - walk rhythm is applied to <Subject 1>.\n<Video 1> (pacing structure): weak_reference - general timing and camera rhythm are retained.\n<Audio 1>: reference - timbre and delivery are followed without copying the signal.", onChange: val => { r.retention_analysis = val; emit(); }, fieldKey: "ref_retention_analysis" }, fieldHeights); allowNativeTextEditing(retField.querySelector("textarea")); panel.appendChild(retField);
-    const detailField = createBuilderField("detailed_description:", r.detailed_description, { rows: 5, placeholder: "[Shot 1] ... [Shot 2] At 00:04.500, ...", dataAttr: "detail", onChange: val => { r.detailed_description = val; emit(); }, fieldKey: "ref_detailed_description" }, fieldHeights); allowNativeTextEditing(detailField.querySelector("textarea")); panel.appendChild(detailField);
-    const rsoundField = createBuilderField("overall_soundscape:", r.soundscape, { rows: 2, placeholder: "Audio environment description...", onChange: val => { r.soundscape = val; emit(); }, fieldKey: "ref_soundscape" }, fieldHeights); allowNativeTextEditing(rsoundField.querySelector("textarea")); panel.appendChild(rsoundField);
-    const rmusicField = createBuilderField("non_diegetic_music:", r.music, { rows: 2, placeholder: "N/A or background score...", onChange: val => { r.music = val; emit(); }, fieldKey: "ref_music" }, fieldHeights); allowNativeTextEditing(rmusicField.querySelector("textarea")); panel.appendChild(rmusicField);
+    const area = simplePrompt.querySelector("textarea");
+    allowNativeTextEditing(area);
+    const structureBtn = document.createElement("button"); structureBtn.textContent = "Insert Prompt Structure";
+    structureBtn.title = "Insert the former structured-mode template at the cursor";
+    structureBtn.onclick = () => insertAtCursor(area, builderPromptForWidget(DEFAULT_BUILDER_STATE(mode()), mode()));
+    helpers.append(structureBtn);
+    const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]";
+    shotBtn.onclick = () => { const n = window.prompt("Shot number:", "1"); if (n) insertAtCursor(area, `[Shot ${n}] `); };
+    helpers.append(shotBtn);
+    if (mode() === "REF2VA") {
+      const refmodBtn = document.createElement("button"); refmodBtn.textContent = "Insert RefMod #";
+      refmodBtn.onclick = () => { const n = window.prompt("RefMod number:", "1"); if (n) insertExpandedRefMod(area, n); };
+      helpers.append(refmodBtn);
+      const prefillBtn = document.createElement("button"); prefillBtn.textContent = "Prefill Labels & Summary";
+      prefillBtn.title = "Insert reference labels and summary from timeline media at the cursor";
+      prefillBtn.onclick = () => generateRefLabelsAndSummary(area);
+      helpers.append(prefillBtn);
+    }
+    const previewBtn = document.createElement("button"); previewBtn.textContent = "Preview Prompt";
+    previewBtn.onclick = showPromptPreview; helpers.append(previewBtn);
+    if (window.DaSiWaH3Forge && mode() !== "Image Inpaint") {
+      const forgeButton = document.createElement("button"); forgeButton.className = "ds-h3-forge-btn";
+      forgeButton.textContent = "Prompt Forge"; forgeButton.title = "Write a prompt with a local LLM";
+      forgeButton.onclick = () => window.DaSiWaH3Forge.open(node); helpers.append(forgeButton);
+    }
+    panel.append(helpers, simplePrompt);
     addCharCounter(panel);
   }
 
@@ -548,27 +469,18 @@ function install(node) {
       subjLines.push(`<Audio ${audioIdx}> is the voice-timbre and audio reference.`);
       audioIdx++;
     });
-    const subjArea = panel.querySelector("[data-ref2va-target='subj']")?.querySelector("textarea") || panel.querySelectorAll(".ds-h3-prompt")[0]?.querySelector("textarea") || panel.querySelectorAll(".ds-h3-prompt")[0];
-    if (subjArea && subjLines.length > 0) {
-      subjArea.value = subjLines.join("\n");
-      builderState.ref.subject_definitions = subjArea.value;
-    }
-    const summaryArea = panel.querySelectorAll(".ds-h3-prompt")[1]?.querySelector("textarea") || panel.querySelectorAll(".ds-h3-prompt")[1];
-    if (summaryArea) {
-      const refs = [];
-      pictures.forEach((_, i) => refs.push(`<Picture ${i + 1}>`));
-      videos.forEach((_, i) => refs.push(`<Video ${i + 1}>`));
-      audios.forEach((_, i) => refs.push(`<Audio ${i + 1}>`));
-      const taskPrefixes = [];
-      if (pictures.length > 0) taskPrefixes.push("reference generation");
-      if (videos.length > 0) taskPrefixes.push("video editing");
-      if (audios.length > 0) taskPrefixes.push("audio reference");
-      const prefix = taskPrefixes.length ? `[${taskPrefixes.join(" + ")}] ` : "";
-      const summaryLine = prefix + "Use " + refs.map(r => r).join(", ") + ".";
-      summaryArea.value = summaryLine;
-      builderState.ref.summary = summaryArea.value;
-    }
-    emit();
+    const refs = [];
+    pictures.forEach((_, i) => refs.push(`<Picture ${i + 1}>`));
+    videos.forEach((_, i) => refs.push(`<Video ${i + 1}>`));
+    audios.forEach((_, i) => refs.push(`<Audio ${i + 1}>`));
+    const taskPrefixes = [];
+    if (pictures.length) taskPrefixes.push("reference generation");
+    if (videos.length) taskPrefixes.push("video editing");
+    if (audios.length) taskPrefixes.push("audio reference");
+    if (!refs.length) { setStatus("Add timeline references before prefilling labels.", true); return; }
+    const summary = `[${taskPrefixes.join(" + ")}] Use ${refs.join(", ")}.`;
+    const text = `subject_definitions:\n${subjLines.join("\n")}\n\nsummary:\n${summary}\n\n`;
+    insertAtCursor(panel, text);
   }
 
   function refModTagMap() {
@@ -949,41 +861,26 @@ function install(node) {
     return out;
   };
   function buildPortablePrompt() {
-    if (promptStyle() === "simple") return { prompt_mode: "simple", simple_prompt: String(builderState.simple_prompt || "") };
-    if (mode() === "REF2VA") {
-      const r = builderState.ref || {};
-      return { prompt_mode: "structured", fields: { subject_definitions: r.subject_definitions || "", summary: r.summary || "", retention_analysis: r.retention_analysis || "", detailed_description: r.detailed_description || "", soundscape: r.soundscape || "", music: r.music || "" } };
-    }
-    return { prompt_mode: "structured", fields: { imd: builderState.imd || "", soundscape: builderState.soundscape || "", music: builderState.music || "" } };
+    return { prompt_mode: "simple", simple_prompt: String(builderState.simple_prompt || "") };
   }
   const joinText = (a, b) => { a = String(a || "").trim(); b = String(b || "").trim(); return a && b ? `${a}\n\n${b}` : (a || b); };
-  // Appends into whatever's already there. By the time this runs, Model Mode
-  // has already been switched to match the file (see performLoad), so the
-  // saved field shape (ref.* vs imd/soundscape/music) should always match --
-  // the flatten-to-Simple branch below is a defensive fallback only.
-  function appendPortablePrompt(saved) {
-    if (!saved || typeof saved !== "object") return;
-    const savedMode = saved.prompt_mode === "simple" ? "simple" : "structured";
-    builderState.prompt_mode = savedMode;
-    if (savedMode === "simple") { builderState.simple_prompt = joinText(builderState.simple_prompt, saved.simple_prompt); return; }
-    const savedFields = saved.fields || {};
-    const savedIsRef = Object.prototype.hasOwnProperty.call(savedFields, "subject_definitions");
-    const currentIsRef = mode() === "REF2VA";
-    if (savedIsRef && currentIsRef) { builderState.ref = builderState.ref || {}; for (const key of ["subject_definitions", "summary", "retention_analysis", "detailed_description", "soundscape", "music"]) builderState.ref[key] = joinText(builderState.ref[key], savedFields[key]); return; }
-    if (!savedIsRef && !currentIsRef) { for (const key of ["imd", "soundscape", "music"]) builderState[key] = joinText(builderState[key], savedFields[key]); return; }
-    const flat = Object.entries(savedFields).filter(([, v]) => String(v || "").trim()).map(([k, v]) => `${k}: ${v}`).join("\n");
-    builderState.prompt_mode = "simple"; builderState.simple_prompt = joinText(builderState.simple_prompt, flat);
+  // Old reference packs saved six separate fields. Assemble them into the
+  // single editable prompt on load rather than silently hiding their text.
+  function portablePromptText(saved) {
+    if (!saved || typeof saved !== "object") return "";
+    if (typeof saved.simple_prompt === "string" && saved.prompt_mode === "simple") return saved.simple_prompt;
+    const fields = saved.fields;
+    if (!fields || typeof fields !== "object") return "";
+    const isRef = Object.prototype.hasOwnProperty.call(fields, "subject_definitions");
+    return builderPromptForWidget(isRef ? { ref: fields } : fields, isRef ? "REF2VA" : mode());
   }
-  // Replaces outright, same spirit as Clear but scoped to prompt data only.
+  function appendPortablePrompt(saved) {
+    builderState.prompt_mode = "simple";
+    builderState.simple_prompt = joinText(builderState.simple_prompt, portablePromptText(saved));
+  }
   function overwritePortablePrompt(saved) {
-    if (!saved || typeof saved !== "object") { const fresh = DEFAULT_BUILDER_STATE(mode()); builderState.prompt_mode = fresh.prompt_mode; builderState.simple_prompt = fresh.simple_prompt; builderState.ref = fresh.ref; builderState.imd = fresh.imd; builderState.soundscape = fresh.soundscape; builderState.music = fresh.music; return; }
-    const savedMode = saved.prompt_mode === "simple" ? "simple" : "structured";
-    builderState.prompt_mode = savedMode;
-    if (savedMode === "simple") { builderState.simple_prompt = String(saved.simple_prompt || ""); return; }
-    const savedFields = saved.fields || {};
-    const savedIsRef = Object.prototype.hasOwnProperty.call(savedFields, "subject_definitions");
-    if (savedIsRef) { builderState.ref = { ...DEFAULT_BUILDER_STATE("REF2VA").ref, ...savedFields }; }
-    else { builderState.imd = savedFields.imd || ""; builderState.soundscape = savedFields.soundscape || ""; builderState.music = savedFields.music || ""; }
+    builderState.prompt_mode = "simple";
+    builderState.simple_prompt = portablePromptText(saved);
   }
   // Places incoming items rank-first (lowest rank = the slot the target mode
   // actually reads, e.g. Picture 1 / L2VA's working slot), skipping anything
@@ -1234,12 +1131,11 @@ function install(node) {
     const topRow = document.createElement("div"); topRow.className = "ds-h3-modebar"; topRow.style.flexWrap = "wrap"; topRow.style.gap = "8px"; topRow.style.padding = "0"; topRow.style.border = "0"; topRow.style.background = "transparent"; topRow.style.width = "100%"; topRow.style.maxWidth = "100%"; topRow.style.boxSizing = "border-box";
     const controlGroup = () => { const group = document.createElement("span"); group.className = "ds-h3-actions"; group.style.cssText = "gap:4px;flex-wrap:wrap;white-space:nowrap;max-width:100%"; return group; };
     const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { if (modeWidget) { modeWidget.value = value; modeWidget.callback?.(value); } if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; render(); }; modesSide.append(button); });
-    const promptSide = controlGroup(); promptSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const promptLabel = document.createElement("span"); promptLabel.textContent = "Prompt Mode:"; promptLabel.style.cssText = "color:#9fb3c2;font-weight:600"; promptSide.append(promptLabel); const styleLabel = promptStyle(); [["simple", "Simple"], ["structured", "Structured"]].forEach(([value, label]) => { const promptButton = document.createElement("button"); promptButton.className = "ds-h3-prompt-mode-btn"; promptButton.textContent = label; promptButton.classList.toggle("active", styleLabel === value); promptButton.title = `Use the ${label.toLowerCase()} prompt editor`; promptButton.onclick = () => { if (styleLabel === value) return; if (value === "simple") builderState.simple_prompt = previewTextFor(mode(), false); else { const parsed = parseSimplePromptToStructured(builderState.simple_prompt || "", mode()); if (mode() === "REF2VA") { if (!builderState.ref) builderState.ref = {}; Object.assign(builderState.ref, parsed); } else { builderState.imd = parsed.integrated_multimodal_description || ""; builderState.soundscape = parsed.overall_soundscape || ""; builderState.music = parsed.non_diegetic_music || "N/A"; } } builderState.prompt_mode = value; emit(); render(); }; promptSide.append(promptButton); });
-    const ioSide = controlGroup(); ioSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; if (window.DaSiWaH3Forge && mode() !== "Image Inpaint") { const forgeButton = document.createElement("button"); forgeButton.className = "ds-h3-forge-btn"; forgeButton.textContent = "Forge"; forgeButton.title = "Write this prompt with a local LLM (runs before the workflow, then unloads)"; forgeButton.onclick = () => window.DaSiWaH3Forge.open(node); ioSide.append(forgeButton); }
+    const ioSide = controlGroup(); ioSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452";
     const actionsSide = controlGroup(); actionsSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const hasContent = state.items.length || state.prompt_blocks?.length || hasBuilderContent() || String(promptWidget?.value || "").trim(); if (selected) { if (!isLockedSlot(selected)) { const removeButton = document.createElement("button"); removeButton.className = "ds-h3-remove-btn"; removeButton.textContent = "Remove"; removeButton.title = `Remove selected ${selected.type}`; removeButton.onclick = () => remove(selected.id); actionsSide.append(removeButton); } else { setStatus(`${mediaReferenceName(selected.type)} ${selected.slot + 1} is locked in L2VA mode`, true); } } if (hasContent) { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn"; clearButton.textContent = "Clear"; clearButton.title = "Remove all media and prompts"; clearButton.onclick = clearAll; actionsSide.append(clearButton); } else { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn ds-h3-clear-btn-empty"; clearButton.textContent = "Clear"; clearButton.title = "Nothing to clear yet"; clearButton.onclick = () => setStatus("Nothing to clear."); actionsSide.append(clearButton); }
     const spacer = document.createElement("span"); spacer.style.flex = "1";
     const docsButton = document.createElement("button"); docsButton.className = "ds-h3-docs"; docsButton.textContent = "?"; docsButton.title = "Open MiniMax H3 Director documentation on GitHub"; docsButton.onclick = () => window.open(REPOSITORY_URL, "_blank", "noopener,noreferrer");
-    topRow.append(modesSide, promptSide, spacer, ioSide, actionsSide, docsButton); modeGroup.append(topRow);
+    topRow.append(modesSide, spacer, ioSide, actionsSide, docsButton); modeGroup.append(topRow);
     const modeHint = { T2VA: "T2VA · no input frame", I2VA: "I2VA · one opening-frame slot", FL2VA: "FL2VA · opening and closing-frame slots", L2VA: "L2VA · one closing-frame slot", "Image Inpaint": "Image Inpaint · exactly one image · outputs one frame through Get Image from Batch · no video/audio" }; const hint = document.createElement("div"); hint.className = "ds-h3-mode-hint"; hint.style.fontSize = "11px"; hint.style.color = "#9fb3c2"; hint.style.margin = "0"; hint.textContent = modeHint[mode()] || `REF2VA · up to ${MAX.image} image, ${MAX.video} video, and ${MAX.audio} audio slots · ${MAX.total} combined files maximum`; modeGroup.append(hint);
     timeline.append(modeGroup);
 
@@ -1305,13 +1201,7 @@ function install(node) {
       clip.onclick = event => { if (event.target !== clip || item._isRefMod) return; selectedId = item.id; render(); }; clip.onpointerdown = event => { selectedId = item.id; if (event.target !== clip) return; if (isLockedSlot(item) || item._audioEcho || item._isRefMod) return; event.stopPropagation(); clip.setPointerCapture?.(event.pointerId); const origin = event.clientX; const originalLeft = slotLeft(laneNameFor(item), item.slot); const lane = laneNameFor(item); const slotCount = lane === "audio" ? MAX.audio : lane === "Video" ? videoSlotCount() : imageSlotCount(); let dragged = false; const onMove = moveEvent => { dragged ||= Math.abs(moveEvent.clientX - origin) >= 4; if (dragged) clip.style.left = `${originalLeft + moveEvent.clientX - origin}px`; }; const onUp = moveEvent => { clip.removeEventListener("pointermove", onMove); clip.removeEventListener("pointerup", onUp); if (!dragged) return; const rect = trackInner.getBoundingClientRect(); const x = moveEvent.clientX - rect.left; const slotOptions = (mode() === "L2VA" && lane === "Image") ? [1] : Array.from({ length: slotCount }, (_, slot) => slot); const targetSlot = slotOptions.reduce((nearest, slot) => Math.abs((slotLeft(lane, slot) + slotWidthFor(slotItem(lane, slot)) / 2) - x) < Math.abs((slotLeft(lane, nearest) + slotWidthFor(slotItem(lane, nearest)) / 2) - x) ? slot : nearest, slotOptions[0]); mutate(s => { const moved = s.items.find(x => x.id === item.id); if (!moved) return; const occupant = s.items.find(x => x.id !== moved.id && laneForItem(x) === laneForItem(moved) && x.slot === targetSlot); if (occupant && isLockedSlot(occupant)) return; const previousSlot = moved.slot; moved.slot = targetSlot; moved.start = targetSlot; if (occupant) { occupant.slot = previousSlot; occupant.start = previousSlot; } }); }; clip.addEventListener("pointermove", onMove); clip.addEventListener("pointerup", onUp); }; lanes.get(laneNameFor(item)).append(clip); }); track.append(trackInner); timeline.append(track);
     // Unified prompt-builder form replacing legacy per-item/global prompts
     const promptPanel = document.createElement("div"); promptPanel.className = "ds-h3-prompt-panel";
-    if (promptStyle() === "simple") {
-      buildSimpleForm(promptPanel);
-    } else if (mode() === "REF2VA") {
-      buildRefForm(promptPanel);
-    } else {
-      buildBaseForm(promptPanel);
-    }
+    buildSimpleForm(promptPanel);
     if (hasExternalPrompt()) {
       promptPanel.classList.add("disabled");
       promptPanel.querySelectorAll("textarea, input, button").forEach(el => { el.disabled = true; });
@@ -1425,13 +1315,7 @@ function install(node) {
       builderState = baseDefaults;
       builderState.mode = m;
     }
-    if (!builderHasContent(builderState)) {
-      const preserved = legacyPrompt(state, promptWidget?.value);
-      if (preserved) {
-        builderState.prompt_mode = "simple";
-        builderState.simple_prompt = preserved;
-      }
-    }
+    migratePromptToSingleField();
     emit();
     syncNodeBounds();
     render();
@@ -1471,7 +1355,8 @@ function install(node) {
     apply: (result) => {
       if (result.mode === "REF2VA") builderState.ref = { ...(builderState.ref || {}), ...result.fields.ref };
       else Object.assign(builderState, result.fields);
-      if (promptStyle() === "simple") builderState.simple_prompt = result.simple_prompt;
+      builderState.simple_prompt = result.simple_prompt;
+      builderState.prompt_mode = "simple";
       emit(); render();
       // The char counter only recounts on input; nudge it so it shows the new prompt.
       requestAnimationFrame(() => timeline.querySelectorAll(".ds-h3-prompt-panel").forEach(p => p.dispatchEvent(new Event("input", { bubbles: true }))));

@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-09-23**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-09-24**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **H3 Prompt Forge and single prompt editor (09-24, 0.4.56):** PR #51 adds on-demand prompt writing with a local ComfyUI LLM, Ollama, or a configured OpenAI-compatible server. Director prompts start empty in one editor; Insert Prompt Structure restores the former section template on demand. Prompt helpers and Prompt Forge share a dark rounded toolbar. Old structured workflows, embedded prompts, and reference packs migrate into the single field. [Director guide →](minimax_h3_director.md)
 
 - **Unreleased — Registry automation:** The failing scheduled Registry-status workflow is removed. On a future `pyproject.toml` version bump, the publish workflow will retain the newly active release, deprecate its four immediate predecessors, and unpublish older versions. No Registry versions are changed by the workflow edit itself.
 
@@ -57,6 +59,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.56 | 09-24 | H3 Prompt Forge and single free-text Director prompt with optional structure insertion and legacy migration |
 | 0.4.55 | 09-23 | Independent Free Memory toolbar button; VRAM/model unload and RAM/cache reset actions |
 | 0.4.54 | 09-22 | Director prompt counter includes assembled structured headers |
 | 0.4.53 | 09-22 | Monitor Full overlay and settings-menu clipping, colors, and fill bars fixed |

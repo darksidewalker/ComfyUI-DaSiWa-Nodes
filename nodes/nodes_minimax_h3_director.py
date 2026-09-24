@@ -12,7 +12,7 @@ from .helper_minimax_h3_director import (
     scale_input_media, validate_reference_limits,
 )
 from .helper_minimax_h3_prompt_builder import (
-    build_prompt, default_builder_state, migrate_legacy_prompt, normalize_ref_schema,
+    build_prompt, default_builder_state, has_builder_content, migrate_legacy_prompt, normalize_ref_schema,
     validate_builder_state,
 )
 
@@ -197,6 +197,11 @@ class MiniMaxH3Director:
         merged["mode"] = mode
         merged["duration"] = duration
         migrated_legacy_prompt = migrate_legacy_prompt(merged, state, prompt)
+        if "simple_prompt" not in merged and not has_builder_content(merged):
+            # New empty nodes execute with an empty prompt; the old builder
+            # format continues to render its original style in API workflows.
+            merged["prompt_mode"] = "simple"
+            merged["simple_prompt"] = ""
 
         items = sorted(enumerate(state.get("items", [])), key=lambda pair: (int(pair[1].get("order", pair[0])), pair[0]))
         items = [pair for pair in items if pair[1].get("enabled", True)]

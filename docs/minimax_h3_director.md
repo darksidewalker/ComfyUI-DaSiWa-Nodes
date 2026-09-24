@@ -233,34 +233,9 @@ Images:
 
 ### Prompt editors
 
-Below the timeline is a unified prompt-builder panel whose layout depends on the active mode. Both editors have resizable text areas with drag-handle bars at the bottom; heights persist in the workflow JSON.
+Below the timeline, every model mode has one free-text prompt field, initially empty. **Insert Prompt Structure** inserts the former structured-mode template at the cursor; for REF2VA it contains `subject_definitions`, `summary`, `retention_analysis`, `detailed_description`, `overall_soundscape`, and `non_diegetic_music`, while base modes include their applicable frame-alignment instruction and description/sound/music headers. Edit or omit any part of the template. The text area is resizable and its height persists in the workflow JSON.
 
-#### FL2VA / I2VA / L2VA / T2VA builder
-
-Three labeled text areas:
-
-- **integrated_multimodal_description** — main scene/action/camera/environment description with optional `[Shot N]` markers. An **Insert [Shot N]** button pops up a dialog and places the marker at your cursor.
-- **overall_soundscape** — ambient sounds, dialogue, effects.
-- **non_diegetic_music** — background score or `N/A`.
-
-Alignment instruction lines (for I2VA/FL2VA/L2VA) are generated automatically based on mode and duration; you do not type them manually.
-
-#### REF2VA builder
-
-Six labeled text areas matching the official full-reference format. Section headers (`subject_definitions:` etc.) are appended automatically by the backend; you write only the content:
-
-- **subject_definitions** — define `<Subject N>`, `<Picture N>`, `<Video N>`, `<Audio N>` entries and what each contributes.
-- **summary** — task-type prefix (`[reference generation + audio reference]`) plus one-line intent statement.
-- **retention_analysis** — per-label retention markers (`fully_preserved`, `attribute_transfer`, etc.) with brief rationale.
-- **detailed_description** — shot-by-shot narrative using `[Shot N]` and timestamps.
-- **overall_soundscape** — audio environment.
-- **non_diegetic_music** — score or `N/A`.
-
-Helper buttons above the fields:
-
-- **Insert [Shot N]** — asks for a shot number, inserts `[Shot N] ` at the cursor in the `detailed_description` area.
-- **Prefill Labels & Summary** — scans your timeline items and writes initial `<Picture N>`, `<Video N>`, `<Audio N>` label lines plus a summary template referencing them. Edit freely afterward.
-- **Preview Prompt** — opens a popup showing exactly how the final prompt will look once section headers and any alignment lines are applied. Includes a copy-to-clipboard button.
+The dark prompt toolbar also has **Insert [Shot N]** and, for REF2VA, **Insert RefMod #** (expands a selected saved reference into native label and description). **Prefill Labels & Summary** inserts timeline-based reference labels and a summary at the cursor rather than overwriting the prompt. **Preview Prompt** shows the actual text and resolved reference aliases. **Prompt Forge** opens the optional LLM prompt writer (local ComfyUI model, Ollama, or configured OpenAI-compatible server); applying its result replaces the prompt field. Old structured workflows, embedded video metadata, and structured reference packs are assembled into this single field when loaded; new workflows and packs serialize only the editable prompt.
 
 ## Limits and validation
 

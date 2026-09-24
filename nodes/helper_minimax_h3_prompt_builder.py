@@ -255,14 +255,14 @@ def has_builder_content(state: dict) -> bool:
         return False
     if _ensure_str(state.get("simple_prompt")):
         return True
-    if _ensure_str(state.get("imd")) or _ensure_str(state.get("soundscape")):
+    if _ensure_str(state.get("imd")) or _ensure_str(state.get("soundscape")) or _ensure_str(state.get("music")) not in ("", "N/A"):
         return True
     ref = state.get("ref")
     return isinstance(ref, dict) and (
         any(_ensure_str(ref.get(key)) for key in (
             "subject_definitions", "summary", "retention_analysis",
             "detailed_description", "soundscape",
-        )) or bool(ref.get("subject_defs")) or bool(ref.get("retention"))
+        )) or _ensure_str(ref.get("music")) not in ("", "N/A") or bool(ref.get("subject_defs")) or bool(ref.get("retention"))
     )
 
 
