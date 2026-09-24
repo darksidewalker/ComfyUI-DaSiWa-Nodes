@@ -463,6 +463,50 @@ class OpenAICompatible:
         return text, {"prompt_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
 
 
+class _NoGqaWithoutFlash:
+    """Keep transformers off PyTorch's math attention kernel while Forge generates.
+
+    For grouped-query models (Qwen3, Qwen3-VL) with no mask, transformers passes
+    enable_gqa=True to SDPA, trusting the flash kernel to take it. Where PyTorch
+    has no flash kernel - the Windows builds - SDPA falls back to the math
+    kernel, which materialises the whole attention matrix. Measured 24 Sep
+    2026, torch 2.12+cu130 on a 5080, one layer at 8k tokens: 18.9 GiB and
+    1.66 s, against 0.23 GiB and 0.016 s with the key/value heads repeated
+    first. On a 9k-token REF2VA prompt that spilled a 4B model into shared
+    system memory and took minutes.
+
+    Scoped to Forge's own generate call, and a no-op wherever flash exists.
+    """
+
+    def __enter__(self):
+        self._saved = None
+        try:
+            import torch
+            from transformers.integrations import sdpa_attention
+            if torch.cuda.is_available() and not torch.backends.cuda.is_flash_attention_available():
+                self._saved = sdpa_attention.use_gqa_in_sdpa
+                sdpa_attention.use_gqa_in_sdpa = lambda attention_mask, key: False
+        except Exception:
+            self._saved = None
+        return self
+
+    def __exit__(self, *exc):
+        if self._saved is not None:
+            from transformers.integrations import sdpa_attention
+            sdpa_attention.use_gqa_in_sdpa = self._saved
+        return False
+
+
+def _half_dtype():
+    try:
+        import torch
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            return "bfloat16"
+    except Exception:
+        pass
+    return "float16"
+
+
 class Local:
     """ComfyUI/models/llm, through nodes_llm.py's own loaders."""
     kind = "local"
@@ -491,8 +535,29 @@ class Local:
                 # "org--Model" is how Hugging Face downloads name folders; the
                 # org prefix makes the model hard to find in the list.
                 shown = name.split("--", 1)[-1]
-                out.append({"id": f"local:{name}", "label": f"{shown} ({'GGUF' if gguf else 'transformers'})"})
+                kind = "GGUF" if gguf else "transformers"
+                if not gguf and self._compressed_tensors(llm, name):
+                    kind += ", FP8 compressed-tensors: very slow in ComfyUI, get the normal version"
+                out.append({"id": f"local:{name}", "label": f"{shown} ({kind})"})
         return out
+
+    @staticmethod
+    def _compressed_tensors(llm, name):
+        """True for an llm-compressor checkpoint (quant_method compressed-tensors).
+
+        Built for vLLM. Under transformers it re-quantizes activations in every
+        layer on every token: measured 24 Sep 2026 on a Qwen3-VL-4B FP8 build,
+        215 ms per token (~1,500 syncs and 8,400 launches per step) against
+        39 ms for the same architecture in plain bf16.
+        """
+        try:
+            path = llm._resolve_model_path(name, "")
+            with open(os.path.join(path, "config.json"), "r", encoding="utf-8") as fh:
+                cfg = json.load(fh)
+        except Exception:
+            return False
+        quant = cfg.get("quantization_config") or (cfg.get("text_config") or {}).get("quantization_config") or {}
+        return quant.get("quant_method") == "compressed-tensors"
 
     def can_see(self, name):
         return not name.lower().endswith(".gguf")  # nodes_llm's llama.cpp path is text-only
@@ -511,7 +576,7 @@ class Local:
             "model_path": llm._resolve_model_path(name, "", allow_gguf=gguf),
             "backend": "llama_cpp" if gguf else "transformers",
             "task": "vision" if images_b64 else "text",
-            "device": "auto", "dtype": "auto", "quantization": "none",
+            "device": "auto", "dtype": _half_dtype(), "quantization": "none",
             "cache_mode": "unload_after_run", "attention_implementation": "auto",
             "kv_cache_implementation": "default", "kv_cache_quant_backend": "quanto",
             "kv_cache_nbits": 4, "kv_cache_residual_length": 128,
@@ -529,8 +594,9 @@ class Local:
                     from PIL import Image
                     pil = [Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB") for b in images_b64]
                 loaded = llm._load_transformers_model(config, need_vision=bool(pil))
-                text, _ = llm._run_generation(loaded, config, system, user, pil, NUM_PREDICT,
-                                              temperature, top_p, 1.0, -1, 0, True)
+                with _NoGqaWithoutFlash():
+                    text, _ = llm._run_generation(loaded, config, system, user, pil, NUM_PREDICT,
+                                                  temperature, top_p, 1.0, -1, 0, True)
         finally:
             if loaded is not None:
                 try:
