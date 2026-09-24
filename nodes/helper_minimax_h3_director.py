@@ -140,8 +140,6 @@ def validate_reference_limits(images=(), videos=(), audios=(), *, audio_has_visu
         raise ValueError("REF2VA supports at most 3 audio clips")
     if len(images) + len(videos) + len(audios) > 12:
         raise ValueError("REF2VA supports at most 12 reference files")
-    if audios and not images and not videos:
-        raise ValueError("REF2VA audio must be accompanied by an image or video")
     if audios and not audio_has_visual:
         raise ValueError("REF2VA audio must be accompanied by an image or video")
 
