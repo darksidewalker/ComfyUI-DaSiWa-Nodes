@@ -61,6 +61,7 @@ function installStyles() {
     .ds-h3-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ds-h3-modebar{display:flex;gap:4px;padding:4px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-modebar button{padding:4px 9px!important;border-radius:999px!important;background:transparent!important;color:#9fb3c2!important}.ds-h3-modebar button:hover{background:rgba(126,235,167,.10)!important;box-shadow:0 0 10px rgba(126,235,167,.5)}.ds-h3-modebar button.active{color:#efe6ff!important;border-color:rgba(177,128,255,.8)!important;box-shadow:0 0 10px rgba(151,91,255,.6);font-weight:700}.ds-h3-clear-btn,.ds-h3-remove-btn{padding:3px 7px!important;font-size:11px;border-radius:999px!important}.ds-h3-modebar .ds-h3-clear-btn{background:rgba(255,100,100,.08)!important;color:#ffb0b0!important;border:1px solid rgba(255,100,100,.35)!important}.ds-h3-modebar .ds-h3-remove-btn{background:rgba(255,150,60,.08)!important;color:#ffcfab!important;border:1px solid rgba(255,150,60,.3)!important}.ds-h3-modebar .ds-h3-clear-btn:hover{background:rgba(255,100,100,.35)!important;color:#ffe2e2!important;border-color:rgba(255,100,100,.95)!important;box-shadow:0 0 14px rgba(255,100,100,.75)}.ds-h3-modebar .ds-h3-remove-btn:hover{background:rgba(255,150,60,.35)!important;color:#ffeadb!important;border-color:rgba(255,150,60,.95)!important;box-shadow:0 0 14px rgba(255,150,60,.75)}.ds-h3-modebar .ds-h3-clear-btn-empty{opacity:.45}.ds-h3-modebar .ds-h3-clear-btn-empty:hover{opacity:1}.ds-h3-modebar .ds-h3-io-dropdown{min-width:0!important;display:inline-flex!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-btn{min-height:0!important;padding:3px 8px!important;font-size:11px!important;border-radius:999px!important;gap:4px!important;font-weight:400}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn{background:rgba(90,160,255,.08)!important;border:1px solid rgba(90,160,255,.35)!important;color:#bcd9ff!important}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn:hover{background:rgba(90,160,255,.35)!important;border-color:rgba(90,160,255,.95)!important;box-shadow:0 0 14px rgba(90,160,255,.75)!important;color:#e5f1ff!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn{background:rgba(90,220,140,.08)!important;border:1px solid rgba(90,220,140,.35)!important;color:#bdf5d3!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn:hover{background:rgba(90,220,140,.35)!important;border-color:rgba(90,220,140,.95)!important;box-shadow:0 0 14px rgba(90,220,140,.75)!important;color:#e3fff0!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-caret{color:inherit!important;font-size:8px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-menu.cols.open{gap:4px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-col{min-width:110px!important}.ds-h3-prompt{width:100%;min-height:88px;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;resize:vertical}.ds-h3-prompt-panel{width:100%;box-sizing:border-box;border:0;border-radius:0;padding:0;display:flex;flex-direction:column;gap:6px;background:transparent;flex-shrink:0}.ds-h3-status{min-height:16px;color:#f3c67a;flex-shrink:0}.ds-h3-info-field{box-sizing:border-box;min-height:28px;border:1px solid #40515e;border-radius:4px;padding:6px 7px;background:#0d1217}.ds-h3-status.error{color:#ff6f6f;font-weight:700}.ds-h3-small{font-size:11px;color:#9fb3c2}.ds-h3-ruler{position:relative;height:19px;color:#8fa3b2;font-size:10px;white-space:nowrap;overflow:hidden}.ds-h3-ruler span{position:absolute;top:1px;border-left:1px solid #587084;padding-left:2px;height:16px}.ds-h3-track{position:relative;min-height:0;max-width:100%;overflow-x:auto;overflow-y:auto;background:#0b1015;border:1px solid #344452;border-radius:5px;padding:7px 6px 6px;flex-shrink:0}.ds-h3-track::before{content:none}.ds-h3-track-inner{position:relative;min-width:100%;height:360px;overflow:visible;background:repeating-linear-gradient(90deg,#111a21 0,#111a21 49px,#1b2933 50px)}.ds-h3-track-inner::after{content:'';position:absolute;left:var(--insert-x,-8px);top:0;height:100%;border-left:2px solid #f3c67a;pointer-events:none}.ds-h3-track-inner.over{outline:2px solid #8dd7ff;outline-offset:-2px}.ds-h3-timeline-lane{position:absolute;left:0;right:0;height:120px;box-sizing:border-box;border-bottom:1px solid #344452;cursor:pointer}.ds-h3-empty-slot{position:absolute;top:21px;height:88px;box-sizing:border-box;border:1px dashed #587084;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#7890a0;font-size:10px;pointer-events:none}.ds-h3-timeline-lane.disabled .ds-h3-empty-slot{display:none}.ds-h3-timeline-lane.visual{top:0;background:rgba(17,30,39,.72)}.ds-h3-timeline-lane.audio{top:120px;background:rgba(22,49,36,.55)}.ds-h3-timeline-lane.selected{box-shadow:inset 0 0 0 2px #8dd7ff}.ds-h3-timeline-lane.disabled{background:rgba(51,55,60,.72);filter:grayscale(1);cursor:not-allowed}.ds-h3-timeline-lane.disabled::after{content:"Not supported by the selected mode";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a1a8ad;font-size:11px;font-weight:600;background:rgba(0,0,0,.35);pointer-events:none}.ds-h3-lane-label{position:absolute;left:5px;top:2px;color:#8fa3b2;font-size:10px;text-transform:uppercase;pointer-events:none;z-index:1}.ds-h3-grip{position:absolute;top:0;width:11px;height:100%;cursor:ew-resize;background:rgba(255,255,255,.22);z-index:4}.ds-h3-grip.left{left:0;border-right:1px solid rgba(255,255,255,.65)}.ds-h3-grip.right{right:0;border-left:1px solid rgba(255,255,255,.65)}.ds-h3-clip{position:absolute;top:18px;height:48px;min-width:64px;box-sizing:border-box;border:1px solid #73c7ef;border-radius:4px;background:#1b4558;color:#e5eef4;padding:6px 14px 19px;cursor:grab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-clip.image,.ds-h3-clip.video{min-width:112px!important;width:112px!important;height:112px;top:7px}.ds-h3-clip.audio{border-color:#7ecf9d;background:#254b38;top:7px;height:112px}.ds-h3-waveform{position:absolute;inset:22px 12px 55px;width:calc(100% - 24px);height:calc(100% - 77px);pointer-events:none;opacity:.9}.ds-h3-crop-marker,.ds-h3-audio-crop-marker{position:absolute;top:20px;bottom:18px;width:4px;background:#fff;box-shadow:0 0 4px #000;cursor:ew-resize;z-index:6}.ds-h3-crop-marker.start,.ds-h3-audio-crop-marker.start{background:#f3c67a}.ds-h3-crop-marker.end,.ds-h3-audio-crop-marker.end{background:#8dd7ff;transform:translateX(-4px)}.ds-h3-crop-readout{position:absolute;left:14px;right:14px;bottom:3px;font-size:10px;line-height:12px;color:#d9f5e2;background:rgba(0,0,0,.36);pointer-events:none;text-align:center;overflow:hidden;white-space:nowrap}.ds-h3-clip-close{position:absolute!important;right:2px;top:2px;width:18px;height:18px;padding:0!important;line-height:15px!important;font-size:16px;color:#fff!important;background:rgba(105,28,28,.9)!important;border-color:#f08080!important;z-index:5}.ds-h3-clip.video{border-color:#b887d8;background:#432e52}.ds-h3-clip.text{border-color:#83c98a;background:#27442d}
   `;
   style.textContent += `.ds-h3-prompt-toolbar{width:100%;box-sizing:border-box;flex-wrap:wrap;gap:6px;padding:6px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-prompt-toolbar .ds-h3-small{color:#9fb3c2;font-weight:600;margin-right:6px}.ds-h3-prompt-toolbar button{white-space:nowrap;transition:background .16s ease,box-shadow .16s ease}`;
+  style.textContent += `.ds-h3-number-popover{position:fixed;z-index:10003;box-sizing:border-box;width:194px;padding:9px;display:flex;flex-direction:column;gap:7px;background:#111820;color:#dbe7f0;border:1px solid #5d7387;border-radius:8px;box-shadow:0 10px 25px rgba(0,0,0,.65);font:12px system-ui,sans-serif}.ds-h3-number-popover label{font-weight:600;color:#b7c8d5}.ds-h3-number-popover input{width:100%;box-sizing:border-box;padding:5px 7px;background:#0d1217;color:#dbe7f0;border:1px solid #40515e;border-radius:5px;font:inherit}.ds-h3-number-popover button{align-self:flex-end;padding:4px 12px;background:#273645;color:#e6f0f8;border:1px solid #5d7387;border-radius:999px;cursor:pointer}.ds-h3-number-popover button:hover{background:#354b5e;box-shadow:0 0 8px rgba(126,235,167,.35)}`;
   style.textContent += `.ds-h3-preview-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.6)}.ds-h3-preview-panel{width:min(600px,90vw);max-height:85vh;display:flex;flex-direction:column;background:#111820;border:1px solid #40515e;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px #000}.ds-h3-preview-header,.ds-h3-preview-meta{padding:8px 12px;background:#0d1217;color:#dbe7f0}.ds-h3-preview-header{display:flex;justify-content:space-between;border-bottom:1px solid #344452}.ds-h3-preview-body{padding:12px;background:#090d11;display:flex;justify-content:center}.ds-h3-preview-media{max-width:100%;max-height:40vh;object-fit:contain}.ds-h3-preview-controls{padding:8px 12px;background:#0d1217;display:flex;flex-direction:column;gap:6px}.ds-h3-preview-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:#9fb3c2}.ds-h3-preview-row input[type="number"]{width:60px;padding:2px 4px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:3px}.ds-h3-preview-row input[type="text"],.ds-h3-preview-row textarea{flex:1;min-width:150px;padding:3px 5px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:3px;font-size:11px}.ds-h3-preview-row textarea{resize:vertical;min-height:30px}.ds-h3-preview-meta{font-size:11px;color:#9fb3c2;border-top:1px solid #344452}`;
   style.textContent += `.ds-h3-refmod-overlay{position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(5,9,13,.76);backdrop-filter:blur(3px);box-sizing:border-box}.ds-h3-refmod-panel{width:min(920px,96vw);max-height:min(860px,92vh);display:flex;flex-direction:column;overflow:hidden;background:#101820;color:#dbe7f0;border:1px solid #416079;border-radius:10px;box-shadow:0 18px 60px rgba(0,0,0,.72);font:12px system-ui,sans-serif}.ds-h3-refmod-header{display:flex;justify-content:space-between;gap:24px;padding:18px 20px;background:#0b1218;border-bottom:1px solid #2d4558}.ds-h3-refmod-header h2{margin:0 0 5px;font-size:18px;color:#f0f7fb}.ds-h3-refmod-header p{margin:0;max-width:650px;color:#91a9ba;line-height:1.45}.ds-h3-refmod-close{width:32px;height:32px;padding:0;border:1px solid #405b6e;border-radius:5px;background:#16232d;color:#b9ccd9;font-size:22px;cursor:pointer}.ds-h3-refmod-content{display:flex;flex:1 1 auto;min-height:0;flex-direction:column;gap:10px;padding:16px 20px;overflow:auto;scrollbar-gutter:stable}.ds-h3-refmod-help{display:flex;flex-direction:column;gap:3px;padding:10px 12px;background:#0d2027;border-left:3px solid #56a7c7;color:#93acbb}.ds-h3-refmod-help strong{color:#ccebf5}.ds-h3-refmod-card{flex-shrink:0;border:1px solid #314b5d;border-radius:7px;background:#111c24;overflow:hidden}.ds-h3-refmod-cardhead{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#0c151c;border-bottom:1px solid #2a404f}.ds-h3-refmod-cardhead h3{margin:0;font-size:13px}.ds-h3-refmod-cardhead code{color:#7ee19d}.ds-h3-refmod-cardhead .ds-h3-refmod-insert{margin-left:0;min-height:0;padding:4px 8px}.ds-h3-refmod-cardhead .ds-h3-refmod-remove{margin-left:auto}.ds-h3-refmod-grid{display:flex;flex-direction:column}.ds-h3-refmod-field{display:grid;grid-template-columns:140px minmax(180px,1fr) minmax(220px,1.25fr);gap:14px;align-items:center;min-width:0;padding:10px 12px;border-top:1px solid rgba(49,75,93,.7)}.ds-h3-refmod-field:first-child{border-top:0}.ds-h3-refmod-field strong{font-size:11px;color:#dce9ef}.ds-h3-refmod-field>span:not(.ds-h3-refmod-toggle){min-height:0;color:#829ba9;font-size:10px;line-height:1.4}.ds-h3-refmod-field select,.ds-h3-refmod-field input[type="number"],.ds-h3-refmod-field textarea{box-sizing:border-box;width:100%;min-width:0;padding:7px 8px;background:#091117;color:#e4edf2;border:1px solid #38556a;border-radius:4px}.ds-h3-refmod-field textarea{resize:vertical;min-height:72px}.ds-h3-refmod-field:has(textarea){min-height:92px}.ds-h3-refmod-toggle{display:flex;align-items:center;gap:7px;min-height:32px}.ds-h3-refmod-button{justify-content:space-between}.ds-h3-refmod-badge{margin-left:auto;padding:2px 6px;border-radius:999px;background:#173b29;color:#83e7a7;font-size:10px;font-weight:700;text-transform:none;letter-spacing:0}.ds-h3-refmod-panel button{padding:6px 10px;background:#172833;color:#dceaf1;border:1px solid #3d6075;border-radius:4px;cursor:pointer}.ds-h3-refmod-panel button:hover:not(:disabled){background:#203a49;border-color:#61a1c2}.ds-h3-refmod-panel button:disabled{opacity:.4;cursor:not-allowed}.ds-h3-refmod-add{align-self:flex-start}.ds-h3-refmod-insert{min-height:32px}.ds-h3-refmod-footer{display:flex;align-items:center;justify-content:space-between;padding:11px 20px;background:#0b1218;border-top:1px solid #2d4558;color:#91a9ba}@media(max-width:720px){.ds-h3-refmod-overlay{padding:8px}.ds-h3-refmod-field{grid-template-columns:1fr;gap:5px;align-items:start}.ds-h3-refmod-field>span:not(.ds-h3-refmod-toggle){margin-bottom:3px}}`;
   style.textContent += `
@@ -387,6 +388,41 @@ function install(node) {
     return String(builderState.simple_prompt || "");
   }
   const allowNativeTextEditing = element => { ["pointerdown","mousedown","keydown","keypress","keyup","copy","cut","paste"].forEach(type => element.addEventListener(type, event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") return; event.stopPropagation(); })); };
+  let closePromptNumberPopover = null;
+  function openPromptNumberPopover(anchor, label, onInsert) {
+    closePromptNumberPopover?.();
+    const box = document.createElement("div"); box.className = "ds-h3-number-popover";
+    const caption = document.createElement("label"); caption.textContent = label;
+    const input = document.createElement("input"); input.type = "number"; input.min = "1"; input.step = "1"; input.value = "1";
+    const insert = document.createElement("button"); insert.type = "button"; insert.textContent = "Insert";
+    box.append(caption, input, insert);
+    const close = () => {
+      document.removeEventListener("pointerdown", outside, true);
+      window.removeEventListener("keydown", escape, true);
+      box.remove();
+      if (closePromptNumberPopover === close) closePromptNumberPopover = null;
+    };
+    const outside = event => { if (!box.contains(event.target) && event.target !== anchor) close(); };
+    const escape = event => { if (event.key === "Escape") { event.stopPropagation(); close(); anchor.focus(); } };
+    const submit = () => {
+      const n = Number(input.value);
+      if (!Number.isSafeInteger(n) || n < 1) { input.setCustomValidity("Enter a positive whole number."); input.reportValidity(); return; }
+      close(); onInsert(n);
+    };
+    box.addEventListener("pointerdown", event => event.stopPropagation());
+    box.addEventListener("click", event => event.stopPropagation());
+    input.addEventListener("input", () => input.setCustomValidity(""));
+    input.addEventListener("keydown", event => { event.stopPropagation(); if (event.key === "Enter") { event.preventDefault(); submit(); } });
+    insert.onclick = submit;
+    document.body.append(box);
+    const rect = anchor.getBoundingClientRect();
+    box.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - box.offsetWidth - 8))}px`;
+    box.style.top = `${rect.bottom + box.offsetHeight + 8 <= window.innerHeight ? rect.bottom + 5 : Math.max(8, rect.top - box.offsetHeight - 5)}px`;
+    document.addEventListener("pointerdown", outside, true);
+    window.addEventListener("keydown", escape, true);
+    closePromptNumberPopover = close;
+    input.focus(); input.select();
+  }
 
   function addCharCounter(panel) {
     const helpers = panel.querySelector(".ds-h3-actions");
@@ -422,19 +458,17 @@ function install(node) {
     structureBtn.onclick = () => insertAtCursor(area, builderPromptForWidget(DEFAULT_BUILDER_STATE(mode()), mode()));
     helpers.append(structureBtn);
     const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]";
-    shotBtn.onclick = () => { const n = window.prompt("Shot number:", "1"); if (n) insertAtCursor(area, `[Shot ${n}] `); };
+    shotBtn.onclick = () => openPromptNumberPopover(shotBtn, "Shot number", n => insertAtCursor(area, `[Shot ${n}] `));
     helpers.append(shotBtn);
     if (mode() === "REF2VA") {
       const refmodBtn = document.createElement("button"); refmodBtn.textContent = "Insert RefMod #";
-      refmodBtn.onclick = () => { const n = window.prompt("RefMod number:", "1"); if (n) insertExpandedRefMod(area, n); };
+      refmodBtn.onclick = () => openPromptNumberPopover(refmodBtn, "RefMod number", n => insertExpandedRefMod(area, n));
       helpers.append(refmodBtn);
       const prefillBtn = document.createElement("button"); prefillBtn.textContent = "Prefill Labels & Summary";
-      prefillBtn.title = "Insert reference labels and summary from timeline media at the cursor";
+      prefillBtn.title = "Fill empty H3 reference sections using enabled media, audio tracks and RefMods; keep your authored text";
       prefillBtn.onclick = () => generateRefLabelsAndSummary(area);
       helpers.append(prefillBtn);
     }
-    const previewBtn = document.createElement("button"); previewBtn.textContent = "Preview Prompt";
-    previewBtn.onclick = showPromptPreview; helpers.append(previewBtn);
     if (window.DaSiWaH3Forge && mode() !== "Image Inpaint") {
       const forgeButton = document.createElement("button"); forgeButton.className = "ds-h3-forge-btn";
       forgeButton.textContent = "Prompt Forge"; forgeButton.title = "Write a prompt with a local LLM";
@@ -444,43 +478,95 @@ function install(node) {
     addCharCounter(panel);
   }
 
-  function generateRefLabelsAndSummary(panel) {
-    const items = activeItems().sort((a, b) => {
-      const typeOrder = { image: 0, video: 1, audio: 2 };
-      return (typeOrder[a.type] ?? 3) - (typeOrder[b.type] ?? 3) || a.slot - b.slot;
-    });
-    const pictures = []; const videos = []; const audios = [];
-    items.forEach(item => {
-      if (item.type === "image") pictures.push(item);
-      else if (item.type === "video") videos.push(item);
-      else if (item.type === "audio") audios.push(item);
-    });
-    const subjLines = [];
-    let pictureIdx = 1; let videoIdx = 1; let audioIdx = 1;
-    pictures.forEach(item => {
-      subjLines.push(`<Picture ${pictureIdx}> is the opening-frame anchor.`);
-      pictureIdx++;
-    });
-    videos.forEach(item => {
-      subjLines.push(`<Video ${videoIdx}> provides the camera path and pacing structure.`);
-      videoIdx++;
-    });
-    audios.forEach(item => {
-      subjLines.push(`<Audio ${audioIdx}> is the voice-timbre and audio reference.`);
-      audioIdx++;
-    });
-    const refs = [];
-    pictures.forEach((_, i) => refs.push(`<Picture ${i + 1}>`));
-    videos.forEach((_, i) => refs.push(`<Video ${i + 1}>`));
-    audios.forEach((_, i) => refs.push(`<Audio ${i + 1}>`));
-    const taskPrefixes = [];
-    if (pictures.length) taskPrefixes.push("reference generation");
-    if (videos.length) taskPrefixes.push("video editing");
-    if (audios.length) taskPrefixes.push("audio reference");
-    if (!refs.length) { setStatus("Add timeline references before prefilling labels.", true); return; }
-    const summary = `[${taskPrefixes.join(" + ")}] Use ${refs.join(", ")}.`;
-    const text = `subject_definitions:\n${subjLines.join("\n")}\n\nsummary:\n${summary}\n\n`;
-    insertAtCursor(panel, text);
+  function refPrefill(items, refmods, entries) {
+    const sorted = items.filter(item => item.enabled !== false).slice().sort((a, b) =>
+      ({ image: 0, video: 1, audio: 2 }[a.type] ?? 3) - ({ image: 0, video: 1, audio: 2 }[b.type] ?? 3) || (Number(a.slot) || 0) - (Number(b.slot) || 0));
+    const counts = { image: 0, video: 0, audio: 0 };
+    const definitions = [], retention = [], roles = [];
+    let hasVisual = false, hasAudio = false;
+    const note = value => String(value || "").trim().replace(/\s+/g, " ");
+    const add = (kind, role, description, source) => {
+      const label = `<${{ image: "Picture", video: "Video", audio: "Audio" }[kind]} ${++counts[kind]}>`;
+      const detail = note(description);
+      definitions.push(`${label} ${role}${source ? ` (${source})` : ""}${detail ? ` User description: ${detail}` : ""}.`);
+      if (kind === "audio") {
+        hasAudio = true;
+        retention.push(`${label}: reference - use the audio as a reference, without assuming that the signal is copied.`);
+        roles.push(`${label} for audio guidance`);
+      } else {
+        hasVisual = true;
+        retention.push(`${label} (${kind === "video" ? "visual structure" : "visual guidance"}): weak_reference - use the reference without assuming that its content is copied or preserved as an exact frame.`);
+        roles.push(`${label} for ${kind === "video" ? "visual motion and timing guidance" : "visual guidance"}`);
+      }
+      return label;
+    };
+    for (const item of sorted) {
+      if (item.type === "image") add("image", "is an image reference for the target video", item.prompt, `image slot ${Number(item.slot ?? 0) + 1}`);
+      else if (item.type === "video") {
+        const visual = item.media_mode !== "audio";
+        if (visual) add("video", "is a video reference for the target video", item.prompt, `video slot ${Number(item.slot ?? 0) + 1}`);
+        if (item.media_mode === "audio" || item.media_mode === "video_audio") {
+          add("audio", item.media_mode === "video_audio" ? "is the synchronized audio from the referenced video" : "is the audio track selected from a video", item.media_mode === "audio" ? item.prompt : "", `audio slot ${Number(item.audioSlot ?? item.slot ?? 0) + 1}`);
+        }
+      } else if (item.type === "audio") add("audio", "is an audio reference for the target video", item.prompt, `audio slot ${Number(item.slot ?? 0) + 1}`);
+    }
+    // Native H3 numbers RefMods after all directly loaded timeline media, by kind.
+    for (const row of refmods.filter(r => r.name && r.enabled !== false && Number(r.strength ?? 1) > 0).sort((a, b) => a.slot - b.slot)) {
+      const entry = entries.find(e => e.name === row.name);
+      const kinds = Array.isArray(entry?.kinds) && entry.kinds.length ? entry.kinds : [entry?.kind || row.media_type];
+      for (const kind of kinds) {
+        if (!["image", "video", "audio"].includes(kind)) continue;
+        add(kind, `is a saved ${kind} reference`, row.description || entry?.description, `RefMod ${row.slot}`);
+      }
+    }
+    if (!definitions.length) return null;
+    const types = [...(hasVisual ? ["reference generation"] : []), ...(hasAudio ? ["audio reference"] : [])];
+    return {
+      subject_definitions: definitions.join("\n"),
+      summary: `[${types.join(" + ")}] The target video uses ${roles.join(", ")}.`,
+      retention_analysis: retention.join("\n"),
+    };
+  }
+  function applyRefPrefill(text, fields) {
+    const keys = ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"];
+    const header = /^\s*(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music):/gm;
+    let result = text.trim();
+    if (!header.test(result)) {
+      // Keep existing free text in the actual description, not as a stray preamble.
+      return keys.map(key => `${key}:\n${fields[key] || (key === "detailed_description" ? result : key === "non_diegetic_music" ? "N/A" : "")}`).join("\n\n");
+    }
+    for (const key of keys) {
+      const pattern = new RegExp(`(^\\s*${key}:)[ \\t]*([^]*?)(?=^\\s*(?:${keys.join("|")}):|$(?![^]))`, "m");
+      const match = result.match(pattern);
+      if (match) {
+        if (!match[2].trim() && fields[key]) result = result.replace(pattern, `${match[1]}\n${fields[key]}\n\n`);
+      } else {
+        result += `\n\n${key}:\n${fields[key] || (key === "non_diegetic_music" ? "N/A" : "")}`;
+      }
+    }
+    return result;
+  }
+  async function generateRefLabelsAndSummary(area) {
+    const rows = (state.refmods || []).filter(r => r.name && r.enabled !== false && Number(r.strength ?? 1) > 0);
+    if (rows.length && !refModLibrary.loaded) {
+      try {
+        const response = await api.fetchApi("/dasiwa/refmods");
+        if (!response.ok) throw new Error("Could not read models/refmods.");
+        refModLibrary.entries = await response.json();
+        refModLibrary.loaded = true;
+      } catch (error) { setStatus(`Prefill stopped: ${error.message}`, true); return; }
+    }
+    if (rows.some(row => {
+      const entry = refModLibrary.entries.find(e => e.name === row.name);
+      return !entry || !(Array.isArray(entry.kinds) && entry.kinds.length) && !["image", "video", "audio"].includes(entry.kind);
+    })) { setStatus("Prefill stopped: a selected RefMod has missing or unknown media kinds.", true); return; }
+    if (!area.isConnected) return;
+    const fields = refPrefill(activeItems(), rows, refModLibrary.entries);
+    if (!fields) { setStatus("Add enabled timeline or saved references before prefilling.", true); return; }
+    area.value = applyRefPrefill(area.value, fields);
+    area.dispatchEvent(new Event("input", { bubbles: true }));
+    area.dispatchEvent(new Event("change", { bubbles: true }));
+    setStatus("Reference labels and relationships filled. Check roles and describe the actual shots and sounds.");
   }
 
   function refModTagMap() {
@@ -512,38 +598,6 @@ function install(node) {
     const expansion = refModTagMap().expansions[Number(slot)];
     if (!textarea || !expansion) { setStatus("Choose and enable that saved reference before inserting it.", true); return; }
     insertAtCursor(textarea, expansion + " ");
-  }
-
-  function refModTranslatePreview(text) {
-    const { tags, descriptions } = refModTagMap();
-    let result = text.replace(/<\s*refmod\s*_?\s*(\d+)(?:\s*:[^>]+)?\s*>/gi, (match, slot) => {
-      if (!tags[slot]) return match; // leave unknown tags as-is instead of throwing
-      return tags[slot];
-    });
-    if (descriptions.length) result += "\n\nReference descriptions:\n" + descriptions.join("\n");
-    return result;
-  }
-
-  function showPromptPreview() {
-    const m = mode();
-    let promptText = previewTextFor(m, hasExternalPrompt());
-    if (m === "REF2VA" && !hasExternalPrompt()) {
-      try { promptText = refModTranslatePreview(promptText); } catch (error) { setStatus(error.message, true); return; }
-    }
-    let overlay = document.createElement("div"); overlay.style.cssText = "position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;background:rgba(8,10,14,.7);";
-    overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
-    const panel = document.createElement("div"); panel.style.cssText = "width:min(720px,90vw);max-height:85vh;display:flex;flex-direction:column;background:#111820;border:1px solid #40515e;border-radius:10px;overflow:hidden;box-shadow:0 8px 32px #000;";
-    const header = document.createElement("div"); header.style.cssText = "padding:8px 12px;background:#0d1217;color:#dbe7f0;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #344452;";
-    header.innerHTML = `<span>Prompt Preview (${m} · ${promptStyle() === "simple" ? "simple" : "structured"}${hasExternalPrompt() ? " · external" : ""})</span><button title="Copy">📋</button>`;
-    const copyBtn = header.querySelector("button");
-    copyBtn.onclick = () => { navigator.clipboard.writeText(promptText).then(() => { copyBtn.textContent = "✓"; setTimeout(() => copyBtn.textContent = "📋", 1200); }).catch(() => { copyBtn.textContent = "×"; }); };
-    const closeBtn = document.createElement("button"); closeBtn.textContent = "×"; closeBtn.style.cssText = "background:none;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px;"; closeBtn.onclick = () => overlay.remove(); header.appendChild(closeBtn);
-    const body = document.createElement("div"); body.style.cssText = "padding:10px 12px;overflow:auto;";
-    const textarea = document.createElement("textarea"); textarea.readOnly = true; textarea.value = promptText; textarea.style.cssText = "width:100%;min-height:300px;max-height:60vh;resize:vertical;background:#090d11;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;font-family:monospace;font-size:11px;line-height:1.4;box-sizing:border-box;"; body.appendChild(textarea);
-    const footer = document.createElement("div"); footer.style.cssText = "padding:8px 12px;background:#0d1217;display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #344452;";
-    const doneBtn = document.createElement("button"); doneBtn.textContent = "Done"; doneBtn.onclick = () => overlay.remove(); footer.appendChild(doneBtn);
-    panel.append(header, body, footer); overlay.appendChild(panel); document.body.appendChild(overlay);
-    window.addEventListener("keydown", event => { if (event.key === "Escape") overlay.remove(); }, { once: true });
   }
 
   let previewOverlay = null;
@@ -1125,6 +1179,7 @@ function install(node) {
   }
   async function acceptFile(file, targetLane = null) { const type = mediaTypeFor(file); const validLane = targetLane === "image" ? type === "image" : targetLane === "video" ? type === "video" : targetLane === "audio" ? (type === "audio" || type === "video") : true; const modeSupportsType = !!type && allowsType(type); const lane = (type === "video" && targetLane === "audio") ? "audio" : type === "audio" ? "audio" : type === "video" ? "video" : "image"; if (!type || !validLane || !modeSupportsType) { const requirement = mode() === "FL2VA" ? "FL2VA supports image references only; video and audio are unavailable." : targetLane ? `Drop ${targetLane === "audio" ? "audio or video" : targetLane === "video" ? "video" : "image"} files on this lane.` : "This media type is not available in the selected MiniMax mode."; setStatus(requirement, true); return; } if (occupiedSlotsForLane(activeItems(), lane).size >= MAX[lane] || activeItems().length >= MAX.total) { setStatus(`Limit reached: ${MAX[lane]} ${lane}s / ${MAX.total} files.`, true); return; } const laneAvail = availableSlots(lane); const laneOccupied = occupiedSlotsForLane(activeItems(), lane); const laneFree = laneAvail.some(slot => !laneOccupied.has(slot)); if (!laneFree) { setStatus(`No free ${lane} slot is available.`, true); return; } try { const value = await uploadFile(file, status); const [sourceDuration, dimensions] = await Promise.all([probeDuration(value, type), probeDimensions(value, type)]); if (sourceDuration !== null && sourceDuration < 2) { setStatus(`${file.name}: MiniMax references must be at least 2 seconds.`, true); return; } const duration = sourceDuration === null ? null : Math.min(sourceDuration, 15); let thumbnail = null; if (type === "video") { thumbnail = await captureFirstFrame(viewUrl(value)); } const item = { type, value, thumbnail, ...dimensions, ...(duration !== null ? { duration, source_duration: sourceDuration } : {}), ...((type === "video" || type === "audio") ? { trim_start: 0, trim_end: duration } : {}), ...(type === "video" && targetLane === "audio" ? { media_mode: "audio" } : {}) }; addItem(item); applyResolution(); const added = state.items[state.items.length - 1]; if (type === "audio") void extractWaveform(value, added.id); setStatus(sourceDuration > 15 ? `${file.name} added; cropped to the first 15 seconds.` : `${file.name} added.`); } catch (error) { setStatus(error.message || "Upload failed", true); } }
   const render = () => {
+    closePromptNumberPopover?.();
     timeline.replaceChildren();
     const selected = state.items.find(item => item.id === selectedId);
     const modeGroup = document.createElement("div"); modeGroup.className = "ds-h3-mode-group"; modeGroup.style.display = "flex"; modeGroup.style.flexDirection = "column"; modeGroup.style.alignItems = "flex-start"; modeGroup.style.gap = "4px"; modeGroup.style.padding = "6px"; modeGroup.style.background = "#0d1217"; modeGroup.style.border = "1px solid #344452"; modeGroup.style.borderRadius = "6px"; modeGroup.style.flexShrink = "0"; modeGroup.style.boxSizing = "border-box"; modeGroup.style.width = "100%";
@@ -1384,6 +1439,7 @@ function install(node) {
   }, 300);
   const oldRemoved = node.onRemoved;
   node.onRemoved = function (...args) {
+    closePromptNumberPopover?.();
     activeRefModOverlayCleanup?.();
     document.removeEventListener("keydown", onRefModReloadKey);
     window.clearInterval(node.__dasiwaH3LengthPoll);
