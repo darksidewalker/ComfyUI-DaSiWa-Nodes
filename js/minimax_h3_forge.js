@@ -5,7 +5,26 @@
 // ComfyUI queue: the LLM writes, unloads, and only then is the workflow run.
 // The Director exposes node.__dasiwaH3Forge for reading the timeline and
 // writing the result back.
+import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+
+// Server addresses live in ComfyUI Settings, never in the workflow, so a
+// downloaded workflow cannot point this machine at a server of its choosing.
+const SETTING_OLLAMA = "DaSiWa.H3Forge.OllamaURL";
+const SETTING_OPENAI = "DaSiWa.H3Forge.OpenAIURL";
+app.registerExtension({
+  name: "DaSiWa.H3Forge",
+  settings: [
+    { id: SETTING_OLLAMA, category: ["DaSiWa", "H3 Forge", "Ollama address"], name: "Ollama address", type: "text", defaultValue: "", tooltip: "Leave empty for Ollama on this computer (http://127.0.0.1:11434). Set it to use Ollama on another machine." },
+    { id: SETTING_OPENAI, category: ["DaSiWa", "H3 Forge", "OpenAI-compatible server"], name: "OpenAI-compatible server address", type: "text", defaultValue: "", tooltip: "Optional: a llama.cpp server, llama-swap, LM Studio or koboldcpp, e.g. http://127.0.0.1:8080. Empty = off." },
+  ],
+});
+function settingValue(id) {
+  try { return app.extensionManager?.setting?.get(id) ?? app.ui?.settings?.getSettingValue(id) ?? ""; } catch { return ""; }
+}
+const forgeSettings = () => ({ ollama_url: settingValue(SETTING_OLLAMA) || "", openai_url: settingValue(SETTING_OPENAI) || "" });
+const SOURCE_NAME = { local: "ComfyUI models/llm (loads inside ComfyUI)", ollama: "Ollama", openai: "OpenAI-compatible server" };
+const NO_MODELS = "No models found. Easiest fix: put a vision model folder (for example Qwen3-VL-8B-Instruct from Hugging Face) in ComfyUI/models/llm and reopen Forge. Or install Ollama and run: ollama pull qwen3-vl:8b. Other servers: Settings > DaSiWa > H3 Forge.";
 
 const STORE_KEY = "dasiwa.h3forge";
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
@@ -112,7 +131,7 @@ async function open(node) {
   const detailLabel = el("span", { className: "muted" });
   const creativity = el("select");
   box.append(el("div", { className: "row" },
-    el("div", { className: "field" }, el("label", { textContent: "Model (Ollama)" }), modelSel),
+    el("div", { className: "field" }, el("label", { textContent: "Model" }), modelSel),
     el("div", { className: "field" }, el("label", { textContent: "Creativity" }), creativity)));
   box.append(el("div", { className: "field" }, el("label", {}, "Detail ", detailLabel), detail));
 
@@ -126,20 +145,31 @@ async function open(node) {
   document.body.append(overlay);
   brief.focus();
 
+  const notes = el("div", { className: "muted" });
+  box.insertBefore(notes, status.parentElement);
   let levels = {};
   try {
-    const res = await api.fetchApi("/dasiwa/h3/forge/models");
+    const res = await api.fetchApi("/dasiwa/h3/forge/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: forgeSettings() }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || res.statusText);
-    if (!data.models.length) throw new Error("Ollama has no models installed. Pull one first, e.g. ollama pull qwen3-vl:8b");
-    for (const m of data.models) modelSel.append(el("option", { value: m.name, textContent: `${m.name}${m.parameters ? ` (${m.parameters})` : ""}` }));
-    if (data.models.some(m => m.name === prefs.model)) modelSel.value = prefs.model;
+    notes.textContent = Object.values(data.errors || {}).join(" ");
+    notes.style.color = notes.textContent ? "#ff8a8a" : "";
+    const usable = data.models.filter(m => !m.disabled);
+    if (!usable.length) throw new Error(NO_MODELS);
+    for (const source of ["local", "ollama", "openai"]) {
+      const group = data.models.filter(m => m.id.startsWith(source + ":"));
+      if (!group.length) continue;
+      const og = el("optgroup", { label: SOURCE_NAME[source] });
+      for (const m of group) og.append(el("option", { value: m.id, textContent: m.label, disabled: !!m.disabled }));
+      modelSel.append(og);
+    }
+    modelSel.value = usable.some(m => m.id === prefs.model) ? prefs.model : usable[0].id;
     for (const c of data.creativity) creativity.append(el("option", { value: c, textContent: c[0].toUpperCase() + c.slice(1) }));
     creativity.value = prefs.creativity && data.creativity.includes(prefs.creativity) ? prefs.creativity : data.default_creativity;
     levels = data.detail_levels;
     detail.value = prefs.detail || data.default_detail;
   } catch (err) {
-    setStatus(`Cannot list models: ${err.message}`, true);
+    setStatus(err.message, true);
     genBtn.disabled = true;
   }
   const syncDetail = () => { detailLabel.textContent = `${detail.value} of 10 — ${levels[detail.value] || ""}`; };
@@ -153,7 +183,7 @@ async function open(node) {
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
     genBtn.disabled = true; applyBtn.disabled = true; result = null;
     const started = Date.now();
-    const tick = setInterval(() => setStatus(`Writing with ${modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (the model unloads when it finishes)`), 500);
+    const tick = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (the model unloads when it finishes)`), 500);
     try {
       const res = await api.fetchApi("/dasiwa/h3/forge", {
         method: "POST",
@@ -161,7 +191,7 @@ async function open(node) {
         body: JSON.stringify({
           brief: text, mode, duration: hook.duration(), model: modelSel.value,
           detail: Number(detail.value), creativity: creativity.value,
-          references: refs.map(({ item, ...r }) => r),
+          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(),
         }),
       });
       const data = await res.json();
@@ -169,9 +199,9 @@ async function open(node) {
       result = data;
       output.hidden = false;
       output.textContent = data.simple_prompt;
-      const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : refs.some(r => r.kind === "image") && !data.vision ? " · this model cannot see images" : "";
+      const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
-      setStatus(`Done in ${data.stats.seconds}s · ${data.stats.output_tokens} tokens${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
+      setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
       applyBtn.disabled = false;
     } catch (err) {
       setStatus(err.message, true);

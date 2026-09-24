@@ -11,7 +11,8 @@ every ladder rule comes from that bundle; this file only assembles the user
 message, calls the model, and splits its ===SEGMENT: output into the node's
 builder fields. Prompt-only: no tool calls.
 
-Backend: Ollama on loopback, the same fixed URL nodes_llm.py uses.
+Models come from ComfyUI/models/llm (loaded in-process with nodes_llm.py's
+loaders), an Ollama server, or an OpenAI-compatible server - see Backends.
 """
 
 import asyncio
@@ -21,6 +22,7 @@ import json
 import os
 import re
 from urllib import error as urlerror
+from urllib import parse as urlparse
 from urllib import request as urlrequest
 
 try:
@@ -28,7 +30,6 @@ try:
 except ImportError:  # pragma: no cover - direct test import
     from helper_logging import log_dasiwa
 
-OLLAMA_URL = "http://127.0.0.1:11434"
 BUNDLE_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "h3_forge.json")
 BASE_MODES = ("T2VA", "I2VA", "FL2VA", "L2VA")
 IMAGE_MAX_EDGE = 1024
@@ -36,9 +37,6 @@ IMAGE_MAX_EDGE = 1024
 # this kind of prose with headroom for the segment markers.
 NUM_PREDICT = 3500
 
-# Models this module loaded into Ollama, so the Director can make sure they
-# are gone before it runs even if a request was cut off mid-generation.
-_FORGE_MODELS = set()
 
 _bundle_cache = {"mtime": None, "data": None}
 
@@ -297,54 +295,41 @@ def simple_prompt(fields, mode, duration):
     return f"{head}\n\n{body}" if head else body
 
 
-# ── Ollama ────────────────────────────────────────────────────────────────
+# ── Backends ──────────────────────────────────────────────────────────────
+#
+# Three sources, one picker. A model id is "<source>:<name>":
+#   ollama:<name>   an Ollama server, local by default or wherever Settings says
+#   openai:<name>   any OpenAI-compatible server (llama.cpp server, llama-swap,
+#                   LM Studio, koboldcpp), only when Settings names one
+#   local:<name>    a file or folder in ComfyUI/models/llm, loaded in-process
+#                   with the pack's own loaders from nodes_llm.py
+#
+# Server addresses come from ComfyUI's Settings panel, never from the
+# workflow: a downloaded workflow must not be able to point this machine at a
+# server of its choosing (see the security note on nodes_llm.py's history).
 
-def _ollama(path, payload=None, timeout=10):
+DEFAULT_OLLAMA = "http://127.0.0.1:11434"
+
+
+def _base_url(value, default=""):
+    url = str(value or default).strip().rstrip("/")
+    if not url:
+        return ""
+    if not re.match(r"^https?://[^\s/]+", url):
+        raise ForgeError("bad_url", f"Server address must start with http:// or https://, got {url!r}.")
+    return url
+
+
+def _is_this_machine(url):
+    host = re.sub(r"^https?://", "", url).split("/")[0].rsplit(":", 1)[0].strip("[]").lower()
+    return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
+
+
+def _http(url, payload=None, timeout=10):
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urlrequest.Request(OLLAMA_URL + path, data=data, headers={"Content-Type": "application/json"})
+    req = urlrequest.Request(url, data=data, headers={"Content-Type": "application/json"})
     with urlrequest.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode() or "{}")
-
-
-def list_models():
-    models = []
-    for m in _ollama("/api/tags").get("models", []):
-        models.append({"name": m["name"], "size": m.get("size"), "parameters": (m.get("details") or {}).get("parameter_size")})
-    return models
-
-
-def can_see(model):
-    try:
-        caps = _ollama("/api/show", {"model": model}).get("capabilities") or []
-    except Exception:
-        return False
-    return "vision" in caps
-
-
-def unload(model):
-    """Ask Ollama to drop a model now. Returns True when it is no longer loaded."""
-    try:
-        _ollama("/api/generate", {"model": model, "keep_alive": 0}, timeout=30)
-    except Exception as exc:
-        log_dasiwa("H3 Forge", f"unload of {model} failed: {exc}")
-    return model not in loaded_models()
-
-
-def loaded_models():
-    try:
-        return {m["name"] for m in _ollama("/api/ps").get("models", [])}
-    except Exception:
-        return set()
-
-
-def unload_forge_models():
-    """Backstop for the Director: make sure no Forge model is still resident."""
-    if not _FORGE_MODELS:
-        return
-    for model in list(_FORGE_MODELS & loaded_models()):
-        log_dasiwa("H3 Forge", f"{model} was still loaded; unloading before the Director runs")
-        unload(model)
-    _FORGE_MODELS.clear()
 
 
 def _image_b64(path):
@@ -357,6 +342,216 @@ def _image_b64(path):
     return base64.b64encode(buf.getvalue()).decode()
 
 
+class Ollama:
+    kind = "ollama"
+
+    def __init__(self, base):
+        self.base = base
+
+    def models(self):
+        out = []
+        for m in _http(self.base + "/api/tags").get("models", []):
+            params = (m.get("details") or {}).get("parameter_size")
+            out.append({"id": f"ollama:{m['name']}", "label": f"{m['name']}{f' ({params})' if params else ''}"})
+        return out
+
+    def can_see(self, name):
+        try:
+            return "vision" in (_http(self.base + "/api/show", {"model": name}).get("capabilities") or [])
+        except Exception:
+            return False
+
+    def loaded(self):
+        try:
+            return {m["name"] for m in _http(self.base + "/api/ps").get("models", [])}
+        except Exception:
+            return set()
+
+    def unload(self, name):
+        try:
+            _http(self.base + "/api/generate", {"model": name, "keep_alive": 0}, timeout=30)
+        except Exception as exc:
+            log_dasiwa("H3 Forge", f"unload of {name} failed: {exc}")
+        return name not in self.loaded()
+
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+        message = {"role": "user", "content": user}
+        if images_b64:
+            message["images"] = images_b64
+        result = _http(self.base + "/api/chat", {
+            "model": name, "stream": False, "think": False, "keep_alive": 0,
+            "messages": [{"role": "system", "content": system}, message],
+            "options": {"num_ctx": num_ctx, "num_predict": NUM_PREDICT,
+                        "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8)},
+        }, timeout=timeout)
+        stats = {"prompt_tokens": result.get("prompt_eval_count"), "output_tokens": result.get("eval_count")}
+        return (result.get("message") or {}).get("content") or "", stats
+
+
+class OpenAICompatible:
+    kind = "openai"
+
+    def __init__(self, base):
+        self.base = base
+        self.api = base if base.endswith("/v1") else base + "/v1"
+        self.root = self.api[: -len("/v1")]
+
+    def models(self):
+        return [{"id": f"openai:{m['id']}", "label": m["id"]} for m in _http(self.api + "/models").get("data", [])]
+
+    def can_see(self, name):
+        # No standard capability endpoint; the request itself is the test.
+        return None
+
+    def loaded(self):
+        return set()
+
+    def unload(self, name):
+        # llama-swap has a per-model unload; a plain llama.cpp server or LM
+        # Studio holds its model for the life of the process.
+        try:
+            _http(f"{self.root}/api/models/unload/{urlparse.quote(name, safe='')}", {}, timeout=30)
+            return True
+        except Exception:
+            return False
+
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+        content = user
+        if images_b64:
+            content = [{"type": "text", "text": user}] + [
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images_b64]
+        result = _http(self.api + "/chat/completions", {
+            "model": name, "stream": False, "max_tokens": NUM_PREDICT,
+            "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
+            "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
+            # llama.cpp server honours this; others ignore unknown fields.
+            "chat_template_kwargs": {"enable_thinking": False},
+        }, timeout=timeout)
+        usage = result.get("usage") or {}
+        text = ((result.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        return text, {"prompt_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
+
+
+class Local:
+    """ComfyUI/models/llm, through nodes_llm.py's own loaders."""
+    kind = "local"
+
+    def _llm(self):
+        from . import nodes_llm
+        return nodes_llm
+
+    def models(self):
+        llm = self._llm()
+        try:
+            import llama_cpp  # noqa: F401
+            has_llama_cpp = True
+        except ImportError:
+            has_llama_cpp = False
+        out = []
+        for name in llm._list_llm_models():
+            if name == "None":
+                continue
+            gguf = name.lower().endswith(".gguf")
+            if not gguf and os.path.splitext(name)[1].lower() in (".safetensors", ".bin"):
+                continue  # a bare weight file cannot be loaded for chat
+            if gguf and not has_llama_cpp:
+                out.append({"id": f"local:{name}", "label": f"{name} (GGUF - needs llama-cpp-python installed)", "disabled": True})
+            else:
+                out.append({"id": f"local:{name}", "label": f"{name} ({'GGUF' if gguf else 'transformers'})"})
+        return out
+
+    def can_see(self, name):
+        return not name.lower().endswith(".gguf")  # nodes_llm's llama.cpp path is text-only
+
+    def loaded(self):
+        return set()
+
+    def unload(self, name):
+        self._llm()._release_all_model_memory()
+        return True
+
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout):
+        llm = self._llm()
+        gguf = name.lower().endswith(".gguf")
+        config = {
+            "model_path": llm._resolve_model_path(name, "", allow_gguf=gguf),
+            "backend": "llama_cpp" if gguf else "transformers",
+            "task": "vision" if images_b64 else "text",
+            "device": "auto", "dtype": "auto", "quantization": "none",
+            "cache_mode": "unload_after_run", "attention_implementation": "auto",
+            "kv_cache_implementation": "default", "kv_cache_quant_backend": "quanto",
+            "kv_cache_nbits": 4, "kv_cache_residual_length": 128,
+            "llama_n_ctx": num_ctx, "llama_n_gpu_layers": -1, "llama_n_threads": 0, "llama_chat_format": "",
+        }
+        temperature, top_p = sampling.get("temperature", 0.7), sampling.get("top_p", 0.8)
+        loaded = None
+        try:
+            if gguf:
+                loaded = llm._load_llama_cpp_model(config, need_vision=False)
+                text, _ = llm._run_llama_cpp_generation(loaded, system, user, NUM_PREDICT, temperature, top_p, 1.0, -1)
+            else:
+                pil = []
+                if images_b64:
+                    from PIL import Image
+                    pil = [Image.open(io.BytesIO(base64.b64decode(b))).convert("RGB") for b in images_b64]
+                loaded = llm._load_transformers_model(config, need_vision=bool(pil))
+                text, _ = llm._run_generation(loaded, config, system, user, pil, NUM_PREDICT,
+                                              temperature, top_p, 1.0, -1, 0, True)
+        finally:
+            if loaded is not None:
+                try:
+                    close = getattr(loaded.model, "close", None)
+                    close() if callable(close) else loaded.model.to("cpu")
+                except Exception:
+                    pass
+                del loaded
+            llm._release_all_model_memory()
+        return text, {"prompt_tokens": None, "output_tokens": None}
+
+
+def backends(settings):
+    """The sources this request may use, from the person's ComfyUI Settings."""
+    settings = settings or {}
+    out = {"local": Local(), "ollama": Ollama(_base_url(settings.get("ollama_url"), DEFAULT_OLLAMA))}
+    openai_url = _base_url(settings.get("openai_url"))
+    if openai_url:
+        out["openai"] = OpenAICompatible(openai_url)
+    return out
+
+
+# Models Forge loaded on a server, so the Director can make sure they are gone
+# before it runs even if a request was cut off mid-generation.
+_FORGE_LOADED = set()  # (backend object, model name)
+
+
+def unload_forge_models():
+    """Backstop for the Director: make sure no Forge model is still resident."""
+    for backend, name in list(_FORGE_LOADED):
+        if name in backend.loaded():
+            log_dasiwa("H3 Forge", f"{name} was still loaded; unloading before the Director runs")
+            backend.unload(name)
+    _FORGE_LOADED.clear()
+
+
+def list_all(settings):
+    """Every model the person can pick, and a plain-words note per source that failed.
+
+    The default Ollama address failing is normal - most people do not run
+    Ollama - so it is only reported when they set an address themselves.
+    """
+    settings = settings or {}
+    models, errors = [], {}
+    for kind, backend in backends(settings).items():
+        try:
+            models += backend.models()
+        except Exception as exc:
+            if kind == "ollama" and not settings.get("ollama_url"):
+                continue
+            where = getattr(backend, "base", "ComfyUI/models/llm")
+            errors[kind] = f"Could not reach {where} ({exc.__class__.__name__}). Check the address in Settings > DaSiWa > H3 Forge."
+    return models, errors
+
+
 def generate(body, input_directory=None, release_memory=None):
     """One Forge run. Blocking: call it off the event loop."""
     bundle = load_bundle()
@@ -366,8 +561,10 @@ def generate(body, input_directory=None, release_memory=None):
     brief = str(body.get("brief") or "").strip()
     if not brief:
         raise ForgeError("no_brief", "Write what the clip should be first.")
-    model = str(body.get("model") or "").strip()
-    if not model:
+    kind, _, name = str(body.get("model") or "").partition(":")
+    available = backends(body.get("settings"))
+    backend = available.get(kind)
+    if not backend or not name:
         raise ForgeError("no_model", "Pick a model.")
     creativity = body.get("creativity") or bundle["default_creativity"]
     if creativity not in bundle["creativity_presets"]:
@@ -376,69 +573,71 @@ def generate(body, input_directory=None, release_memory=None):
     duration = body.get("duration")
     references = [r for r in (body.get("references") or []) if isinstance(r, dict)]
 
+    sees = backend.can_see(name)
     images = []
-    sees = can_see(model)
-    if sees and input_directory:
+    if sees is not False and input_directory:
         from .helper_minimax_h3_director import resolve_input_path
         for ref in references:
             if ref.get("kind") == "image" and ref.get("path"):
                 images.append(_image_b64(resolve_input_path(ref["path"], input_directory)))
 
     spec = bundle["modes"][mode]
-    user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(images))
     sampling = bundle["creativity_presets"][creativity]
-    message = {"role": "user", "content": user}
-    if images:
-        message["images"] = images
+    num_ctx = int(body.get("num_ctx") or bundle["context_length"])
+    timeout = int(body.get("timeout") or 600)
 
-    if release_memory:
+    # ComfyUI's models out first, so the LLM has the card to itself. Only when
+    # the LLM runs on this machine: a remote server's VRAM is not ours to free.
+    local_gpu = kind == "local" or _is_this_machine(getattr(backend, "base", "http://127.0.0.1"))
+    if release_memory and local_gpu:
         release_memory()
 
-    _FORGE_MODELS.add(model)
-    payload = {
-        "model": model,
-        "stream": False,
-        "think": False,
-        "keep_alive": 0,
-        "messages": [{"role": "system", "content": spec["system"]}, message],
-        "options": {
-            "num_ctx": int(body.get("num_ctx") or bundle["context_length"]),
-            "num_predict": NUM_PREDICT,
-            "temperature": sampling.get("temperature", 0.7),
-            "top_p": sampling.get("top_p", 0.8),
-        },
-    }
-    try:
-        result = _ollama("/api/chat", payload, timeout=int(body.get("timeout") or 600))
-    except urlerror.HTTPError as exc:
-        detail_text = exc.read().decode(errors="replace")[:400]
-        raise ForgeError("backend", f"Ollama returned {exc.code}: {detail_text}")
-    except (urlerror.URLError, TimeoutError, OSError) as exc:
-        raise ForgeError("backend", f"Could not reach Ollama at {OLLAMA_URL}: {exc}")
-    finally:
-        # keep_alive 0 already asked for this; confirm rather than assume.
-        still = model in loaded_models() and not unload(model)
-        if not still:
-            _FORGE_MODELS.discard(model)
+    def run(with_images):
+        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images))
+        return backend.chat(name, spec["system"], user, with_images, sampling, num_ctx, timeout)
 
-    raw = (result.get("message") or {}).get("content") or ""
+    if kind != "local":
+        _FORGE_LOADED.add((backend, name))
+    started = __import__("time").time()
+    try:
+        try:
+            raw, stats = run(images)
+        except urlerror.HTTPError as exc:
+            # An OpenAI-compatible server that cannot take images says so with
+            # a 4xx; try once more with words only rather than failing.
+            if images and sees is None and 400 <= exc.code < 500:
+                images, sees = [], False
+                raw, stats = run([])
+            else:
+                raise ForgeError("backend", f"{kind} returned {exc.code}: {exc.read().decode(errors='replace')[:400]}")
+    except ForgeError:
+        raise
+    except (urlerror.URLError, TimeoutError, OSError) as exc:
+        raise ForgeError("backend", f"Could not reach {kind} at {getattr(backend, 'base', '')}: {exc}")
+    except ImportError as exc:
+        raise ForgeError("backend", str(exc))
+    finally:
+        unloaded = backend.unload(name) if kind != "local" else True
+        if unloaded:
+            _FORGE_LOADED.discard((backend, name))
+
+    stats["seconds"] = round(__import__("time").time() - started, 1)
     segments = parse_segments(raw, spec["segments"])
     fields = builder_fields(segments, mode)
     simple = simple_prompt(fields, mode, duration)
+    warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"])
+    if not unloaded and local_gpu:
+        warnings.append("This server cannot unload its model; it is still holding VRAM on this machine.")
     return {
         "mode": mode,
         "fields": fields,
         "simple_prompt": simple,
-        "warnings": check_prompt(fields, mode, duration, simple, bundle["max_output_chars"]),
-        "model": model,
+        "warnings": warnings,
+        "model": f"{kind}:{name}",
         "saw_images": len(images),
         "vision": sees,
-        "unloaded": model not in loaded_models(),
-        "stats": {
-            "prompt_tokens": result.get("prompt_eval_count"),
-            "output_tokens": result.get("eval_count"),
-            "seconds": round((result.get("total_duration") or 0) / 1e9, 1),
-        },
+        "unloaded": unloaded or not local_gpu,
+        "stats": stats,
         "raw": raw,
     }
 
@@ -460,15 +659,17 @@ def register_routes():
         from .nodes_llm import _release_all_model_memory
         _release_all_model_memory()
 
-    @server.routes.get("/dasiwa/h3/forge/models")
-    async def forge_models(_request):
+    @server.routes.post("/dasiwa/h3/forge/models")
+    async def forge_models(request):
         try:
-            models = await asyncio.to_thread(list_models)
-        except Exception as exc:
-            return web.json_response({"error": "backend", "message": f"Ollama is not reachable at {OLLAMA_URL}: {exc}"}, status=502)
+            body = await request.json()
+            models, errors = await asyncio.to_thread(list_all, body.get("settings"))
+        except ForgeError as exc:
+            return web.json_response({"error": exc.code, "message": exc.message}, status=400)
         bundle = load_bundle()
         return web.json_response({
             "models": models,
+            "errors": errors,
             "detail_levels": {k: v.get("label") for k, v in bundle["detail_levels"].items()},
             "creativity": list(bundle["creativity_presets"].keys()),
             "default_detail": bundle["default_detail"],
