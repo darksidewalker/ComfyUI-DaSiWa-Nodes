@@ -226,6 +226,27 @@ def builder_fields(segments, mode):
 
 # ── Simple prompt mode: a port of PromptForge's server/h3-simple.mjs ──────
 
+_TIMESTAMP = re.compile(r"\b(\d{1,2}):(\d{2})(?:\.(\d+))?\b")
+
+
+def check_prompt(fields, mode, duration, prompt_text, limit):
+    """Mechanical checks on a finished prompt. Warnings, never repairs."""
+    warnings = []
+    description = fields["ref"]["detailed_description"] if mode == "REF2VA" else fields["imd"]
+    try:
+        clip = float(duration)
+    except (TypeError, ValueError):
+        clip = None
+    if clip:
+        stamps = [int(m) * 60 + int(s) + float(f"0.{frac}" if frac else 0)
+                  for m, s, frac in _TIMESTAMP.findall(description)]
+        if stamps and max(stamps) >= clip:
+            warnings.append(f"Shots run to {max(stamps):g}s but the clip is {clip:g}s. Regenerate, or fix the timestamps.")
+    if len(prompt_text) > limit:
+        warnings.append(f"{len(prompt_text):,} characters; H3 takes {limit:,}. Lower Detail and regenerate.")
+    return warnings
+
+
 def _snapped_seconds_text(seconds):
     try:
         n = float(seconds)
@@ -403,10 +424,12 @@ def generate(body, input_directory=None, release_memory=None):
     raw = (result.get("message") or {}).get("content") or ""
     segments = parse_segments(raw, spec["segments"])
     fields = builder_fields(segments, mode)
+    simple = simple_prompt(fields, mode, duration)
     return {
         "mode": mode,
         "fields": fields,
-        "simple_prompt": simple_prompt(fields, mode, duration),
+        "simple_prompt": simple,
+        "warnings": check_prompt(fields, mode, duration, simple, bundle["max_output_chars"]),
         "model": model,
         "saw_images": len(images),
         "vision": sees,

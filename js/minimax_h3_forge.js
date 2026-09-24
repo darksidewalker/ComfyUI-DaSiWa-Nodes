@@ -170,7 +170,8 @@ async function open(node) {
       output.hidden = false;
       output.textContent = data.simple_prompt;
       const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : refs.some(r => r.kind === "image") && !data.vision ? " · this model cannot see images" : "";
-      setStatus(`Done in ${data.stats.seconds}s · ${data.stats.output_tokens} tokens${seen} · ${data.unloaded ? "model unloaded" : "WARNING: model still loaded"}`, !data.unloaded);
+      const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
+      setStatus(`Done in ${data.stats.seconds}s · ${data.stats.output_tokens} tokens${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
       applyBtn.disabled = false;
     } catch (err) {
       setStatus(err.message, true);

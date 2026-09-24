@@ -1473,6 +1473,8 @@ function install(node) {
       else Object.assign(builderState, result.fields);
       if (promptStyle() === "simple") builderState.simple_prompt = result.simple_prompt;
       emit(); render();
+      // The char counter only recounts on input; nudge it so it shows the new prompt.
+      requestAnimationFrame(() => timeline.querySelectorAll(".ds-h3-prompt-panel").forEach(p => p.dispatchEvent(new Event("input", { bubbles: true }))));
     },
   };
   if (modeWidget) { const old = modeWidget.callback; modeWidget.callback = value => { old?.(value); render(); }; }
