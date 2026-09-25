@@ -526,7 +526,8 @@ class _NoGqaWithoutFlash:
             from transformers.integrations import sdpa_attention
             if torch.cuda.is_available() and not torch.backends.cuda.is_flash_attention_available():
                 self._saved = sdpa_attention.use_gqa_in_sdpa
-                sdpa_attention.use_gqa_in_sdpa = lambda attention_mask, key: False
+                # transformers added `value` as a third argument in newer releases.
+                sdpa_attention.use_gqa_in_sdpa = lambda attention_mask, key, value=None: False
         except Exception:
             self._saved = None
         return self
