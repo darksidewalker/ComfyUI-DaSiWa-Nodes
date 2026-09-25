@@ -13,7 +13,7 @@ class DaSiWaH3ContinuityAppend:
     RETURN_TYPES = ("LATENT", "DF_H3_CONTINUITY_TICKET")
     RETURN_NAMES = ("cumulative_latent", "ticket")
     FUNCTION = "commit"
-    CATEGORY = "DF/MiniMax H3 Continuity"
+    CATEGORY = "DaSiWa/MiniMax H3"
 
     def commit(self, sampled, context):
         if context.get("disabled"):
@@ -37,7 +37,7 @@ class DaSiWaH3ContinuityPublish:
     RETURN_NAMES = ("status",)
     FUNCTION = "publish"
     OUTPUT_NODE = True
-    CATEGORY = "DF/MiniMax H3 Continuity"
+    CATEGORY = "DaSiWa/MiniMax H3"
 
     def publish(self, filename, ticket):
         if ticket.get("disabled"):
