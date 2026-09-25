@@ -75,6 +75,7 @@ class MiniMaxH3DirectorGuide:
                 "guide": ("MINIMAX_H3_DIRECTOR_GUIDE",),
             },
             "optional": {"audio_vae": ("VAE",)},
+            "hidden": {"prompt": "PROMPT", "unique_id": "UNIQUE_ID"},
         }
 
     RETURN_TYPES = ("CONDITIONING", "LATENT", "DF_H3_CONTINUITY_CONTEXT")
@@ -83,7 +84,7 @@ class MiniMaxH3DirectorGuide:
     CATEGORY = "DaSiWa/MiniMax H3"
 
     @classmethod
-    def IS_CHANGED(cls, clip, vae, guide, audio_vae=None):
+    def IS_CHANGED(cls, clip, vae, guide, audio_vae=None, **kwargs):
         if isinstance(guide, dict) and "continuity" in guide:
             from .h3_continuity.core import parse_settings
             settings = parse_settings(guide["continuity"])
@@ -92,7 +93,7 @@ class MiniMaxH3DirectorGuide:
         items = guide.get("minimax_ref_items", []) if isinstance(guide, dict) else []
         return tuple((item["name"], refmod_fingerprint(item["name"])) for item in items if item.get("name"))
 
-    def apply(self, clip, vae, guide, audio_vae=None):
+    def apply(self, clip, vae, guide, audio_vae=None, prompt=None, unique_id=None):
         raw = guide.get("continuity") if isinstance(guide, dict) else None
         if raw is None:
             return (*self._apply_native(clip, vae, guide, audio_vae), {"disabled": True})
@@ -106,6 +107,8 @@ class MiniMaxH3DirectorGuide:
             raise ValueError("Continuity requires a video mode, not Image Inpaint.")
         if abs(float(guide.get("frame_rate", 24)) - 24) > 1e-6:
             raise ValueError("H3 continuity uses native 24 fps. Set Director frame_rate to 24.")
+        from .h3_continuity.validation import validate_capture_graph
+        validate_capture_graph(prompt, unique_id)
         _require_native_arbitrary_guides()
         context = {**settings, "run_id": uuid.uuid4().hex, "mode": guide["mode"],
                    "resolved_prompt": guide.get("resolved_prompt", guide.get("prompt", ""))}
@@ -113,10 +116,18 @@ class MiniMaxH3DirectorGuide:
             positive, latent = self._apply_native(clip, vae, guide, audio_vae)
             context.update(source_id="", overlap_frames=0, extension_frames=0)
             return positive, latent, context
-        previous, metadata = ClipStore().load(settings["session"], settings["source_id"])
+        if settings["source_kind"] == "video":
+            from .h3_continuity.video_source import import_checkpoint
+            _validate_h3_vaes(vae, audio_vae, "REF2VA")
+            previous, metadata, source_id = import_checkpoint(settings, guide, vae, audio_vae)
+            context["source_id"] = source_id
+        else:
+            previous, metadata = ClipStore().load(settings["session"], settings["source_id"])
         updated, target, layout = prepare_continuation(previous, metadata, guide, settings)
         positive, _ = self._apply_native(clip, vae, updated, audio_vae)
-        context.update(layout=layout, resolved_prompt=updated["resolved_prompt"])
+        context.update(layout=layout, resolved_prompt=updated["resolved_prompt"],
+                       provenance={"source_kind": settings["source_kind"],
+                                   "source_video_id": settings.get("source_video_id", "")})
         return add_tail(positive, previous, target, layout), target, context
 
     def _apply_native(self, clip, vae, guide, audio_vae=None):

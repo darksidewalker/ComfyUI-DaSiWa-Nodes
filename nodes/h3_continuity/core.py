@@ -22,7 +22,7 @@ from .vendor.continuation_nodes import (
     _require_native_arbitrary_guides,
 )
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 DEFAULT_PROMPT = (
     "Continue the same uninterrupted shot naturally. Preserve the subjects' identity, "
     "clothing, positions, lighting and environment. Maintain the established motion "
@@ -47,7 +47,12 @@ def parse_settings(raw):
     operation = value.get("operation", "new")
     if operation not in {"new", "continue"}:
         raise ValueError("Continuity operation must be new or continue.")
-    session = safe_id(value.get("session", "mythicalchemy"))
+    # The Director's opt-in state starts with an empty session. Ordinary New
+    # takes must keep working before the user ever touches Continuity.
+    session = value.get("session") or "mythicalchemy"
+    session = safe_id(session)
+    if session == "_imports":
+        raise ValueError("_imports is reserved for uploaded source videos.")
     overlap = int(value.get("overlap_frames", 22))
     extension = int(value.get("extension_frames", 119))
     if overlap not in (5, 22, 39, 56, 73):
@@ -55,10 +60,15 @@ def parse_settings(raw):
     if extension < 17 or extension % 17 or overlap + extension > 362:
         raise ValueError("New frames must be a multiple of 17; context + new frames must be <= 362.")
     source = value.get("source_id", "")
+    source_kind = value.get("source_kind", "checkpoint")
+    if source_kind not in {"checkpoint", "video"}:
+        raise ValueError("Select a checkpoint or uploaded video as the continuity source.")
+    video_id = value.get("source_video_id", "")
     if operation == "continue":
-        if not source:
-            raise ValueError("Click Use last completed or select a source clip before continuing.")
-        safe_id(source)
+        selected = video_id if source_kind == "video" else source
+        if not selected:
+            raise ValueError("Select a completed checkpoint or choose a start video before continuing.")
+        safe_id(selected)
     prompt = str(value.get("continuation_prompt", DEFAULT_PROMPT)).strip()
     idea = str(value.get("idea", "")).strip()
     if len(prompt) > 50000 or len(idea) > 12000:
@@ -68,7 +78,11 @@ def parse_settings(raw):
     capture = value.get("capture", False)
     if not isinstance(capture, bool):
         raise ValueError("Continuity capture must be true or false.")
-    return {**value, "version": 1, "operation": operation, "capture": capture, "session": session,
+    use_references = value.get("use_references", False)
+    if not isinstance(use_references, bool):
+        raise ValueError("Use Director references must be true or false.")
+    return {**value, "version": 2, "operation": operation, "capture": capture, "session": session,
+            "source_kind": source_kind, "source_video_id": video_id, "use_references": use_references,
             "source_id": source, "overlap_frames": overlap, "extension_frames": extension,
             "continuation_prompt": prompt, "idea": idea}
 
@@ -232,7 +246,7 @@ class ClipStore:
                 data = self.metadata(session, path.parent.name)
                 data.pop("output_path", None)
                 clips.append(data)
-            except (ValueError, OSError):
+            except (ValueError, OSError, KeyError, TypeError):
                 continue
         clips.sort(key=lambda x: x["completed_ns"], reverse=True)
         return {"clips": clips[:200], "latest_id": clips[0]["clip_id"] if clips else ""}

@@ -99,33 +99,11 @@ Important: the Guide node replaces and wraps ComfyUI's native `MiniMaxH3ImageToV
 
 The Director has optional model sockets (`fl2va_model`, `ref2va_model`) for lazy loading: connect whichever model matches your active mode. The Guide refuses REF2VA without an audio VAE and detects a swapped MiniMax H3 video/audio VAE before native execution (v0.4.37).
 
-### Continuity wiring and pictogram legend
+### Continuity
 
-**Continue is a Director view, not an additional MiniMax model mode.** Choose the underlying mode (for example FL2VA or REF2VA) as usual, then use **Continue** to extend a completed take. Older workflows without the technical continuation path still run normally, but cannot capture resumable checkpoints. The optional continuity workflow adds two processing nodes after the ordinary Guide and sampler; neither is a second Director control.
+Continue remains a Director view with a separate prompt and existing Forge assistance. It can start from a completed H3 checkpoint or an ordinary video selected with **Choose start video…**. The latter is normalized and encoded with the connected H3 video/audio VAEs during the normal queue run. The source stays pinned until explicitly changed.
 
-```text
-[01  SOURCE]  completed video + immutable AV latent checkpoint
-      │  22 hidden context frames (default; video AND audio)
-      ▼
-[02  GUIDE]   Director Guide + native synchronized tail conditioning
-      │  fresh 141-frame sample window = 22 context + 119 new frames
-      ▼
-[03  SAMPLE]  standard H3 sampler
-      │  sampled joint video/audio latent
-      ▼
-[04  APPEND]  DaSiWa H3 Continuity Append: discard hidden overlap,
-      │      append only 119 new visible AV frames; stage checkpoint
-      ├── cumulative latent ──► existing upscale / decode / video export
-      │                                              │ actual filename
-      └── checkpoint ticket ─────────────────────────┴──► [05 PUBLISH]
-                                                        verify export, mark ready
-```
-
-For the first **New** take, there is no source or hidden overlap: the ordinary Guide and sampler generate the clip, `[04]` stages its complete AV latent, and `[05]` publishes it after export. On subsequent Continue runs, `[01]` means a **completed, pinned source** rather than any imported MP4. `[02]` provides invisible audiovisual motion/sound context, not repeated output footage. `[03]` runs a bounded fresh window. `[04]` keeps the previous latent prefix and adds only the newly generated suffix. `[05]` makes the new clip selectable **only if** the exporter wrote a real file. The two arrows into `[05]` are necessary: sampler success alone is not export success. The sampled-window cap does not cap total length, but each cumulative checkpoint and full decode becomes larger as you continue. Previously exported pixels/audio may change under cumulative decode or postprocessing even though the prior latent prefix is unchanged.
-
-**Manual long-video loop:** Enable **Keep take for Continue** for the first New take and queue it; choose its completed clip ID under Continue; edit the separate next-action prompt and queue; when export finishes, explicitly use that result as the next source (or leave the original selected to reroll a branch). This never silently advances to the latest clip. Continue requires native 24 fps, a compatible model family/canvas and the original checkpoint; downstream frame interpolation may still use another display frame rate. Context length and session live under the Director's advanced Continuity controls. Audio is conditioned and extended together with video; no audio waveform is sent to Prompt Forge. The native AV tail/window/append helpers are derived from [ttulttul/ComfyUI-Minimax-H3-Continuation](https://github.com/ttulttul/ComfyUI-Minimax-H3-Continuation), with its MIT license retained in `nodes/h3_continuity/vendor/LICENSE`.
-
-**Validation boundary:** CPU latent/graph tests and isolated ComfyUI registration do not establish visual or acoustic seam quality. A real H3 GPU run with its model, video VAE and audio VAE is still required before relying on this for production long-form output; each cumulative decode and upscale becomes more expensive as the clip grows.
+See [H3 Continuity](h3_continuity.md) for the source picker, capture toggle, native AV tail behaviour, socket table, wiring diagram, temporal alignment and resource costs. Do not install the old standalone DF continuity extension alongside this integrated build.
 
 ## Modes at a glance
 
@@ -367,7 +345,7 @@ Checkpoint.CLIP  → LoRALoader.clip  → Director.clip
 
 Three rules keep the chain valid:
 
-1. **Forward chain only — never a loop.** A patcher's output feeds *into* the Director's model input; it must never come back out of the Director. The Director is a terminal media node (it emits `frame_rate`, `duration`, `images`, never `MODEL`), and a wire from the Director back into its own model input would be a graph `dependency_cycle`, which ComfyUI's validation rejects.
+1. **Forward chain only — never a loop.** A patcher's output feeds *into* the Director's model input; it must never come back out of the Director. The Director forwards the selected `MODEL` for downstream sampling. Its outputs must never feed a dependency of its own model inputs; that would create a `dependency_cycle`. It emits a guide rather than rendered images.
 2. **One loader per model, in mode order.** The Director picks `ref2va_model` for REF2VA and `fl2va_model` otherwise; the active input must be connected (the unconnected twin may stay empty).
 3. **Type-safe wires.** ComfyUI only lets you connect type-compatible sockets, so `LoRA.MODEL → Director.fl2va_model` is legal but `LoRA.MODEL → Director.clip` is not. No name or type resolution happens at runtime — the socket you plugged in arrives as the keyword-argument named for that socket.
 

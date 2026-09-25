@@ -182,7 +182,14 @@ class MiniMaxH3Director:
             raise ValueError(f"MiniMax Director timeline_data is invalid JSON: {exc}") from exc
         if not isinstance(state, dict):
             raise ValueError("MiniMax Director timeline_data must contain an object")
-        refmod_items = _load_refmod_rows(state.get("refmods", [])) if mode == "REF2VA" else []
+        continuity = None
+        continuing = False
+        if "continuity" in state:
+            from .h3_continuity.core import parse_settings, compose_prompt
+            continuity = parse_settings(state["continuity"])
+            continuing = continuity["operation"] == "continue"
+        use_references = not continuing or continuity["use_references"]
+        refmod_items = _load_refmod_rows(state.get("refmods", [])) if mode == "REF2VA" and use_references else []
         input_scaling = "Off" if external_canvas else (state.get("resolution") or {}).get("input_scaling", "Auto")
         try:
             builder = json.loads(builder_state) if builder_state else state.get("builder_state", {})
@@ -205,6 +212,10 @@ class MiniMaxH3Director:
 
         items = sorted(enumerate(state.get("items", [])), key=lambda pair: (int(pair[1].get("order", pair[0])), pair[0]))
         items = [pair for pair in items if pair[1].get("enabled", True)]
+        if continuing and (mode in BASE_MODES or not use_references):
+            # Endpoint images cannot compete with the AV tail, and stale timeline
+            # files must not block continuation from a separate video/checkpoint.
+            items = []
         first_frame = last_frame = None
         ref_images, ref_videos, ref_video_audios, ref_audios = {}, {}, {}, {}
         images, videos, audios = [], [], []
@@ -309,6 +320,15 @@ class MiniMaxH3Director:
                                       audio_has_visual=bool(images or videos or refmod_items))
 
         tag_map = _refmod_tag_map(refmod_items, ref_images, ref_videos, ref_video_audios, ref_audios)
+        if continuing:
+            continuity["continuation_prompt"] = _translate_refmods(continuity["continuation_prompt"], tag_map)
+            continuity["idea"] = _translate_refmods(continuity["idea"], tag_map)
+            prompt = compose_prompt(continuity)
+            merged = default_builder_state(mode)
+            normalize_ref_schema(merged["ref"])
+            merged["simple_prompt"] = prompt
+            merged["mode"] = mode
+            length = continuity["overlap_frames"] + continuity["extension_frames"]
         prompt = _translate_refmods(prompt, tag_map)
         for key in ("simple_prompt", "imd", "soundscape", "music"):
             if isinstance(merged.get(key), str):
@@ -318,8 +338,10 @@ class MiniMaxH3Director:
             if key in merged.get("ref", {}):
                 merged["ref"][key] = _translate_refmods(merged["ref"][key], tag_map)
 
-        blocks = state.get("prompt_blocks", [])
-        if isinstance(external_prompt_overwrite, str) and external_prompt_overwrite.strip():
+        blocks = [] if continuing else state.get("prompt_blocks", [])
+        if continuing:
+            resolved = prompt
+        elif isinstance(external_prompt_overwrite, str) and external_prompt_overwrite.strip():
             resolved = _translate_refmods(external_prompt_overwrite, tag_map)
         else:
             resolved = build_prompt(merged)
@@ -345,9 +367,8 @@ class MiniMaxH3Director:
         if refmod_items:
             guide["minimax_ref_items"] = refmod_items
             guide["selection_stamp"] = max(refmod_fingerprint(item["name"])[0] for item in refmod_items)
-        if "continuity" in state:
-            from .h3_continuity.core import parse_settings
-            guide["continuity"] = parse_settings(state["continuity"])
+        if continuity is not None:
+            guide["continuity"] = continuity
         guide["frame_rate"] = frame_rate
         normalize_guide(guide)
         selected_model = ref2va_model if mode == "REF2VA" else fl2va_model

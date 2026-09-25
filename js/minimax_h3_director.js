@@ -6,21 +6,24 @@ let h3VaeErrorPopupInstalled = false;
 function installH3VaeErrorPopup() {
   if (h3VaeErrorPopupInstalled) return;
   h3VaeErrorPopupInstalled = true;
+  const knownErrors = [
+    { match: "Audio VAE is connected to the 'vae'", title: "VAE MISMATCH", text: "Connect the video VAE to vae and the audio VAE to audio_vae." },
+    { match: "Video VAE is connected to the 'audio_vae'", title: "VAE MISMATCH", text: "Connect the video VAE to vae and the audio VAE to audio_vae." },
+    { match: "REF2VA supports at most 9 images", title: "TOO MANY IMAGE REFERENCES", text: "REF2VA allows at most 9 images." },
+    { match: "REF2VA supports at most 3 video clips", title: "TOO MANY VIDEO REFERENCES", text: "REF2VA allows at most 3 videos (including RefMods)." },
+    { match: "REF2VA supports at most 3 audio clips", title: "TOO MANY AUDIO REFERENCES", text: "REF2VA allows at most 3 audio clips (including RefMods)." },
+    { match: "REF2VA supports at most 12 reference files", title: "TOO MANY REFERENCES", text: "REF2VA allows at most 12 references combined." },
+    { match: "REF2VA audio must be accompanied by an image or video", title: "AUDIO REFERENCE NEEDS A VISUAL", text: "Add at least one image, video, or visual RefMod alongside the audio." },
+    { match: "REF2VA video duration total must not exceed 15 seconds", title: "VIDEO REFERENCES TOO LONG", text: "Trim the combined reference videos to at most 15 seconds." },
+    { match: "REF2VA audio duration total must not exceed 15 seconds", title: "AUDIO REFERENCES TOO LONG", text: "Trim the combined reference audio to at most 15 seconds." },
+  ];
 
   api.addEventListener("execution_error", ({ detail }) => {
-    if (detail?.node_type !== "MiniMaxH3DirectorGuide") return;
-
+    if (detail?.node_type !== "MiniMaxH3Director" && detail?.node_type !== "MiniMaxH3DirectorGuide") return;
     const message = String(detail?.exception_message || "");
-
-    if (
-      message.includes("Audio VAE is connected to the 'vae'") ||
-      message.includes("Video VAE is connected to the 'audio_vae'")
-    ) {
-      window.alert(
-        "MiniMax H3 VAE MISMATCH\n\n" +
-        message
-      );
-    }
+    const known = knownErrors.find(entry => message.includes(entry.match));
+    if (known) window.alert(`MINIMAX H3: ${known.title}\n\n${known.text}\n\n${message}`);
+    else if (message) window.alert(`MINIMAX H3 ERROR (${detail.node_type})\n\n${message}`);
   });
 }
 
@@ -31,7 +34,7 @@ const DEFAULT_BUILDER_STATE = mode => {
   return { version: 1, mode: mode || "FL2VA", imd: "", soundscape: "", music: "", duration: 5, ref: { subject_defs: [], summary_types: ["reference generation"], summary_text: "", retention: [], style_line: "", detail: "", soundscape: "", music: "" } };
 };
 const DEFAULT_STATE = { version: 1, items: [], prompt_blocks: [], builder_state: null, resolution: null };
-const DEFAULT_CONTINUITY = { version: 1, operation: "new", capture: false, session: "", source_id: "", overlap_frames: 22, extension_frames: 119, continuation_prompt: "Continue the same uninterrupted shot naturally. Preserve the subjects' identity, clothing, positions, lighting and environment. Maintain the established motion direction, camera trajectory and ambient sound. Do not restart the action, repeat completed dialogue, introduce a cut, fade, title, freeze or loop.", idea: "" };
+const DEFAULT_CONTINUITY = { version: 2, source_kind: "checkpoint", source_video_id: "", source_video: null, use_references: false, operation: "new", capture: false, session: "", source_id: "", overlap_frames: 22, extension_frames: 119, continuation_prompt: "Continue the same uninterrupted shot naturally. Preserve the subjects' identity, clothing, positions, lighting and environment. Maintain the established motion direction, camera trajectory and ambient sound. Do not restart the action, repeat completed dialogue, introduce a cut, fade, title, freeze or loop.", idea: "" };
 const MAX = { image: 9, video: 3, audio: 3, total: 12 };
 // H3's VAE emits 16px latent cells and the diffusion transformer patchifies
 // them in 2×2 groups, so both canvas edges must be divisible by 32.
@@ -59,6 +62,13 @@ function installStyles() {
   style.textContent = `
     .ds-h3{box-sizing:border-box;width:100%;min-width:0;min-height:0;align-self:stretch;background:transparent;border:0;border-radius:0;padding:0 0 25px 0;font:12px system-ui,sans-serif;display:flex;flex-direction:column;gap:6px;overflow:visible}
     .ds-h3 button{background:#202b35;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;padding:4px 7px;cursor:pointer}.ds-h3 button:hover{background:#2c3c49}.ds-h3-lane-add{position:absolute;right:6px;z-index:3;width:22px;height:22px;padding:0!important;border-radius:50%!important;font-size:17px;line-height:18px;background:rgba(70,150,105,.3)!important;border-color:rgba(126,210,157,.75)!important;color:#bff3d0!important}
+    .ds-h3-continuity-row{width:100%;box-sizing:border-box;gap:7px;flex-wrap:wrap;padding:7px 9px;background:#17120f;border:1px solid #624027;border-radius:9px}
+    .ds-h3-continuity-row button,.ds-h3-modebar .ds-h3-continue-btn{border-radius:999px!important;color:#dba677!important;border:1px solid #775032!important;background:#251a12!important;transition:background .15s,box-shadow .15s,border-color .15s}
+    .ds-h3-continuity-row button:hover:not(:disabled),.ds-h3-modebar .ds-h3-continue-btn:hover{color:#ffe0ba!important;background:#493020!important;border-color:#ac6834!important;box-shadow:0 0 10px #b9643266}
+    .ds-h3-continuity-row button.active,.ds-h3-modebar .ds-h3-continue-btn.active{color:#ffd8ad!important;background:#382418!important;border-color:#ac6834!important;box-shadow:0 0 9px #b9643255}
+    .ds-h3-continuity-row button:disabled{opacity:.45;cursor:default;box-shadow:none}
+    .ds-h3-continuity-row select,.ds-h3-continuity-row input{min-width:0;max-width:100%;background:#211913;color:#e7c4a2;border:1px solid #644730;border-radius:6px;padding:4px}
+    .ds-h3-continuity-row .ds-h3-source{max-width:380px}.ds-h3-continuity-info{width:100%;color:#baaa9c;font-size:11px;white-space:pre-wrap}.ds-h3-continuity-previews{display:flex;gap:6px;max-width:100%;overflow:auto}.ds-h3-continuity-previews img{width:112px;height:72px;object-fit:contain;background:#100c09;border-radius:5px}.ds-h3-continuity-row details{width:100%}.ds-h3-continuity-row summary{cursor:pointer;color:#b79576}
     .ds-h3-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ds-h3-modebar{display:flex;gap:4px;padding:4px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-modebar button{padding:4px 9px!important;border-radius:999px!important;background:transparent!important;color:#9fb3c2!important}.ds-h3-modebar button:hover{background:rgba(126,235,167,.10)!important;box-shadow:0 0 10px rgba(126,235,167,.5)}.ds-h3-modebar button.active{color:#efe6ff!important;border-color:rgba(177,128,255,.8)!important;box-shadow:0 0 10px rgba(151,91,255,.6);font-weight:700}.ds-h3-clear-btn,.ds-h3-remove-btn{padding:3px 7px!important;font-size:11px;border-radius:999px!important}.ds-h3-modebar .ds-h3-clear-btn{background:rgba(255,100,100,.08)!important;color:#ffb0b0!important;border:1px solid rgba(255,100,100,.35)!important}.ds-h3-modebar .ds-h3-remove-btn{background:rgba(255,150,60,.08)!important;color:#ffcfab!important;border:1px solid rgba(255,150,60,.3)!important}.ds-h3-modebar .ds-h3-clear-btn:hover{background:rgba(255,100,100,.35)!important;color:#ffe2e2!important;border-color:rgba(255,100,100,.95)!important;box-shadow:0 0 14px rgba(255,100,100,.75)}.ds-h3-modebar .ds-h3-remove-btn:hover{background:rgba(255,150,60,.35)!important;color:#ffeadb!important;border-color:rgba(255,150,60,.95)!important;box-shadow:0 0 14px rgba(255,150,60,.75)}.ds-h3-modebar .ds-h3-clear-btn-empty{opacity:.45}.ds-h3-modebar .ds-h3-clear-btn-empty:hover{opacity:1}.ds-h3-modebar .ds-h3-io-dropdown{min-width:0!important;display:inline-flex!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-btn{min-height:0!important;padding:3px 8px!important;font-size:11px!important;border-radius:999px!important;gap:4px!important;font-weight:400}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn{background:rgba(90,160,255,.08)!important;border:1px solid rgba(90,160,255,.35)!important;color:#bcd9ff!important}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn:hover{background:rgba(90,160,255,.35)!important;border-color:rgba(90,160,255,.95)!important;box-shadow:0 0 14px rgba(90,160,255,.75)!important;color:#e5f1ff!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn{background:rgba(90,220,140,.08)!important;border:1px solid rgba(90,220,140,.35)!important;color:#bdf5d3!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn:hover{background:rgba(90,220,140,.35)!important;border-color:rgba(90,220,140,.95)!important;box-shadow:0 0 14px rgba(90,220,140,.75)!important;color:#e3fff0!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-caret{color:inherit!important;font-size:8px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-menu.cols.open{gap:4px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-col{min-width:110px!important}.ds-h3-prompt{width:100%;min-height:88px;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;resize:vertical}.ds-h3-prompt-panel{width:100%;box-sizing:border-box;border:0;border-radius:0;padding:0;display:flex;flex-direction:column;gap:6px;background:transparent;flex-shrink:0}.ds-h3-status{min-height:16px;color:#f3c67a;flex-shrink:0}.ds-h3-info-field{box-sizing:border-box;min-height:28px;border:1px solid #40515e;border-radius:4px;padding:6px 7px;background:#0d1217}.ds-h3-status.error{color:#ff6f6f;font-weight:700}.ds-h3-small{font-size:11px;color:#9fb3c2}.ds-h3-ruler{position:relative;height:19px;color:#8fa3b2;font-size:10px;white-space:nowrap;overflow:hidden}.ds-h3-ruler span{position:absolute;top:1px;border-left:1px solid #587084;padding-left:2px;height:16px}.ds-h3-track{position:relative;min-height:0;max-width:100%;overflow-x:auto;overflow-y:auto;background:#0b1015;border:1px solid #344452;border-radius:5px;padding:7px 6px 6px;flex-shrink:0}.ds-h3-track::before{content:none}.ds-h3-track-inner{position:relative;min-width:100%;height:360px;overflow:visible;background:repeating-linear-gradient(90deg,#111a21 0,#111a21 49px,#1b2933 50px)}.ds-h3-track-inner::after{content:'';position:absolute;left:var(--insert-x,-8px);top:0;height:100%;border-left:2px solid #f3c67a;pointer-events:none}.ds-h3-track-inner.over{outline:2px solid #8dd7ff;outline-offset:-2px}.ds-h3-timeline-lane{position:absolute;left:0;right:0;height:120px;box-sizing:border-box;border-bottom:1px solid #344452;cursor:pointer}.ds-h3-empty-slot{position:absolute;top:21px;height:88px;box-sizing:border-box;border:1px dashed #587084;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#7890a0;font-size:10px;pointer-events:none}.ds-h3-timeline-lane.disabled .ds-h3-empty-slot{display:none}.ds-h3-timeline-lane.visual{top:0;background:rgba(17,30,39,.72)}.ds-h3-timeline-lane.audio{top:120px;background:rgba(22,49,36,.55)}.ds-h3-timeline-lane.selected{box-shadow:inset 0 0 0 2px #8dd7ff}.ds-h3-timeline-lane.disabled{background:rgba(51,55,60,.72);filter:grayscale(1);cursor:not-allowed}.ds-h3-timeline-lane.disabled::after{content:"Not supported by the selected mode";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a1a8ad;font-size:11px;font-weight:600;background:rgba(0,0,0,.35);pointer-events:none}.ds-h3-lane-label{position:absolute;left:5px;top:2px;color:#8fa3b2;font-size:10px;text-transform:uppercase;pointer-events:none;z-index:1}.ds-h3-grip{position:absolute;top:0;width:11px;height:100%;cursor:ew-resize;background:rgba(255,255,255,.22);z-index:4}.ds-h3-grip.left{left:0;border-right:1px solid rgba(255,255,255,.65)}.ds-h3-grip.right{right:0;border-left:1px solid rgba(255,255,255,.65)}.ds-h3-clip{position:absolute;top:18px;height:48px;min-width:64px;box-sizing:border-box;border:1px solid #73c7ef;border-radius:4px;background:#1b4558;color:#e5eef4;padding:6px 14px 19px;cursor:grab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-clip.image,.ds-h3-clip.video{min-width:112px!important;width:112px!important;height:112px;top:7px}.ds-h3-clip.audio{border-color:#7ecf9d;background:#254b38;top:7px;height:112px}.ds-h3-waveform{position:absolute;inset:22px 12px 55px;width:calc(100% - 24px);height:calc(100% - 77px);pointer-events:none;opacity:.9}.ds-h3-crop-marker,.ds-h3-audio-crop-marker{position:absolute;top:20px;bottom:18px;width:4px;background:#fff;box-shadow:0 0 4px #000;cursor:ew-resize;z-index:6}.ds-h3-crop-marker.start,.ds-h3-audio-crop-marker.start{background:#f3c67a}.ds-h3-crop-marker.end,.ds-h3-audio-crop-marker.end{background:#8dd7ff;transform:translateX(-4px)}.ds-h3-crop-readout{position:absolute;left:14px;right:14px;bottom:3px;font-size:10px;line-height:12px;color:#d9f5e2;background:rgba(0,0,0,.36);pointer-events:none;text-align:center;overflow:hidden;white-space:nowrap}.ds-h3-clip-close{position:absolute!important;right:2px;top:2px;width:18px;height:18px;padding:0!important;line-height:15px!important;font-size:16px;color:#fff!important;background:rgba(105,28,28,.9)!important;border-color:#f08080!important;z-index:5}.ds-h3-clip.video{border-color:#b887d8;background:#432e52}.ds-h3-clip.text{border-color:#83c98a;background:#27442d}
   `;
   style.textContent += `.ds-h3-prompt-toolbar{width:100%;box-sizing:border-box;flex-wrap:wrap;gap:6px;padding:6px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-prompt-toolbar .ds-h3-small{color:#9fb3c2;font-weight:600;margin-right:6px}.ds-h3-prompt-toolbar button{white-space:nowrap;transition:background .16s ease,box-shadow .16s ease}`;
@@ -267,7 +277,7 @@ function install(node) {
       altKey: event.altKey, metaKey: event.metaKey,
     }));
   }, { passive: false });
-  const setStatus = (message, isError = false) => { status.textContent = message; status.classList.toggle("error", isError); };
+  const setStatus = (message, isError = false) => { status.textContent = message; status.style.display = message ? "" : "none"; status.setAttribute("role", isError ? "alert" : "status"); status.classList.toggle("error", isError); requestAnimationFrame(() => syncNodeBounds("fit")); };
   function migratePromptToSingleField() {
     if (builderState.prompt_mode === "structured" || typeof builderState.simple_prompt !== "string") {
       const preserved = legacyPrompt(state, promptWidget?.value);
@@ -451,7 +461,8 @@ function install(node) {
 
   function continuityState() {
     if (!state.continuity || typeof state.continuity !== "object") state.continuity = { ...DEFAULT_CONTINUITY };
-    else state.continuity = { ...DEFAULT_CONTINUITY, ...state.continuity };
+    // Keep object identity: rendered input callbacks must edit the live state.
+    for (const [key, value] of Object.entries(DEFAULT_CONTINUITY)) if (state.continuity[key] === undefined) state.continuity[key] = value;
     return state.continuity;
   }
   const isContinuing = () => state.continuity?.operation === "continue";
@@ -462,7 +473,10 @@ function install(node) {
     else builderState.simple_prompt = value;
     emit();
   }
-  let continuityClips = [], continuityLatest = "", continuityFinishedId = "", continuityLoading = false, continuityError = "";
+  const continuitySourceId = c => c.source_kind === "video" ? c.source_video_id : c.source_id;
+  let continuityClips = [], continuityLatest = "", continuityFinishedId = "", continuityLoading = false, continuityError = "", continuityUploading = false;
+  let continuityDraft = null, continuityModels = [], continuityModelChoice = "", continuityModelError = "", continuityAnalyzing = false;
+  const draftKey = c => JSON.stringify([c.session, c.source_kind, continuitySourceId(c), c.idea, c.extension_frames, c.continuation_prompt]);
   async function refreshContinuity() {
     const session = state.continuity?.session;
     if (!session || continuityLoading) return;
@@ -473,33 +487,32 @@ function install(node) {
       const data = await response.json();
       if (state.continuity?.session !== session) return;
       continuityClips = Array.isArray(data.clips) ? data.clips : [];
-      continuityLatest = data.latest_id || "";
-      continuityError = "";
-    } catch (error) { continuityError = error.message || String(error); }
+      continuityLatest = data.latest_id || ""; continuityError = "";
+    } catch (error) { if (state.continuity?.session === session) continuityError = error.message || String(error); }
     finally { continuityLoading = false; render(); if (state.continuity?.session !== session) void refreshContinuity(); }
   }
-  function selectContinuitySource(id) { const c = ensureContinuitySession(); c.source_id = id; emit(); render(); }
+  function selectContinuitySource(id) { const c = ensureContinuitySession(); c.source_kind = "checkpoint"; c.source_id = id; continuityDraft = null; emit(); render(); }
   function useLatestContinuity() { if (continuityLatest) selectContinuitySource(continuityLatest); }
   function continuityGraphReady() {
     const graph = node.graph;
-    if (!Array.isArray(graph?._nodes)) return true; // Graph not hydrated yet.
-    const types = new Set();
-    const visit = (nodes) => { for (const item of nodes || []) { types.add(item.type || item.comfyClass); visit(item.subgraph?._nodes); } };
-    visit(graph._nodes);
-    // A partial graph cannot publish a checkpoint, even when its Director
-    // controls are present. Do not offer capture without both post-sampler nodes.
+    if (!Array.isArray(graph?._nodes)) return true;
+    const types = new Set(), seen = new Set();
+    const visit = graph => { if (!graph || seen.has(graph)) return; seen.add(graph); for (const item of graph._nodes || []) { types.add(item.type || item.comfyClass); visit(item.subgraph); } };
+    visit(graph.rootGraph || graph);
     return types.has("DaSiWaH3ContinuityAppend") && types.has("DaSiWaH3ContinuityPublish");
   }
-  function continuityGraphError() { setStatus("Capture unavailable: add and wire the Append & Stage and Publish technical nodes in a continuity workflow.", true); }
+  function continuityGraphError() { setStatus("Capture unavailable: wire Append & Stage and Publish Export as shown in the continuity workflow.", true); }
   function enterContinue() {
     if (!continuityGraphReady()) { continuityGraphError(); return false; }
-    if (mode() === "Image Inpaint") { setStatus("Continue requires a video/audio H3 mode, not Image Inpaint.", true); return false; }
-    if (!state.continuity?.source_id) { setStatus("Select a completed checkpoint first (or use last completed).", true); return false; }
-    const c = ensureContinuitySession(); continuityDraft = null; c.operation = "continue"; c.capture = true;
-    emit(); render(); void loadContinuityModels(); return true;
+    if (mode() === "Image Inpaint") { setStatus("Choose a video mode before Continue.", true); return false; }
+    const c = ensureContinuitySession(); c.operation = "continue"; c.capture = true;
+    emit(); render(); void refreshContinuity(); void loadContinuityModels();
+    if (!continuitySourceId(c)) setStatus("Choose a start video or select a completed checkpoint, then queue.");
+    return true;
   }
   function selectRealMode(value) {
     if (state.continuity) state.continuity.operation = "new";
+    continuityDraft = null;
     if (modeWidget) { modeWidget.value = value; modeWidget.callback?.(value); }
     emit(); render();
   }
@@ -507,97 +520,136 @@ function install(node) {
     if (event.detail?.session !== state.continuity?.session) return;
     continuityFinishedId = event.detail?.clip_id || "";
     void refreshContinuity();
-    setStatus("Continuity export complete. Use finished result to select it; the current source stays pinned.");
+    setStatus("Continuity export complete. Use finished result to continue it; your current source stays pinned.");
   }
   api.addEventListener?.("df_h3_continuity_saved", onContinuitySaved);
-  let continuityDraft = null, continuityModels = [], continuityModelChoice = "", continuityModelError = "", continuityAnalyzing = false;
+  async function chooseContinuityVideo(file) {
+    if (!file || continuityUploading) return;
+    if (!continuityGraphReady()) { continuityGraphError(); return; }
+    const c = ensureContinuitySession(), session = c.session;
+    continuityUploading = true; render();
+    try {
+      const filename = await uploadFile(file, status);
+      setStatus("Preparing source previews… H3 encoding starts when you queue.");
+      const response = await api.fetchApi("/df_h3_continuity/video", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ filename }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not prepare this video.");
+      if (continuityState().session !== session) throw new Error("Session changed during upload. Choose the video again in this session.");
+      c.source_kind = "video"; c.source_video_id = data.clip_id; c.source_video = data;
+      continuityDraft = null; emit(); enterContinue();
+      setStatus(`${data.filename} selected. Queue to encode its video and audio as an H3 source.`);
+    } catch (error) { setStatus(error.message || String(error), true); }
+    finally { continuityUploading = false; render(); }
+  }
   async function loadContinuityModels() {
     try {
       const response = await api.fetchApi("/dasiwa/h3/forge/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: window.DaSiWaH3Forge?.settings?.() || {} }) });
       if (!response.ok) throw new Error(`Forge models unavailable (${response.status}).`);
       const data = await response.json();
       continuityModels = (data.models || []).filter(model => !model.disabled);
-      continuityModelError = continuityModels.length ? "" : "No Forge model available; you can still write the prompt manually.";
+      continuityModelError = continuityModels.length ? "" : "No Forge model available; the prompt remains editable.";
     } catch (error) { continuityModelError = error.message || String(error); }
     render();
   }
   async function analyzeContinuity(model) {
-    const { session, source_id, idea } = continuityState();
-    if (!session || !source_id || !model || continuityAnalyzing) { setStatus("Choose a completed source and Forge model first.", true); return; }
-    continuityAnalyzing = true; continuityDraft = null;
+    const c = continuityState(), source = continuitySourceId(c), key = draftKey(c);
+    if (!c.session || !source || !model || continuityAnalyzing) { setStatus("Choose a source and Forge model first.", true); return; }
+    continuityAnalyzing = true; continuityDraft = null; render();
     try {
-      const response = await api.fetchApi("/df_h3_continuity/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session, clip_id: source_id, idea, model, settings: window.DaSiWaH3Forge?.settings?.() || {} }) });
+      const response = await api.fetchApi("/df_h3_continuity/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session: c.session, clip_id: source, source_kind: c.source_kind, idea: c.idea, extension_frames: c.extension_frames, model, settings: window.DaSiWaH3Forge?.settings?.() || {} }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Analyze unavailable (${response.status}).`);
-      if (data.source_id !== source_id || !data.prompt) throw new Error("Analyze response does not match the selected source.");
-      continuityDraft = { prompt: String(data.prompt), session, source_id, idea };
-      setStatus(data.vision ? "Draft ready from tail frames (no audio analysis). Apply explicitly." : "Text-only draft ready (no frames or audio analyzed). Apply explicitly.");
-    } catch (error) { setStatus(`Analyze unavailable: ${error.message || error}. Manual prompt remains editable.`, true); }
+      if (data.source_id !== source || !data.prompt) throw new Error("Analyze response does not match the selected source.");
+      if (!isContinuing() || draftKey(continuityState()) !== key) throw new Error("Source, idea, duration or prompt changed during analysis. Analyze again.");
+      continuityDraft = { prompt: String(data.prompt), key };
+      setStatus(data.vision ? "Draft ready from tail frames; audio was not analyzed. Review and apply." : "Text-only draft ready; no images or audio analyzed. Review and apply.");
+    } catch (error) { setStatus(`Analyze unavailable: ${error.message || error}`, true); }
     finally { continuityAnalyzing = false; render(); }
   }
   function applyContinuityDraft() {
     const c = continuityState();
-    if (!continuityDraft || !isContinuing() || continuityDraft.session !== c.session || continuityDraft.source_id !== c.source_id || continuityDraft.idea !== c.idea) {
-      setStatus("Draft is stale; analyze the currently selected source and idea again.", true); return false;
+    if (!continuityDraft || !isContinuing() || continuityDraft.key !== draftKey(c)) {
+      setStatus("Draft is stale; analyze the current source and idea again.", true); return false;
     }
-    setActivePrompt(continuityDraft.prompt); continuityDraft = null; render(); return true;
+    c.continuation_prompt = continuityDraft.prompt;
+    c.idea = ""; // The draft already incorporates it; do not append it a second time.
+    continuityDraft = null; emit(); render(); return true;
   }
   function buildContinuityControls(parent) {
-    const c = state.continuity || DEFAULT_CONTINUITY;
+    const c = continuityState();
     const row = document.createElement("div"); row.className = "ds-h3-continuity-row ds-h3-actions";
-    row.style.cssText = "width:100%;box-sizing:border-box;gap:7px;flex-wrap:wrap;padding:5px 7px;background:#0d1217;border:1px solid #344452;border-radius:5px";
-    const button = (text, action) => { const el = document.createElement("button"); el.textContent = text; el.onclick = action; row.append(el); return el; };
-    if (!continuityGraphReady()) { const warning = document.createElement("span"); warning.className = "ds-h3-small"; warning.textContent = "Capture unavailable · workflow needs Append & Stage + Publish"; row.append(warning); }
+    const heading = document.createElement("strong"); heading.textContent = "∞ Continuity:"; row.append(heading);
+    const button = (text, action) => { const el = document.createElement("button"); el.type = "button"; el.textContent = text; el.onclick = action; row.append(el); return el; };
+    const info = text => { const el = document.createElement("div"); el.className = "ds-h3-continuity-info"; el.textContent = text; row.append(el); return el; };
     if (!isContinuing()) {
-      const label = document.createElement("label"); label.className = "ds-h3-small";
-      const capture = document.createElement("input"); capture.type = "checkbox"; capture.checked = c.capture;
-      capture.onchange = () => { if (capture.checked && !continuityGraphReady()) { capture.checked = false; continuityGraphError(); return; } const current = ensureContinuitySession(); current.capture = capture.checked; emit(); render(); if (capture.checked) void refreshContinuity(); };
-      label.append(capture, document.createTextNode(" Keep take for Continue")); row.append(label);
+      const capture = button(`${c.capture ? "✓ " : ""}Keep take for Continue`, () => {
+        if (!c.capture && !continuityGraphReady()) { continuityGraphError(); return; }
+        const current = ensureContinuitySession(); current.capture = !current.capture; emit(); render(); void refreshContinuity();
+      });
+      capture.classList.toggle("active", c.capture); capture.setAttribute("aria-pressed", String(c.capture));
     }
+    const file = document.createElement("input"); file.type = "file"; file.accept = "video/*,.mkv,.avi,.mov,.webm,.mp4,.m4v,.mts,.m2ts"; file.hidden = true;
+    file.setAttribute("aria-label", "Start video file"); file.onchange = () => void chooseContinuityVideo(file.files?.[0]); row.append(file);
+    button(continuityUploading ? "Preparing video…" : "Choose start video…", () => file.click()).disabled = continuityUploading || mode() === "Image Inpaint";
     if (c.session || isContinuing()) {
-      const source = document.createElement("select"); source.title = "Pinned completed checkpoint";
-      source.append(new Option("Select completed checkpoint…", ""));
-      if (c.source_id && !continuityClips.some(clip => clip.clip_id === c.source_id)) source.append(new Option(`${c.source_id} (not in list)`, c.source_id));
-      continuityClips.forEach(clip => source.append(new Option(`${clip.clip_id} · ${clip.frames || "?"} frames`, clip.clip_id)));
-      source.value = c.source_id; source.onchange = () => selectContinuitySource(source.value); row.append(source);
+      const source = document.createElement("select"); source.className = "ds-h3-source"; source.title = "Continuity source"; source.setAttribute("aria-label", "Continuity source");
+      source.append(new Option("Select a source…", ""));
+      if (c.source_video_id) source.append(new Option(`Video · ${c.source_video?.filename || c.source_video_id.slice(0, 8)}`, `video:${c.source_video_id}`));
+      if (c.source_id && !continuityClips.some(clip => clip.clip_id === c.source_id)) source.append(new Option(`${c.source_id.slice(0, 12)} (not in list)`, `checkpoint:${c.source_id}`));
+      continuityClips.forEach(clip => source.append(new Option(`${clip.clip_id.slice(0, 12)} · ${Number(clip.seconds || 0).toFixed(2)}s · ${clip.width}×${clip.height}`, `checkpoint:${clip.clip_id}`)));
+      source.value = continuitySourceId(c) ? `${c.source_kind}:${continuitySourceId(c)}` : "";
+      source.onchange = () => { const [kind, id] = source.value.split(":"); if (kind === "video") { c.source_kind = kind; c.source_video_id = id; continuityDraft = null; emit(); render(); } else selectContinuitySource(id || ""); }; row.append(source);
       button("Use last completed", useLatestContinuity).disabled = !continuityLatest;
       if (continuityFinishedId) button("Use finished result", () => selectContinuitySource(continuityFinishedId));
-      button("Refresh", () => void refreshContinuity());
-      if (isContinuing()) {
-      const frames = document.createElement("label"); frames.className = "ds-h3-small"; frames.textContent = "New frames ";
-      const extension = document.createElement("select");
-      for (let count = 17; count + Number(c.overlap_frames) <= 362; count += 17) extension.append(new Option(`${count} frames`, String(count)));
-      extension.value = String(c.extension_frames);
-      extension.onchange = () => { c.extension_frames = Number(extension.value); emit(); };
-      frames.append(extension); row.append(frames);
-      const modelSelect = document.createElement("select"); modelSelect.title = "Existing H3 Forge model";
-      continuityModels.forEach(model => modelSelect.append(new Option(model.label || model.id, model.id)));
-      if (continuityModels.length) modelSelect.value = continuityModels.some(model => model.id === continuityModelChoice) ? continuityModelChoice : continuityModels[0].id;
-      modelSelect.onchange = () => { continuityModelChoice = modelSelect.value; }; row.append(modelSelect);
-      button(continuityAnalyzing ? "Analyzing…" : "Analyze → Draft", () => void analyzeContinuity(modelSelect.value)).disabled = continuityAnalyzing || !continuityModels.length;
-      if (continuityDraft) {
-        const preview = document.createElement("span"); preview.className = "ds-h3-small"; preview.style.width = "100%";
-        preview.textContent = continuityDraft.prompt; row.append(preview);
-        const apply = button("Apply draft", applyContinuityDraft);
-        apply.disabled = continuityDraft.session !== c.session || continuityDraft.source_id !== c.source_id || continuityDraft.idea !== c.idea;
-        button("Discard draft", () => { continuityDraft = null; render(); });
-      }
-      if (continuityModelError) { const info = document.createElement("span"); info.textContent = continuityModelError; row.append(info); }
-      const idea = document.createElement("input"); idea.type = "text"; idea.placeholder = "Next idea (optional)"; idea.value = c.idea; idea.style.flex = "1"; idea.style.minWidth = "130px"; idea.onchange = () => { c.idea = idea.value; emit(); }; row.append(idea);
-      const advanced = document.createElement("details"); advanced.style.width = "100%";
-      const summary = document.createElement("summary"); summary.textContent = "Advanced · overlap / session"; advanced.append(summary);
-      const overlap = document.createElement("select");
-      for (const value of [5, 22, 39, 56, 73]) overlap.append(new Option(`${value} frames`, String(value)));
-      overlap.value = String(c.overlap_frames);
-      overlap.onchange = () => { c.overlap_frames = Number(overlap.value); if (c.overlap_frames + c.extension_frames > 362) c.extension_frames = Math.floor((362 - c.overlap_frames) / 17) * 17; emit(); render(); };
-      const session = document.createElement("input"); session.type = "text"; session.value = c.session; session.placeholder = "Session ID";
-      session.onchange = () => { if (!/^[A-Za-z0-9_-]{1,80}$/.test(session.value)) { setStatus("Session ID: letters, numbers, _ and - only.", true); session.value = c.session; return; } c.session = session.value; c.source_id = ""; continuityClips = []; continuityLatest = ""; emit(); void refreshContinuity(); };
-      advanced.append(document.createTextNode("Overlap frames "), overlap, document.createTextNode(" Session "), session); row.append(advanced);
-      if (continuityError) { const warning = document.createElement("span"); warning.textContent = continuityError; row.append(warning); }
+      button("Refresh", () => { void refreshContinuity(); if (isContinuing()) void loadContinuityModels(); });
+    }
+    const selected = c.source_kind === "video" ? c.source_video : continuityClips.find(clip => clip.clip_id === c.source_id);
+    if (selected && continuitySourceId(c)) {
+      const base = c.source_kind === "video" ? `/df_h3_continuity/video/${c.source_video_id}` : `/df_h3_continuity/tail/${c.session}/${c.source_id}`;
+      if (selected.thumbnails?.length) { const previews = document.createElement("div"); previews.className = "ds-h3-continuity-previews";
+        selected.thumbnails.forEach((_, i) => { const img = document.createElement("img"); img.src = api.apiURL(`${base}/${i}`); img.alt = `Source tail frame ${i + 1}`; previews.append(img); }); row.append(previews); }
+      if (c.source_kind === "video") info(`Source: ${Number(selected.seconds).toFixed(2)}s · ${selected.width}×${selected.height} → Director canvas · 24 fps · ${selected.has_audio ? "audio retained" : "silent audio encoded"}. H3 alignment can add up to 16 leading frames.`);
+      else {
+        info(`Pinned source: ${selected.frames} frames · ${selected.width}×${selected.height} · ${selected.mode}. Use the same canvas and model family.`);
+        const match = button("Match source settings", () => {
+          state.resolution = { ...resolutionState(), resolution: "custom", custom_mode: "fixed", custom_width: selected.width, custom_height: selected.height };
+          if (modeWidget) { modeWidget.value = selected.mode; modeWidget.callback?.(selected.mode); }
+          const fps = node.widgets?.find(w => w.name === "frame_rate"); if (fps) { fps.value = 24; fps.callback?.(24); }
+          applyResolution(); emit(); render();
+        });
+        match.disabled = hasExternalCanvas(); match.title = hasExternalCanvas() ? "Canvas comes from connected width/height inputs; change them upstream." : "Restore this checkpoint's canvas, H3 mode and 24 fps";
       }
     }
+    if (isContinuing()) {
+      const extension = document.createElement("select"); extension.setAttribute("aria-label", "New frames");
+      for (let count = 17; count + Number(c.overlap_frames) <= 362; count += 17) extension.append(new Option(`+${(count / 24).toFixed(2)}s (${count} frames)`, String(count)));
+      extension.value = String(c.extension_frames); extension.onchange = () => { c.extension_frames = Number(extension.value); emit(); render(); }; row.append(extension);
+      info(`${c.overlap_frames} hidden context frames + ${c.extension_frames} new frames. The selected source stays pinned until you change it.`);
+      const idea = document.createElement("input"); idea.type = "text"; idea.placeholder = "Next idea (optional)"; idea.setAttribute("aria-label", "Next idea"); idea.value = c.idea; idea.style.flex = "1"; idea.style.minWidth = "180px";
+      idea.oninput = () => { c.idea = idea.value; emit(); }; allowNativeTextEditing(idea); row.append(idea);
+      button("Prefill prompt", () => { c.continuation_prompt = DEFAULT_CONTINUITY.continuation_prompt; continuityDraft = null; emit(); render(); });
+      const model = document.createElement("select"); model.title = "Existing H3 Forge model"; model.setAttribute("aria-label", "Forge model");
+      continuityModels.forEach(entry => model.append(new Option(entry.label || entry.id, entry.id)));
+      if (continuityModels.length) model.value = continuityModels.some(entry => entry.id === continuityModelChoice) ? continuityModelChoice : continuityModels[0].id;
+      model.onchange = () => { continuityModelChoice = model.value; }; row.append(model);
+      button(continuityAnalyzing ? "Analyzing…" : "Analyze → Draft", () => void analyzeContinuity(model.value)).disabled = continuityAnalyzing || !continuityModels.length || !continuitySourceId(c);
+      if (continuityDraft) { info(continuityDraft.prompt); button("Apply draft", applyContinuityDraft).disabled = continuityDraft.key !== draftKey(c); button("Discard draft", () => { continuityDraft = null; render(); }); }
+      if (continuityModelError) info(continuityModelError);
+    }
+    const advanced = document.createElement("details"), summary = document.createElement("summary"); summary.textContent = "Advanced · context / references / session"; advanced.append(summary);
+    const overlap = document.createElement("select"); overlap.setAttribute("aria-label", "Context frames");
+    for (const value of [5, 22, 39, 56, 73]) overlap.append(new Option(`${value} frames`, String(value)));
+    overlap.value = String(c.overlap_frames); overlap.onchange = () => { c.overlap_frames = Number(overlap.value); if (c.overlap_frames + c.extension_frames > 362) c.extension_frames = Math.floor((362 - c.overlap_frames) / 17) * 17; emit(); render(); };
+    const refs = document.createElement("input"); refs.type = "checkbox"; refs.checked = c.use_references; refs.onchange = () => { c.use_references = refs.checked; emit(); };
+    const refLabel = document.createElement("label"); refLabel.append(refs, document.createTextNode(" Keep REF2VA timeline references"));
+    const session = document.createElement("input"); session.type = "text"; session.value = c.session; session.placeholder = "Session ID"; session.setAttribute("aria-label", "Session ID"); allowNativeTextEditing(session);
+    session.onchange = () => { if (!/^[A-Za-z0-9_-]{1,80}$/.test(session.value) || session.value === "_imports") { setStatus("Session ID: letters, numbers, _ and - only; _imports is reserved.", true); session.value = c.session; return; } c.session = session.value; c.source_id = ""; continuityDraft = null; continuityClips = []; continuityLatest = ""; continuityFinishedId = ""; emit(); render(); void refreshContinuity(); };
+    advanced.append(document.createTextNode("Context "), overlap, refLabel, document.createTextNode(" Session "), session); row.append(advanced);
+    if (continuityError) info(continuityError);
+    if (!continuityGraphReady()) info("Capture needs the Append & Stage → export → Publish path. See the supplied workflow.");
     parent.append(row);
   }
+
   function buildSimpleForm(panel) {
     panel.replaceChildren();
     const helpers = document.createElement("div"); helpers.className = "ds-h3-actions ds-h3-prompt-toolbar ds-h3-modebar";
@@ -1373,7 +1425,7 @@ function install(node) {
     const modeGroup = document.createElement("div"); modeGroup.className = "ds-h3-mode-group"; modeGroup.style.display = "flex"; modeGroup.style.flexDirection = "column"; modeGroup.style.alignItems = "flex-start"; modeGroup.style.gap = "4px"; modeGroup.style.padding = "6px"; modeGroup.style.background = "#0d1217"; modeGroup.style.border = "1px solid #344452"; modeGroup.style.borderRadius = "6px"; modeGroup.style.flexShrink = "0"; modeGroup.style.boxSizing = "border-box"; modeGroup.style.width = "100%";
     const topRow = document.createElement("div"); topRow.className = "ds-h3-modebar"; topRow.style.flexWrap = "wrap"; topRow.style.gap = "8px"; topRow.style.padding = "0"; topRow.style.border = "0"; topRow.style.background = "transparent"; topRow.style.width = "100%"; topRow.style.maxWidth = "100%"; topRow.style.boxSizing = "border-box";
     const controlGroup = () => { const group = document.createElement("span"); group.className = "ds-h3-actions"; group.style.cssText = "gap:4px;flex-wrap:wrap;white-space:nowrap;max-width:100%"; return group; };
-    const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value && !isContinuing()); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { selectRealMode(value); if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; }; modesSide.append(button); }); const continueButton = document.createElement("button"); continueButton.textContent = "Continue"; continueButton.title = "Virtual continuation view; H3 backend mode stays unchanged"; continueButton.classList.toggle("active", isContinuing()); continueButton.onclick = enterContinue; modesSide.append(continueButton);
+    const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value && !isContinuing()); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { selectRealMode(value); if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; }; modesSide.append(button); }); const continueButton = document.createElement("button"); continueButton.textContent = "Continue"; continueButton.className = "ds-h3-continue-btn"; continueButton.title = "Virtual continuation view; H3 backend mode stays unchanged"; continueButton.classList.toggle("active", isContinuing()); continueButton.onclick = enterContinue; modesSide.append(continueButton);
     const ioSide = controlGroup(); ioSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452";
     const actionsSide = controlGroup(); actionsSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const hasContent = state.items.length || state.prompt_blocks?.length || hasBuilderContent() || String(promptWidget?.value || "").trim() || (node.properties?.dasiwaH3ForgeHistory?.length > 0); if (selected) { if (!isLockedSlot(selected)) { const removeButton = document.createElement("button"); removeButton.className = "ds-h3-remove-btn"; removeButton.textContent = "Remove"; removeButton.title = `Remove selected ${selected.type}`; removeButton.onclick = () => remove(selected.id); actionsSide.append(removeButton); } else { setStatus(`${mediaReferenceName(selected.type)} ${selected.slot + 1} is locked in L2VA mode`, true); } } if (hasContent) { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn"; clearButton.textContent = "Clear"; clearButton.title = "Remove all media, prompts and Forge drafts"; clearButton.onclick = clearAll; actionsSide.append(clearButton); } else { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn ds-h3-clear-btn-empty"; clearButton.textContent = "Clear"; clearButton.title = "Nothing to clear yet"; clearButton.onclick = () => setStatus("Nothing to clear."); actionsSide.append(clearButton); }
     const spacer = document.createElement("span"); spacer.style.flex = "1";

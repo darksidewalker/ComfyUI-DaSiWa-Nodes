@@ -48,6 +48,18 @@ class DaSiWaH3ContinuityPublish:
         if not any(path.is_relative_to(root) for root in roots) or not path.is_file() or path.stat().st_size == 0:
             raise ValueError("The video exporter did not produce a valid output file; continuity was not advanced.")
         store = ClipStore()
+        # Also catch an incorrect playback rate or a downstream time trim. FPS
+        # interpolation is fine when the exported duration remains unchanged.
+        import av
+        metadata = store.metadata(ticket["session"], ticket["clip_id"], ready=False)
+        with av.open(str(path)) as media:
+            video = next(iter(media.streams.video), None)
+            if video is None:
+                raise ValueError("Continuity export has no video stream.")
+            seconds = (float(video.duration * video.time_base) if video.duration is not None
+                       else float(media.duration or 0) / av.time_base)
+            if abs(seconds - metadata["seconds"]) > max(0.125, 2 / float(video.average_rate or 24)):
+                raise ValueError("Export duration differs from the saved H3 timeline. Check FPS, interpolation and trimming; checkpoint remains staged.")
         warning = ""
         try:
             thumbnails = make_tail_thumbnails(path, store.clip_dir(ticket["session"], ticket["clip_id"]))
