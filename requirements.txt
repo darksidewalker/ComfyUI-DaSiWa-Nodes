@@ -7,3 +7,4 @@ accelerate
 psutil>=5.9
 av>=18.0
 safetensors
+nvidia-ml-py

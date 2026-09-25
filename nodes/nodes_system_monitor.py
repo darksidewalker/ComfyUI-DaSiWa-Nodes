@@ -96,6 +96,92 @@ def _nvidia_gpus(run=_run):
     return gpus
 
 
+class _NvmlSession:
+    """One NVML session for the life of the process, reused for every sample.
+
+    Spawning ``nvidia-smi`` every second opens a new NVML session each time. Under Docker
+    Desktop / WSL2 on Windows each session opened in the guest leaks NVIDIA driver memory
+    on the host that is only reclaimed by a reboot (~23 allocations per ``nvidia-smi
+    --query-gpu`` call, ~14 per nvmlInit/nvmlShutdown pair, none for queries on an open
+    session). Polling through one persistent session avoids that and the process spawns.
+    """
+
+    RETRY_SECONDS = 600  # a failed init is retried rarely: every attempt opens a session
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._nvml = None
+        self._handles = []
+        self._static = []
+        self._failed_at = None
+
+    def _ensure(self):
+        with self._lock:
+            if self._nvml is not None:
+                return self._nvml
+            if self._failed_at is not None and time.monotonic() - self._failed_at < self.RETRY_SECONDS:
+                return None
+            pynvml = None
+            initialized = False
+            try:
+                import pynvml  # provided by nvidia-ml-py
+
+                pynvml.nvmlInit()
+                initialized = True
+                handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(pynvml.nvmlDeviceGetCount())]
+                self._static = [
+                    (_nvml_text(pynvml.nvmlDeviceGetName(h)), _nvml_text(pynvml.nvmlDeviceGetUUID(h)))
+                    for h in handles
+                ]
+                self._handles = handles
+                self._nvml = pynvml
+                return pynvml
+            except Exception:  # no nvidia-ml-py, no NVIDIA driver, or NVML error
+                if initialized:
+                    # Close a session whose device enumeration failed, so a later retry does
+                    # not leave a second session open.
+                    try:
+                        pynvml.nvmlShutdown()
+                    except Exception:
+                        pass
+                self._handles, self._static = [], []
+                self._failed_at = time.monotonic()
+                return None
+
+    def gpus(self):
+        """Returns NVIDIA GPU samples, or None when NVML is unavailable (caller falls back)."""
+        nvml = self._ensure()
+        if nvml is None:
+            return None
+        gpus = []
+        for index, (handle, (name, identifier)) in enumerate(zip(self._handles, self._static)):
+            memory = _probe(lambda: nvml.nvmlDeviceGetMemoryInfo(handle), None)
+            used_bytes = memory.used if memory is not None else UNKNOWN
+            total_bytes = memory.total if memory is not None else UNKNOWN
+            gpus.append({
+                "id": f"NVIDIA:{index}", "index": index, "vendor": "NVIDIA", "name": name,
+                "uuid": identifier,
+                "utilization": _number(_probe(lambda: nvml.nvmlDeviceGetUtilizationRates(handle).gpu, UNKNOWN)),
+                "memory_used": used_bytes, "memory_total": total_bytes,
+                "memory_percent": _percent(used_bytes, total_bytes),
+                "temperature": _number(_probe(
+                    lambda: nvml.nvmlDeviceGetTemperature(handle, nvml.NVML_TEMPERATURE_GPU), UNKNOWN)),
+            })
+        return gpus
+
+
+def _nvml_text(value):
+    return value.decode() if isinstance(value, bytes) else str(value)
+
+
+_NVML_SESSION = _NvmlSession()
+
+
+def _nvidia_telemetry():
+    gpus = _NVML_SESSION.gpus()
+    return _nvidia_gpus() if gpus is None else gpus
+
+
 def _rocm_value(data, field):
     if isinstance(data, dict):
         for key, value in data.items():
@@ -234,7 +320,7 @@ class DaSiWaSystemMonitor:
             return gpus
 
     def gpu_info(self):
-        gpus = _probe(_nvidia_gpus, []) + _probe(_amd_gpus, [])
+        gpus = _probe(_nvidia_telemetry, []) + _probe(_amd_gpus, [])
         if os.name == "nt":
             vendor_telemetry = {gpu["vendor"] for gpu in gpus}
             gpus.extend(gpu for gpu in self._windows_gpus_cached() if gpu["vendor"] not in vendor_telemetry)
