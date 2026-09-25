@@ -28,6 +28,30 @@ const NO_MODELS = "No models found. Easiest fix: put a vision model folder (for 
 
 const STORE_KEY = "dasiwa.h3forge";
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
+const HISTORY_KEY = "dasiwaH3ForgeHistory";
+function forgeHistory(node) {
+  const saved = node.properties?.[HISTORY_KEY];
+  return Array.isArray(saved) ? saved.filter(entry => entry && typeof entry.simple_prompt === "string" && entry.simple_prompt.trim() && typeof entry.mode === "string" && entry.fields && typeof entry.fields === "object").slice(0, 3) : [];
+}
+function saveForgeResult(node, result, brief) {
+  const entry = {
+    mode: result.mode, model: result.model, simple_prompt: result.simple_prompt,
+    fields: result.fields, brief, createdAt: Date.now(),
+  };
+  node.properties ||= {};
+  node.properties[HISTORY_KEY] = [entry, ...forgeHistory(node)].slice(0, 3);
+  node.graph?.setDirtyCanvas(true, true);
+  node.__dasiwaH3Render?.(); // the Director Clear button must enable even when only drafts exist
+  return entry;
+}
+
+function clearForgeHistory(node) {
+  if (node.properties && HISTORY_KEY in node.properties) {
+    delete node.properties[HISTORY_KEY];
+    node.graph?.setDirtyCanvas(true, true);
+  }
+  briefs.delete(node.id);
+}
 
 function remembered() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch { return {}; } }
 function remember(patch) { try { localStorage.setItem(STORE_KEY, JSON.stringify({ ...remembered(), ...patch })); } catch { /* private window */ } }
@@ -60,6 +84,12 @@ function installStyles() {
   .ds-forge .ref{display:grid;grid-template-columns:48px 90px 130px 1fr;gap:8px;align-items:center}
   .ds-forge .ref img{width:48px;height:36px;object-fit:cover;border-radius:3px;background:#090d11}
   .ds-forge pre{white-space:pre-wrap;background:#0b1015;border:1px solid #344452;border-radius:4px;padding:8px;margin:0;max-height:320px;overflow:auto;font:12px/1.45 ui-monospace,monospace}
+  .ds-forge .history{display:flex;flex-direction:column;gap:5px;border-top:1px solid #344452;padding-top:9px}
+  .ds-forge .history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .ds-forge .history-head button{padding:3px 8px;font-size:11px}
+  .ds-forge .history button{text-align:left;display:flex;flex-direction:column;gap:3px;min-width:0}
+  .ds-forge .history button.selected{border-color:#b180ff;background:rgba(151,91,255,.18)}
+  .ds-forge .history .excerpt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#9fb3c2;font-size:11px}
   `;
   document.head.append(style);
 }
@@ -101,7 +131,7 @@ async function open(node) {
   const closeBtn = el("button", { textContent: "×", title: "Close (Esc)", onclick: close });
   box.append(el("h3", {}, el("span", { textContent: `H3 Forge — ${mode}` }), closeBtn));
 
-  const brief = el("textarea", { placeholder: "What should the clip be? A sentence or two is enough.", value: briefs.get(node.id) || "" });
+  const brief = el("textarea", { placeholder: "What should the clip be? A sentence or two is enough.", value: briefs.get(node.id) || forgeHistory(node)[0]?.brief || "" });
   box.append(el("div", { className: "field" }, el("label", { textContent: "Idea" }), brief));
 
   // References from the timeline. REF2VA pictures need a role; base-mode
@@ -145,6 +175,39 @@ async function open(node) {
   box.append(el("div", { className: "actions" }, status, genBtn, applyBtn));
   const output = el("pre", { hidden: true });
   box.append(output);
+  const historyBox = el("div", { className: "history" });
+  box.append(historyBox);
+  let result = null;
+  const showResult = entry => {
+    result = entry;
+    output.hidden = false;
+    output.textContent = entry.simple_prompt;
+    applyBtn.disabled = !!running || entry.mode !== hook.mode();
+    if (entry.mode !== hook.mode()) setStatus(`This draft is for ${entry.mode}; switch the Director to that mode before applying.`, true);
+    renderHistory();
+  };
+  const renderHistory = () => {
+    const entries = forgeHistory(node);
+    const clear = el("button", { type: "button", textContent: "Clear history", disabled: !entries.length, title: "Remove the three saved Forge prompts from this node" });
+    clear.onclick = () => {
+      clearForgeHistory(node);
+      node.__dasiwaH3Render?.();
+      result = null; output.hidden = true; output.textContent = ""; applyBtn.disabled = true;
+      renderHistory();
+    };
+    historyBox.replaceChildren(el("div", { className: "history-head" }, el("label", { textContent: "Last 3 generated prompts (saved with this node)" }), clear));
+    if (!entries.length) { historyBox.append(el("span", { className: "muted", textContent: "No prompts generated yet." })); return; }
+    entries.forEach((entry, index) => {
+      const date = Number.isFinite(entry.createdAt) ? new Date(entry.createdAt).toLocaleString() : "Saved draft";
+      const button = el("button", { type: "button", className: result === entry ? "selected" : "", title: "Show this prompt; Apply to node to use it" },
+        el("span", { textContent: `${index + 1}. ${entry.mode} · ${entry.model || "model"} · ${date}` }),
+        el("span", { className: "excerpt", textContent: entry.simple_prompt.replace(/\s+/g, " ").slice(0, 150) }));
+      button.onclick = () => showResult(entry);
+      historyBox.append(button);
+    });
+  };
+  const latest = forgeHistory(node)[0];
+  if (latest) showResult(latest); else renderHistory();
   document.body.append(overlay);
   brief.focus();
 
@@ -178,14 +241,13 @@ async function open(node) {
   const syncDetail = () => { detailLabel.textContent = `${detail.value} of 10 — ${levels[detail.value] || ""}`; };
   detail.oninput = syncDetail; syncDetail();
 
-  let result = null;
   genBtn.onclick = async () => {
     if (running) { cancelRun(); genBtn.disabled = true; setStatus("Cancelling… the model stops at its next token, then unloads."); return; }
     const text = brief.value.trim();
     if (!text) { setStatus("Write the idea first.", true); return; }
     briefs.set(node.id, text);
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
-    applyBtn.disabled = true; result = null;
+    applyBtn.disabled = true;
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     running = requestId;
     genBtn.textContent = "Cancel";
@@ -203,18 +265,17 @@ async function open(node) {
       });
       const data = await res.json();
       if (!res.ok) { output.hidden = !data.raw; output.textContent = data.raw || ""; throw new Error(data.message || res.statusText); }
-      result = data;
-      output.hidden = false;
-      output.textContent = data.simple_prompt;
+      const saved = saveForgeResult(node, data, text);
+      showResult(saved);
       const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
       setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
-      applyBtn.disabled = false;
     } catch (err) {
       setStatus(err.message, true);
     } finally {
       clearInterval(tick);
       running = null;
+      applyBtn.disabled = !result || result.mode !== hook.mode();
       genBtn.disabled = false;
       genBtn.textContent = "Regenerate";
     }
@@ -229,4 +290,4 @@ async function open(node) {
 
 // At load, not on first open: the toolbar button's style lives here too.
 installStyles();
-window.DaSiWaH3Forge = { open };
+window.DaSiWaH3Forge = { open, clearHistory: clearForgeHistory };

@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-09-24**. Older history lives in the 
 
 ## News
 
+- **H3 Forge saved drafts (09-24, 0.4.57):** Each Director keeps its last three successful Forge generations in its saved workflow. Reopen Forge to preview and apply one; **Clear history** removes drafts only, while the Director's **Clear** also clears its Forge history. [Director guide →](minimax_h3_director.md)
+
 - **H3 Prompt Forge and single prompt editor (09-24, 0.4.56):** PR #51 adds on-demand prompt writing with a local ComfyUI LLM, Ollama, or a configured OpenAI-compatible server. Director prompts start empty in one editor; Insert Prompt Structure restores the former section template on demand. Prompt helpers and Prompt Forge share a dark rounded toolbar. Old structured workflows, embedded prompts, and reference packs migrate into the single field. [Director guide →](minimax_h3_director.md)
 
 - **Unreleased — Registry automation:** The failing scheduled Registry-status workflow is removed. On a future `pyproject.toml` version bump, the publish workflow will retain the newly active release, deprecate its four immediate predecessors, and unpublish older versions. No Registry versions are changed by the workflow edit itself.
@@ -59,6 +61,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.57 | 09-24 | Forge saves three drafts per Director; Forge history and Director Clear controls |
 | 0.4.56 | 09-24 | H3 Prompt Forge and single free-text Director prompt with optional structure insertion and legacy migration |
 | 0.4.55 | 09-23 | Independent Free Memory toolbar button; VRAM/model unload and RAM/cache reset actions |
 | 0.4.54 | 09-22 | Director prompt counter includes assembled structured headers |
