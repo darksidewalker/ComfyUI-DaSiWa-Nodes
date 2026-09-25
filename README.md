@@ -1,6 +1,8 @@
 # DaSiWa Custom Nodes Collection
 
-A high-performance collection of custom nodes for ComfyUI, optimized for video workflows, resolution management, and logic control. Its installed version is shown in **ComfyUI → Settings → About** as a linked **DaSiWa Custom Nodes** badge. Use **ComfyUI → Settings → Other → DaSiWa → System Monitor** to enable or disable the monitor completely.
+A high-performance collection of custom nodes for ComfyUI, optimized for video workflows, resolution management, and logic control. Its installed version is shown in **ComfyUI → Settings → About**. 
+
+Use **ComfyUI → Settings → Other → DaSiWa → ... to enable or disable extra settings.
 
 [📰 News & Changelog — release notes and complete change history across the collection →](docs/news_and_changelog.md)
 
@@ -11,12 +13,15 @@ A high-performance collection of custom nodes for ComfyUI, optimized for video w
 Timeline-based authoring for MiniMax H3 generation workflows. Separate Image/Video/Audio lanes, drag-and-drop/paste/upload, per-clip trims, save/load packs, and structured prompt builders.
 
 ![MiniMax H3 Director](assets/DaSiWa-MiniMaxH3-Director.png)
+![MiniMax H3 Director](assets/DaSiWa-MiniMaxH3-Director-PromptForge.png)
+![MiniMax H3 Director](assets/DaSiWa-MiniMaxH3-Director-RefMod.png)
 
 - 🎥 **Modes:** FL2VA (T2VA/I2VA/L2VA, 2 image slots), IMAGE INPAINT (1 image → single frame via 5-frame pass), REF2VA (9 img / 3 vid / 3 audio = 12 total; V/A/V+A switch per video)
 - 📸 **REFMOD references:** saved image/video/audio RefMods and upstream v5 bundles from `models/refmods/` — overlay selector, strength scaling, workflow-local descriptions, `<RefMod N>` stable aliases resolved at runtime to native reference labels.
 - 🔀 **Reference handling:** drag-reorder between slots, external soundtracks per video, visual crop via draggable markers, incompatible media preserved on mode toggle
 - 📋 **Paste & upload:** lane selection + Ctrl+V paste into chosen lane, drag-and-drop from file manager, paste-replace onto selected tile
-- ✍️ **Prompt editor:** one empty free-text field for every mode; Insert Prompt Structure adds the former structured template on demand. Insert [Shot N] and Insert RefMod # use small button-adjacent number inputs; Prefill Labels & Summary uses active reference kinds, descriptions and audio tracks. Prompt Forge lets you review generated text before applying it and retains the last three drafts per Director node. Old structured workflows and reference packs migrate into the same field.
+- ✍️ **Prompt editor:** one free-text field per mode, with optional structure, shot/RefMod insertion, and reference-label prefill; legacy prompts migrate into the same field.
+- ✨ **Prompt Forge:** write H3 prompts from an idea and timeline references with a local ComfyUI LLM, Ollama, or a configured OpenAI-compatible server; review before applying and keep three drafts per Director node.
 - 📐 **Resolution panel:** Aspect/Resolution/Input Scaling selectors (all default Auto) on 32px grid; grouped dropdowns; CUSTOM values; Torch Resize preprocessing (Off/Auto/Target/Fit/Fill/Fit+pad/Divisible crop)
 - 💾 **Save/Load packs:** reference files + prompt + RefMod selections persisted independently; append or overwrite with limit validation and missing-file checks
 - 🎬 **Video thumbnails:** first-frame preview behind each video clip tile
