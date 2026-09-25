@@ -121,10 +121,13 @@ class _NvmlSession:
                 return self._nvml
             if self._failed_at is not None and time.monotonic() - self._failed_at < self.RETRY_SECONDS:
                 return None
+            pynvml = None
+            initialized = False
             try:
                 import pynvml  # provided by nvidia-ml-py
 
                 pynvml.nvmlInit()
+                initialized = True
                 handles = [pynvml.nvmlDeviceGetHandleByIndex(i) for i in range(pynvml.nvmlDeviceGetCount())]
                 self._static = [
                     (_nvml_text(pynvml.nvmlDeviceGetName(h)), _nvml_text(pynvml.nvmlDeviceGetUUID(h)))
@@ -134,6 +137,14 @@ class _NvmlSession:
                 self._nvml = pynvml
                 return pynvml
             except Exception:  # no nvidia-ml-py, no NVIDIA driver, or NVML error
+                if initialized:
+                    # Close a session whose device enumeration failed, so a later retry does
+                    # not leave a second session open.
+                    try:
+                        pynvml.nvmlShutdown()
+                    except Exception:
+                        pass
+                self._handles, self._static = [], []
                 self._failed_at = time.monotonic()
                 return None
 
