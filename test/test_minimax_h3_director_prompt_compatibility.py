@@ -7,6 +7,7 @@ from nodes.helper_minimax_h3_prompt_builder import (
     migrate_legacy_prompt,
 )
 from nodes.nodes_minimax_h3_director import MiniMaxH3Director
+from nodes import nodes_minimax_h3_director as director_module
 
 
 def test_legacy_widget_prompt_is_preserved_losslessly():
@@ -135,6 +136,32 @@ def test_old_9_value_save_loads_without_crashing_and_preserves_prompt():
     # The builder_state is reachable and produced a non-empty prompt.
     assert guide["resolved_prompt"].strip()
     assert "lion" in guide["resolved_prompt"]
+
+
+def test_mixed_uploaded_media_and_refmod_tags_keep_both_reference_paths(monkeypatch):
+    class Latent:
+        def __mul__(self, strength):
+            return ("scaled", strength)
+
+    monkeypatch.setattr(director_module, "load_refmods", lambda name: [
+        (Latent(), {"kind": "image"}), (Latent(), {"kind": "video"}),
+        (Latent(), {"kind": "audio"}),
+    ])
+    monkeypatch.setattr(director_module, "refmod_fingerprint", lambda name: (1, 1))
+    media = object()
+    state = {"items": [{"type": "image", "value": media, "slot": 0},
+                       {"type": "video", "value": media, "slot": 0, "duration": 2},
+                       {"type": "audio", "value": media, "slot": 0, "duration": 2}],
+             "refmods": [{"slot": 1, "name": "combo", "strength": 1}]}
+    monkeypatch.setattr(director_module, "scale_input_media", lambda value, *args: value)
+    guide = MiniMaxH3Director().build_guide(
+        "REF2VA", "<RefMod 1>", 1344, 768, 5, "match", json.dumps(state, default=lambda _: "media"), "",
+    )[0]
+    assert list(guide["ref_images"]) == ["ref_image_1"]
+    assert list(guide["ref_videos"]) == ["ref_video_1"]
+    assert list(guide["ref_audios"]) == ["ref_audio_1"]
+    assert [item["kind"] for item in guide["minimax_ref_items"]] == ["image", "video", "audio"]
+    assert "<Picture 2> <Video 2> <Audio 2>" in guide["resolved_prompt"]
 
 
 def test_out_of_range_frame_rate_still_raises():
