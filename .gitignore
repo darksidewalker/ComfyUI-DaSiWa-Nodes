@@ -217,3 +217,16 @@ graft/
 
 # LoRA info civitai/metadata cache (regenerable)
 lorainfo/
+
+# ComfyUI runtime data if this checkout is used as a base directory.
+# These paths belong to the installation, not the distributable node pack.
+/input/
+/output/
+/temp/
+/models/
+/cache/
+/.cache/
+
+# Local environment overrides (keep a deliberately named example trackable).
+.env.*
+!.env.example

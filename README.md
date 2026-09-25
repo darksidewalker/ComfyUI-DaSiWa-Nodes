@@ -344,6 +344,14 @@ The **DaSiWa LLM / VLM nodes** let you run local transformers chat or vision-lan
 
 Search for **DaSiWa-Nodes** and install.
 
+### Repository contents versus local data
+
+The `workflows/` JSON files are shipped examples, not generated cache; keep them in Git. Likewise `assets/` screenshots, `docs/`, `data/` starter libraries, `nodes/`, `js/`, and tests belong to the node pack. A formerly bundled Spectrum v0.2.20 compatibility patch targeted a separate project, was never applied by this pack, and is no longer shipped.
+
+Runtime files do **not** belong in the node pack repository: `lorainfo/` is a regenerable Civitai metadata cache; `.hermes/`, `.projectatlas/`, `graft/`, Python bytecode and test caches are local tooling state. H3 Continuity checkpoints live in the ComfyUI **output** directory at `output/df_h3_continuity/` (not beside `nodes/`); browser video previews live in ComfyUI's **temp** directory. The root-level `input/`, `output/`, `temp/`, `models/`, and `cache/` are ignored as safeguards if someone uses this checkout as a ComfyUI base directory. The `.gitignore` rules prevent *new* matching files being staged; they do not remove files already tracked or delete anyone's local files.
+
+A commit on local or Gitea `main` does not automatically appear on the separate GitHub remote; publishing to each remote is a separate action.
+
 ---
 
 ## Credits
