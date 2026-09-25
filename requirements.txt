@@ -6,3 +6,4 @@ transformers>=4.45.0
 accelerate
 psutil>=5.9
 av>=18.0
+nvidia-ml-py
