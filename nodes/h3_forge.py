@@ -815,7 +815,9 @@ def _generate(body, input_directory, release_memory, stop):
     simple = simple_prompt(fields, mode, duration)
     warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"])
     if not unloaded and local_gpu:
-        warnings.append("This server cannot unload its model; it is still holding VRAM on this machine.")
+        warnings.append("This server cannot unload its model, so it is still using this computer's VRAM. "
+                        "Close the server (or unload the model in it) before pressing Run, or use Ollama or llama-swap, "
+                        "which Forge can unload. See docs/minimax_h3_forge.md.")
     return {
         "mode": mode,
         "fields": fields,
