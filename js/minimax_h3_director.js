@@ -31,6 +31,7 @@ const DEFAULT_BUILDER_STATE = mode => {
   return { version: 1, mode: mode || "FL2VA", imd: "", soundscape: "", music: "", duration: 5, ref: { subject_defs: [], summary_types: ["reference generation"], summary_text: "", retention: [], style_line: "", detail: "", soundscape: "", music: "" } };
 };
 const DEFAULT_STATE = { version: 1, items: [], prompt_blocks: [], builder_state: null, resolution: null };
+const DEFAULT_CONTINUITY = { version: 1, operation: "new", capture: false, session: "", source_id: "", overlap_frames: 22, extension_frames: 119, continuation_prompt: "Continue the same uninterrupted shot naturally. Preserve the subjects' identity, clothing, positions, lighting and environment. Maintain the established motion direction, camera trajectory and ambient sound. Do not restart the action, repeat completed dialogue, introduce a cut, fade, title, freeze or loop.", idea: "" };
 const MAX = { image: 9, video: 3, audio: 3, total: 12 };
 // H3's VAE emits 16px latent cells and the diffusion transformer patchifies
 // them in 2×2 groups, so both canvas edges must be divisible by 32.
@@ -70,6 +71,7 @@ function installStyles() {
   `;
   style.textContent += `.ds-h3-res-field{display:flex;flex-direction:column;gap:3px;min-width:150px;font-size:10px;font-weight:600;letter-spacing:.4px;color:#8fb3d6;text-transform:uppercase}.ds-h3-res-control{display:flex;position:relative}.ds-h3-res-select{position:absolute;inset:0;width:100%;opacity:0;pointer-events:none}.ds-h3-res-btn{position:relative;width:100%;display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:30px;padding:0 9px;background:#16283a;border:1px solid #2f5478;border-radius:5px;color:#d6ebff;font:12px system-ui,sans-serif;cursor:pointer;text-align:left;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-btn:hover:not(:disabled){background:#1d3550;border-color:#3f79b4;box-shadow:0 0 9px rgba(74,144,217,.28)}.ds-h3-res-btn:focus-visible{outline:none;border-color:#4f97d6;box-shadow:0 0 0 2px rgba(74,144,217,.35)}.ds-h3-res-btn:disabled{opacity:.4;cursor:not-allowed}.ds-h3-res-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-res-caret{flex:none;color:#6fa8e0;font-size:9px;transition:transform .18s ease}.ds-h3-res-btn[aria-expanded="true"] .ds-h3-res-caret{transform:rotate(180deg)}.ds-h3-res-swatch{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px}.ds-h3-res-swatch-box{background:#3f79b4;border:1px solid #9fd0ff;border-radius:1px;box-shadow:inset 0 0 4px rgba(0,0,0,.4);transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-btn:hover:not(:disabled) .ds-h3-res-swatch-box,.ds-h3-res-btn[aria-expanded="true"] .ds-h3-res-swatch-box{background:#5b9be0;border-color:#c4e4ff}.ds-h3-res-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:2500;min-width:100%;max-height:290px;overflow-y:auto;padding:4px;background:#101c28;border:1px solid #35618f;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.65);display:none}.ds-h3-res-menu.open{display:block}.ds-h3-res-menu.grid.open{display:grid;gap:2px}.ds-h3-res-menu.grid .ds-h3-res-item-label{white-space:normal;overflow-wrap:anywhere}.ds-h3-res-menu[data-place="up"]{top:auto;bottom:calc(100% + 4px)}.ds-h3-res-item{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:6px 9px;background:transparent;border:0;border-radius:4px;color:#cfe3f7;font:12px system-ui,sans-serif;cursor:pointer;text-align:left;transition:background .12s ease,color .12s ease,box-shadow .12s ease}.ds-h3-res-item:hover{background:rgba(74,144,217,.24);color:#fff;box-shadow:inset 0 0 0 1px rgba(96,168,232,.35)}.ds-h3-res-item.active{background:rgba(74,144,217,.34);color:#fff;font-weight:600;box-shadow:inset 0 0 0 1px rgba(120,190,255,.55)}.ds-h3-res-item.active:hover{background:rgba(74,144,217,.44)}.ds-h3-res-item-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-res-num{width:100%;box-sizing:border-box;height:30px;padding:0 8px;background:#16283a;border:1px solid #2f5478;border-radius:5px;color:#d6ebff;font:12px system-ui,sans-serif;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-num:hover:not(:disabled){background:#1d3550;border-color:#3f79b4}.ds-h3-res-num:focus{outline:none;border-color:#4f97d6;box-shadow:0 0 0 2px rgba(74,144,217,.3)}.ds-h3-res-num:disabled{opacity:.4;cursor:not-allowed}.ds-h3-res-menu.cols.open{display:flex;align-items:flex-start;gap:7px}.ds-h3-res-col{display:flex;flex-direction:column;gap:2px;min-width:84px}.ds-h3-res-col-title{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6fa8e0;padding:1px 9px 3px;border-bottom:1px solid #2f5478;margin-bottom:2px}.ds-h3-res-menu.cols .ds-h3-res-item{white-space:nowrap}`;
   style.textContent += `.ds-h3-clip.refmod .ds-h3-grip,.ds-h3-clip.refmod .ds-h3-crop-marker,.ds-h3-clip.refmod .ds-h3-audio-crop-marker,.ds-h3-clip.refmod .ds-h3-crop-readout{display:none!important}.ds-h3-clip.refmod .ds-h3-waveform{pointer-events:none}`;
+  style.textContent += `.ds-h3-continuity-row select,.ds-h3-continuity-row input:not([type="checkbox"]){box-sizing:border-box;max-width:100%;padding:4px 6px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;font:inherit}.ds-h3-continuity-row details{color:#9fb3c2}.ds-h3-continuity-row summary{cursor:pointer}`;
   document.head.appendChild(style);
 }
 
@@ -382,11 +384,11 @@ function install(node) {
     return head ? `${head}\n\n${body}` : body;
   }
   function previewTextFor(m, external) {
-    if (external) {
+    if (external && !isContinuing()) {
       const text = String(externalPromptWidget()?.value || "").trim();
       return text || "(External prompt detected — the prompt is supplied by the upstream node at execution time.)";
     }
-    return String(builderState.simple_prompt || "");
+    return isContinuing() ? String(state.continuity?.continuation_prompt || "") : String(builderState.simple_prompt || "");
   }
   const allowNativeTextEditing = element => { ["pointerdown","mousedown","keydown","keypress","keyup","copy","cut","paste"].forEach(type => element.addEventListener(type, event => { if ((event.ctrlKey || event.metaKey) && event.key === "Enter") return; event.stopPropagation(); })); };
   let closePromptNumberPopover = null;
@@ -447,21 +449,172 @@ function install(node) {
     return counter;
   }
 
+  function continuityState() {
+    if (!state.continuity || typeof state.continuity !== "object") state.continuity = { ...DEFAULT_CONTINUITY };
+    else state.continuity = { ...DEFAULT_CONTINUITY, ...state.continuity };
+    return state.continuity;
+  }
+  const isContinuing = () => state.continuity?.operation === "continue";
+  function ensureContinuitySession() { const c = continuityState(); if (!c.session) c.session = crypto.randomUUID().replace(/-/g, "_"); return c; }
+  const activePrompt = () => isContinuing() ? continuityState().continuation_prompt : String(builderState.simple_prompt || "");
+  function setActivePrompt(value) {
+    if (isContinuing()) continuityState().continuation_prompt = value;
+    else builderState.simple_prompt = value;
+    emit();
+  }
+  let continuityClips = [], continuityLatest = "", continuityFinishedId = "", continuityLoading = false, continuityError = "";
+  async function refreshContinuity() {
+    const session = state.continuity?.session;
+    if (!session || continuityLoading) return;
+    continuityLoading = true;
+    try {
+      const response = await api.fetchApi(`/df_h3_continuity/session/${encodeURIComponent(session)}`);
+      if (!response.ok) throw new Error(`Continuity session unavailable (${response.status}).`);
+      const data = await response.json();
+      if (state.continuity?.session !== session) return;
+      continuityClips = Array.isArray(data.clips) ? data.clips : [];
+      continuityLatest = data.latest_id || "";
+      continuityError = "";
+    } catch (error) { continuityError = error.message || String(error); }
+    finally { continuityLoading = false; render(); if (state.continuity?.session !== session) void refreshContinuity(); }
+  }
+  function selectContinuitySource(id) { const c = ensureContinuitySession(); c.source_id = id; emit(); render(); }
+  function useLatestContinuity() { if (continuityLatest) selectContinuitySource(continuityLatest); }
+  function continuityGraphReady() {
+    const graph = node.graph;
+    if (!Array.isArray(graph?._nodes)) return true; // Graph not hydrated yet.
+    const types = new Set();
+    const visit = (nodes) => { for (const item of nodes || []) { types.add(item.type || item.comfyClass); visit(item.subgraph?._nodes); } };
+    visit(graph._nodes);
+    // A partial graph cannot publish a checkpoint, even when its Director
+    // controls are present. Do not offer capture without both post-sampler nodes.
+    return types.has("DaSiWaH3ContinuityAppend") && types.has("DaSiWaH3ContinuityPublish");
+  }
+  function continuityGraphError() { setStatus("Capture unavailable: add and wire the Append & Stage and Publish technical nodes in a continuity workflow.", true); }
+  function enterContinue() {
+    if (!continuityGraphReady()) { continuityGraphError(); return false; }
+    if (mode() === "Image Inpaint") { setStatus("Continue requires a video/audio H3 mode, not Image Inpaint.", true); return false; }
+    if (!state.continuity?.source_id) { setStatus("Select a completed checkpoint first (or use last completed).", true); return false; }
+    const c = ensureContinuitySession(); continuityDraft = null; c.operation = "continue"; c.capture = true;
+    emit(); render(); void loadContinuityModels(); return true;
+  }
+  function selectRealMode(value) {
+    if (state.continuity) state.continuity.operation = "new";
+    if (modeWidget) { modeWidget.value = value; modeWidget.callback?.(value); }
+    emit(); render();
+  }
+  function onContinuitySaved(event) {
+    if (event.detail?.session !== state.continuity?.session) return;
+    continuityFinishedId = event.detail?.clip_id || "";
+    void refreshContinuity();
+    setStatus("Continuity export complete. Use finished result to select it; the current source stays pinned.");
+  }
+  api.addEventListener?.("df_h3_continuity_saved", onContinuitySaved);
+  let continuityDraft = null, continuityModels = [], continuityModelChoice = "", continuityModelError = "", continuityAnalyzing = false;
+  async function loadContinuityModels() {
+    try {
+      const response = await api.fetchApi("/dasiwa/h3/forge/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: window.DaSiWaH3Forge?.settings?.() || {} }) });
+      if (!response.ok) throw new Error(`Forge models unavailable (${response.status}).`);
+      const data = await response.json();
+      continuityModels = (data.models || []).filter(model => !model.disabled);
+      continuityModelError = continuityModels.length ? "" : "No Forge model available; you can still write the prompt manually.";
+    } catch (error) { continuityModelError = error.message || String(error); }
+    render();
+  }
+  async function analyzeContinuity(model) {
+    const { session, source_id, idea } = continuityState();
+    if (!session || !source_id || !model || continuityAnalyzing) { setStatus("Choose a completed source and Forge model first.", true); return; }
+    continuityAnalyzing = true; continuityDraft = null;
+    try {
+      const response = await api.fetchApi("/df_h3_continuity/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session, clip_id: source_id, idea, model, settings: window.DaSiWaH3Forge?.settings?.() || {} }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || `Analyze unavailable (${response.status}).`);
+      if (data.source_id !== source_id || !data.prompt) throw new Error("Analyze response does not match the selected source.");
+      continuityDraft = { prompt: String(data.prompt), session, source_id, idea };
+      setStatus(data.vision ? "Draft ready from tail frames (no audio analysis). Apply explicitly." : "Text-only draft ready (no frames or audio analyzed). Apply explicitly.");
+    } catch (error) { setStatus(`Analyze unavailable: ${error.message || error}. Manual prompt remains editable.`, true); }
+    finally { continuityAnalyzing = false; render(); }
+  }
+  function applyContinuityDraft() {
+    const c = continuityState();
+    if (!continuityDraft || !isContinuing() || continuityDraft.session !== c.session || continuityDraft.source_id !== c.source_id || continuityDraft.idea !== c.idea) {
+      setStatus("Draft is stale; analyze the currently selected source and idea again.", true); return false;
+    }
+    setActivePrompt(continuityDraft.prompt); continuityDraft = null; render(); return true;
+  }
+  function buildContinuityControls(parent) {
+    const c = state.continuity || DEFAULT_CONTINUITY;
+    const row = document.createElement("div"); row.className = "ds-h3-continuity-row ds-h3-actions";
+    row.style.cssText = "width:100%;box-sizing:border-box;gap:7px;flex-wrap:wrap;padding:5px 7px;background:#0d1217;border:1px solid #344452;border-radius:5px";
+    const button = (text, action) => { const el = document.createElement("button"); el.textContent = text; el.onclick = action; row.append(el); return el; };
+    if (!continuityGraphReady()) { const warning = document.createElement("span"); warning.className = "ds-h3-small"; warning.textContent = "Capture unavailable · workflow needs Append & Stage + Publish"; row.append(warning); }
+    if (!isContinuing()) {
+      const label = document.createElement("label"); label.className = "ds-h3-small";
+      const capture = document.createElement("input"); capture.type = "checkbox"; capture.checked = c.capture;
+      capture.onchange = () => { if (capture.checked && !continuityGraphReady()) { capture.checked = false; continuityGraphError(); return; } const current = ensureContinuitySession(); current.capture = capture.checked; emit(); render(); if (capture.checked) void refreshContinuity(); };
+      label.append(capture, document.createTextNode(" Keep take for Continue")); row.append(label);
+    }
+    if (c.session || isContinuing()) {
+      const source = document.createElement("select"); source.title = "Pinned completed checkpoint";
+      source.append(new Option("Select completed checkpoint…", ""));
+      if (c.source_id && !continuityClips.some(clip => clip.clip_id === c.source_id)) source.append(new Option(`${c.source_id} (not in list)`, c.source_id));
+      continuityClips.forEach(clip => source.append(new Option(`${clip.clip_id} · ${clip.frames || "?"} frames`, clip.clip_id)));
+      source.value = c.source_id; source.onchange = () => selectContinuitySource(source.value); row.append(source);
+      button("Use last completed", useLatestContinuity).disabled = !continuityLatest;
+      if (continuityFinishedId) button("Use finished result", () => selectContinuitySource(continuityFinishedId));
+      button("Refresh", () => void refreshContinuity());
+      if (isContinuing()) {
+      const frames = document.createElement("label"); frames.className = "ds-h3-small"; frames.textContent = "New frames ";
+      const extension = document.createElement("select");
+      for (let count = 17; count + Number(c.overlap_frames) <= 362; count += 17) extension.append(new Option(`${count} frames`, String(count)));
+      extension.value = String(c.extension_frames);
+      extension.onchange = () => { c.extension_frames = Number(extension.value); emit(); };
+      frames.append(extension); row.append(frames);
+      const modelSelect = document.createElement("select"); modelSelect.title = "Existing H3 Forge model";
+      continuityModels.forEach(model => modelSelect.append(new Option(model.label || model.id, model.id)));
+      if (continuityModels.length) modelSelect.value = continuityModels.some(model => model.id === continuityModelChoice) ? continuityModelChoice : continuityModels[0].id;
+      modelSelect.onchange = () => { continuityModelChoice = modelSelect.value; }; row.append(modelSelect);
+      button(continuityAnalyzing ? "Analyzing…" : "Analyze → Draft", () => void analyzeContinuity(modelSelect.value)).disabled = continuityAnalyzing || !continuityModels.length;
+      if (continuityDraft) {
+        const preview = document.createElement("span"); preview.className = "ds-h3-small"; preview.style.width = "100%";
+        preview.textContent = continuityDraft.prompt; row.append(preview);
+        const apply = button("Apply draft", applyContinuityDraft);
+        apply.disabled = continuityDraft.session !== c.session || continuityDraft.source_id !== c.source_id || continuityDraft.idea !== c.idea;
+        button("Discard draft", () => { continuityDraft = null; render(); });
+      }
+      if (continuityModelError) { const info = document.createElement("span"); info.textContent = continuityModelError; row.append(info); }
+      const idea = document.createElement("input"); idea.type = "text"; idea.placeholder = "Next idea (optional)"; idea.value = c.idea; idea.style.flex = "1"; idea.style.minWidth = "130px"; idea.onchange = () => { c.idea = idea.value; emit(); }; row.append(idea);
+      const advanced = document.createElement("details"); advanced.style.width = "100%";
+      const summary = document.createElement("summary"); summary.textContent = "Advanced · overlap / session"; advanced.append(summary);
+      const overlap = document.createElement("select");
+      for (const value of [5, 22, 39, 56, 73]) overlap.append(new Option(`${value} frames`, String(value)));
+      overlap.value = String(c.overlap_frames);
+      overlap.onchange = () => { c.overlap_frames = Number(overlap.value); if (c.overlap_frames + c.extension_frames > 362) c.extension_frames = Math.floor((362 - c.overlap_frames) / 17) * 17; emit(); render(); };
+      const session = document.createElement("input"); session.type = "text"; session.value = c.session; session.placeholder = "Session ID";
+      session.onchange = () => { if (!/^[A-Za-z0-9_-]{1,80}$/.test(session.value)) { setStatus("Session ID: letters, numbers, _ and - only.", true); session.value = c.session; return; } c.session = session.value; c.source_id = ""; continuityClips = []; continuityLatest = ""; emit(); void refreshContinuity(); };
+      advanced.append(document.createTextNode("Overlap frames "), overlap, document.createTextNode(" Session "), session); row.append(advanced);
+      if (continuityError) { const warning = document.createElement("span"); warning.textContent = continuityError; row.append(warning); }
+      }
+    }
+    parent.append(row);
+  }
   function buildSimpleForm(panel) {
     panel.replaceChildren();
     const helpers = document.createElement("div"); helpers.className = "ds-h3-actions ds-h3-prompt-toolbar ds-h3-modebar";
-    const label = document.createElement("span"); label.className = "ds-h3-small"; label.textContent = `${mode()} simple prompt`; helpers.append(label);
-    const simplePrompt = createBuilderField("Prompt", builderState.simple_prompt, { rows: 10, placeholder: "Write the complete MiniMax H3 prompt...", onChange: val => { builderState.simple_prompt = val; emit(); }, fieldKey: "simple_prompt" }, fieldHeights);
+    const label = document.createElement("span"); label.className = "ds-h3-small"; label.textContent = isContinuing() ? `Continue · ${mode()} prompt` : `${mode()} simple prompt`; helpers.append(label);
+    const simplePrompt = createBuilderField("Prompt", activePrompt(), { rows: 10, placeholder: isContinuing() ? "Describe the next uninterrupted shot..." : "Write the complete MiniMax H3 prompt...", onChange: setActivePrompt, fieldKey: "simple_prompt" }, fieldHeights);
     const area = simplePrompt.querySelector("textarea");
     allowNativeTextEditing(area);
     const structureBtn = document.createElement("button"); structureBtn.textContent = "Insert Prompt Structure";
     structureBtn.title = "Insert the former structured-mode template at the cursor";
+    structureBtn.disabled = isContinuing();
     structureBtn.onclick = () => insertAtCursor(area, builderPromptForWidget(DEFAULT_BUILDER_STATE(mode()), mode()));
     helpers.append(structureBtn);
     const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]";
+    shotBtn.disabled = isContinuing();
     shotBtn.onclick = () => openPromptNumberPopover(shotBtn, "Shot number", n => insertAtCursor(area, `[Shot ${n}] `));
     helpers.append(shotBtn);
-    if (mode() === "REF2VA") {
+    if (mode() === "REF2VA" && !isContinuing()) {
       const refmodBtn = document.createElement("button"); refmodBtn.textContent = "Insert RefMod #";
       refmodBtn.onclick = () => openPromptNumberPopover(refmodBtn, "RefMod number", n => insertExpandedRefMod(area, n));
       helpers.append(refmodBtn);
@@ -470,7 +623,7 @@ function install(node) {
       prefillBtn.onclick = () => generateRefLabelsAndSummary(area);
       helpers.append(prefillBtn);
     }
-    if (window.DaSiWaH3Forge && mode() !== "Image Inpaint") {
+    if (window.DaSiWaH3Forge && mode() !== "Image Inpaint" && !isContinuing()) {
       const forgeButton = document.createElement("button"); forgeButton.className = "ds-h3-forge-btn";
       forgeButton.textContent = "Prompt Forge"; forgeButton.title = "Write a prompt with a local LLM";
       forgeButton.onclick = () => window.DaSiWaH3Forge.open(node); helpers.append(forgeButton);
@@ -887,7 +1040,7 @@ function install(node) {
     // Clearing the Director also removes Forge drafts saved with this node.
     if (window.DaSiWaH3Forge?.clearHistory) window.DaSiWaH3Forge.clearHistory(node);
     else if (node.properties) delete node.properties.dasiwaH3ForgeHistory;
-    mutate(s => { s.items = []; s.prompt_blocks = []; (s.refmods || []).forEach(row => { row.enabled = false; }); });
+    mutate(s => { s.items = []; s.prompt_blocks = []; if (s.continuity) s.continuity = { ...DEFAULT_CONTINUITY, session: s.continuity.session }; (s.refmods || []).forEach(row => { row.enabled = false; }); });
     updateRefModActiveBadge();
     setStatus("All media, prompts and Forge drafts cleared.");
   };
@@ -1220,7 +1373,7 @@ function install(node) {
     const modeGroup = document.createElement("div"); modeGroup.className = "ds-h3-mode-group"; modeGroup.style.display = "flex"; modeGroup.style.flexDirection = "column"; modeGroup.style.alignItems = "flex-start"; modeGroup.style.gap = "4px"; modeGroup.style.padding = "6px"; modeGroup.style.background = "#0d1217"; modeGroup.style.border = "1px solid #344452"; modeGroup.style.borderRadius = "6px"; modeGroup.style.flexShrink = "0"; modeGroup.style.boxSizing = "border-box"; modeGroup.style.width = "100%";
     const topRow = document.createElement("div"); topRow.className = "ds-h3-modebar"; topRow.style.flexWrap = "wrap"; topRow.style.gap = "8px"; topRow.style.padding = "0"; topRow.style.border = "0"; topRow.style.background = "transparent"; topRow.style.width = "100%"; topRow.style.maxWidth = "100%"; topRow.style.boxSizing = "border-box";
     const controlGroup = () => { const group = document.createElement("span"); group.className = "ds-h3-actions"; group.style.cssText = "gap:4px;flex-wrap:wrap;white-space:nowrap;max-width:100%"; return group; };
-    const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { if (modeWidget) { modeWidget.value = value; modeWidget.callback?.(value); } if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; render(); }; modesSide.append(button); });
+    const modesSide = controlGroup(); const modeLabel = document.createElement("span"); modeLabel.textContent = "Model Mode:"; modeLabel.style.cssText = "color:#9fb3c2;font-weight:600"; modesSide.append(modeLabel); ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"].forEach(value => { const button = document.createElement("button"); button.textContent = value; button.classList.toggle("active", mode() === value && !isContinuing()); button.title = value === "Image Inpaint" ? "One image reference; output exactly one frame through Get Image from Batch." : value; button.onclick = () => { selectRealMode(value); if ((selectedLane === "audio" || selectedLane === "video") && value !== "REF2VA") selectedLane = "image"; }; modesSide.append(button); }); const continueButton = document.createElement("button"); continueButton.textContent = "Continue"; continueButton.title = "Virtual continuation view; H3 backend mode stays unchanged"; continueButton.classList.toggle("active", isContinuing()); continueButton.onclick = enterContinue; modesSide.append(continueButton);
     const ioSide = controlGroup(); ioSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452";
     const actionsSide = controlGroup(); actionsSide.style.cssText += ";padding-left:8px;border-left:1px solid #344452"; const hasContent = state.items.length || state.prompt_blocks?.length || hasBuilderContent() || String(promptWidget?.value || "").trim() || (node.properties?.dasiwaH3ForgeHistory?.length > 0); if (selected) { if (!isLockedSlot(selected)) { const removeButton = document.createElement("button"); removeButton.className = "ds-h3-remove-btn"; removeButton.textContent = "Remove"; removeButton.title = `Remove selected ${selected.type}`; removeButton.onclick = () => remove(selected.id); actionsSide.append(removeButton); } else { setStatus(`${mediaReferenceName(selected.type)} ${selected.slot + 1} is locked in L2VA mode`, true); } } if (hasContent) { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn"; clearButton.textContent = "Clear"; clearButton.title = "Remove all media, prompts and Forge drafts"; clearButton.onclick = clearAll; actionsSide.append(clearButton); } else { const clearButton = document.createElement("button"); clearButton.className = "ds-h3-clear-btn ds-h3-clear-btn-empty"; clearButton.textContent = "Clear"; clearButton.title = "Nothing to clear yet"; clearButton.onclick = () => setStatus("Nothing to clear."); actionsSide.append(clearButton); }
     const spacer = document.createElement("span"); spacer.style.flex = "1";
@@ -1290,9 +1443,10 @@ function install(node) {
       if (!isLockedSlot(item) && !item._isRefMod) { const editBtn = document.createElement("button"); editBtn.textContent = "☰"; editBtn.className = "ds-h3-edit-btn"; editBtn.title = "Open preview and details"; editBtn.onclick = event => { event.stopPropagation(); openPreview(item); }; clip.append(editBtn); }
       clip.onclick = event => { if (event.target !== clip || item._isRefMod) return; selectedId = item.id; render(); }; clip.onpointerdown = event => { selectedId = item.id; if (event.target !== clip) return; if (isLockedSlot(item) || item._audioEcho || item._isRefMod) return; event.stopPropagation(); clip.setPointerCapture?.(event.pointerId); const origin = event.clientX; const originalLeft = slotLeft(laneNameFor(item), item.slot); const lane = laneNameFor(item); const slotCount = lane === "audio" ? MAX.audio : lane === "Video" ? videoSlotCount() : imageSlotCount(); let dragged = false; const onMove = moveEvent => { dragged ||= Math.abs(moveEvent.clientX - origin) >= 4; if (dragged) clip.style.left = `${originalLeft + moveEvent.clientX - origin}px`; }; const onUp = moveEvent => { clip.removeEventListener("pointermove", onMove); clip.removeEventListener("pointerup", onUp); if (!dragged) return; const rect = trackInner.getBoundingClientRect(); const x = moveEvent.clientX - rect.left; const slotOptions = (mode() === "L2VA" && lane === "Image") ? [1] : Array.from({ length: slotCount }, (_, slot) => slot); const targetSlot = slotOptions.reduce((nearest, slot) => Math.abs((slotLeft(lane, slot) + slotWidthFor(slotItem(lane, slot)) / 2) - x) < Math.abs((slotLeft(lane, nearest) + slotWidthFor(slotItem(lane, nearest)) / 2) - x) ? slot : nearest, slotOptions[0]); mutate(s => { const moved = s.items.find(x => x.id === item.id); if (!moved) return; const occupant = s.items.find(x => x.id !== moved.id && laneForItem(x) === laneForItem(moved) && x.slot === targetSlot); if (occupant && isLockedSlot(occupant)) return; const previousSlot = moved.slot; moved.slot = targetSlot; moved.start = targetSlot; if (occupant) { occupant.slot = previousSlot; occupant.start = previousSlot; } }); }; clip.addEventListener("pointermove", onMove); clip.addEventListener("pointerup", onUp); }; lanes.get(laneNameFor(item)).append(clip); }); track.append(trackInner); timeline.append(track);
     // Unified prompt-builder form replacing legacy per-item/global prompts
+    buildContinuityControls(timeline);
     const promptPanel = document.createElement("div"); promptPanel.className = "ds-h3-prompt-panel";
     buildSimpleForm(promptPanel);
-    if (hasExternalPrompt()) {
+    if (hasExternalPrompt() && !isContinuing()) {
       promptPanel.classList.add("disabled");
       promptPanel.querySelectorAll("textarea, input, button").forEach(el => { el.disabled = true; });
       const note = document.createElement("div"); note.className = "ds-h3-small ds-h3-ext-note";
@@ -1409,6 +1563,8 @@ function install(node) {
     emit();
     syncNodeBounds();
     render();
+    if (state.continuity?.session) void refreshContinuity();
+    if (isContinuing()) void loadContinuityModels();
     void Promise.all(state.items.filter(item => item.type === "video" && !item.thumbnail).map(async item => {
       const thumb = await captureFirstFrame(viewUrl(item.value));
       if (thumb) mutate(s => { const x = s.items.find(i => i.id === item.id); if (x) x.thumbnail = thumb; });
@@ -1477,6 +1633,7 @@ function install(node) {
     closePromptNumberPopover?.();
     activeRefModOverlayCleanup?.();
     document.removeEventListener("keydown", onRefModReloadKey);
+    api.removeEventListener?.("df_h3_continuity_saved", onContinuitySaved);
     window.clearInterval(node.__dasiwaH3LengthPoll);
     window.clearInterval(node.__dasiwaH3ExtPoll);
     oldRemoved?.apply(this, args);

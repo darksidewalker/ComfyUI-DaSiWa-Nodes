@@ -286,8 +286,9 @@ def test_guider_routes_ref2va_by_name_against_the_current_native_signature(monke
     }
     clip, vae, audio_vae = object(), object(), object()
 
-    positive, latent = director_guide.MiniMaxH3DirectorGuide().apply(clip, vae, guide, audio_vae)
+    positive, latent, context = director_guide.MiniMaxH3DirectorGuide().apply(clip, vae, guide, audio_vae)
 
+    assert context == {"disabled": True}
     assert positive == ["conditioning"]
     assert latent["samples"].shape == (1, 2, 3)
     assert calls == [{
@@ -848,8 +849,9 @@ def test_guider_routes_image_inpaint_to_5frame_image_to_video(monkeypatch):
     guide = {"version": 2, "mode": "Image Inpaint", "width": 768, "height": 768,
              "length": 5, "first_frame": "img", "resolved_prompt": "p"}
 
-    positive, latent = director_guide.MiniMaxH3DirectorGuide().apply(object(), object(), guide)
+    positive, latent, context = director_guide.MiniMaxH3DirectorGuide().apply(object(), object(), guide)
 
+    assert context == {"disabled": True}
     assert positive == ["conditioning"]
     assert latent["samples"].shape == (1, 2, 3)
     # native call: (clip, vae, prompt, width, height, 5, first_frame, None)

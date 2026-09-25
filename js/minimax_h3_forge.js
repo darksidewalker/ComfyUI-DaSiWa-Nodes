@@ -290,4 +290,4 @@ async function open(node) {
 
 // At load, not on first open: the toolbar button's style lives here too.
 installStyles();
-window.DaSiWaH3Forge = { open, clearHistory: clearForgeHistory };
+window.DaSiWaH3Forge = { open, clearHistory: clearForgeHistory, settings: forgeSettings };

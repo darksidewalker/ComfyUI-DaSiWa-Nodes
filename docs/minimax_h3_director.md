@@ -89,7 +89,7 @@ Wire them like this:
 Connections detail:
 
 - Director `guide` → Guide `guide`
-- Selected MiniMax H3 model → Guide `model`
+- Selected MiniMax H3 model → Director `fl2va_model` or `ref2va_model` → Director `model` output → model chain; the Guide itself takes `clip`, `vae` and `guide`, not a `model` input.
 - `CLIP` → Guide `clip`
 - Visual `VAE` → Guide `vae`
 - In REF2VA: audio VAE → Guide `audio_vae`
@@ -98,6 +98,34 @@ Connections detail:
 Important: the Guide node replaces and wraps ComfyUI's native `MiniMaxH3ImageToVideo` and `MiniMaxH3ReferenceToVideo` nodes. You do not add or wire those native nodes yourself — the Guide calls them internally based on the chosen mode.
 
 The Director has optional model sockets (`fl2va_model`, `ref2va_model`) for lazy loading: connect whichever model matches your active mode. The Guide refuses REF2VA without an audio VAE and detects a swapped MiniMax H3 video/audio VAE before native execution (v0.4.37).
+
+### Continuity wiring and pictogram legend
+
+**Continue is a Director view, not an additional MiniMax model mode.** Choose the underlying mode (for example FL2VA or REF2VA) as usual, then use **Continue** to extend a completed take. Older workflows without the technical continuation path still run normally, but cannot capture resumable checkpoints. The optional continuity workflow adds two processing nodes after the ordinary Guide and sampler; neither is a second Director control.
+
+```text
+[01  SOURCE]  completed video + immutable AV latent checkpoint
+      │  22 hidden context frames (default; video AND audio)
+      ▼
+[02  GUIDE]   Director Guide + native synchronized tail conditioning
+      │  fresh 141-frame sample window = 22 context + 119 new frames
+      ▼
+[03  SAMPLE]  standard H3 sampler
+      │  sampled joint video/audio latent
+      ▼
+[04  APPEND]  DaSiWa H3 Continuity Append: discard hidden overlap,
+      │      append only 119 new visible AV frames; stage checkpoint
+      ├── cumulative latent ──► existing upscale / decode / video export
+      │                                              │ actual filename
+      └── checkpoint ticket ─────────────────────────┴──► [05 PUBLISH]
+                                                        verify export, mark ready
+```
+
+For the first **New** take, there is no source or hidden overlap: the ordinary Guide and sampler generate the clip, `[04]` stages its complete AV latent, and `[05]` publishes it after export. On subsequent Continue runs, `[01]` means a **completed, pinned source** rather than any imported MP4. `[02]` provides invisible audiovisual motion/sound context, not repeated output footage. `[03]` runs a bounded fresh window. `[04]` keeps the previous latent prefix and adds only the newly generated suffix. `[05]` makes the new clip selectable **only if** the exporter wrote a real file. The two arrows into `[05]` are necessary: sampler success alone is not export success. The sampled-window cap does not cap total length, but each cumulative checkpoint and full decode becomes larger as you continue. Previously exported pixels/audio may change under cumulative decode or postprocessing even though the prior latent prefix is unchanged.
+
+**Manual long-video loop:** Enable **Keep take for Continue** for the first New take and queue it; choose its completed clip ID under Continue; edit the separate next-action prompt and queue; when export finishes, explicitly use that result as the next source (or leave the original selected to reroll a branch). This never silently advances to the latest clip. Continue requires native 24 fps, a compatible model family/canvas and the original checkpoint; downstream frame interpolation may still use another display frame rate. Context length and session live under the Director's advanced Continuity controls. Audio is conditioned and extended together with video; no audio waveform is sent to Prompt Forge. The native AV tail/window/append helpers are derived from [ttulttul/ComfyUI-Minimax-H3-Continuation](https://github.com/ttulttul/ComfyUI-Minimax-H3-Continuation), with its MIT license retained in `nodes/h3_continuity/vendor/LICENSE`.
+
+**Validation boundary:** CPU latent/graph tests and isolated ComfyUI registration do not establish visual or acoustic seam quality. A real H3 GPU run with its model, video VAE and audio VAE is still required before relying on this for production long-form output; each cumulative decode and upscale becomes more expensive as the clip grows.
 
 ## Modes at a glance
 
@@ -235,11 +263,21 @@ Below the timeline, every model mode has one free-text prompt field, initially e
 
 The dark prompt toolbar also has **Insert [Shot N]** and, for REF2VA, **Insert RefMod #** (expands a selected saved reference into native label and description). Their number controls open small popovers beside the clicked button; Enter inserts and Escape dismisses. **Prefill Labels & Summary** fills the six H3 reference sections from enabled image/video/audio references and RefMods, including audio-only/video+audio tracks, their lane positions, and any authored media or RefMod descriptions. It does not assume that an image is an opening keyframe, that a video is being edited, or that audio is copied. Existing filled sections stay intact; plain free text is moved into `detailed_description`. Complete the shot-by-shot description and soundscape yourself and check preservation markers against the intended use—no visual or audio content is inferred from pixels or waveforms. There is no separate Director prompt preview. **Prompt Forge** opens the optional LLM prompt writer (local ComfyUI model, Ollama, or configured OpenAI-compatible server): Generate shows its draft in the Forge dialog; **Apply to node** then replaces the prompt field. The last three successful generations are listed under the draft. Click one to preview it and apply it later, even if you previously closed Forge without applying; they are saved in this Director node's workflow properties and survive a saved-workflow reload. A draft generated for another mode can be viewed but must be applied while that mode is selected. Storing the workflow also stores these drafts, so use **Clear history** in Forge to remove saved drafts without touching the Director prompt, or the Director's **Clear** button to remove media, prompt and Forge history together. Reference packs still serialize only the editable prompt; the three Forge drafts live in the workflow's node properties. Old structured workflows, embedded video metadata, and structured reference packs are assembled into the same prompt field when loaded.
 
-#### Prompt Forge: writing and applying a draft
+#### Prompt Forge: connect an LLM and apply a draft
 
-Open **Prompt Forge** from the Director's prompt toolbar. Enter an **Idea** (a sentence or two is enough), then choose an available **Model**, **Creativity** preset, and **Detail** level (1–10). The model list groups local ComfyUI models, Ollama, and configured OpenAI-compatible models; unavailable models cannot be selected. The Forge uses the Director's current mode and duration. Timeline references appear in lane order: REF2VA images can be assigned **subject**, **style**, or **keyframe** roles; image/video references have an optional **keep** instruction. Video rows indicate their video/audio stream. These roles and instructions guide the writer; inspect the generated text rather than assuming the model interpreted every reference correctly. A text-only model cannot see image contents and writes from the idea and supplied reference information instead.
+Prompt Forge is optional and runs **before** the H3 video queue, not as a second sampler or an automatic prompt replacement. Open it from the Director's prompt toolbar, enter an **Idea**, choose **Model**, **Creativity** and **Detail** (1–10), then click **Generate**. The resulting draft changes nothing until **Apply to node** is clicked; review and edit the Director prompt before queueing. **Regenerate** writes a different draft; **Cancel** or closing the dialog stops an in-progress generation. The three most recent successful drafts are saved with the Director node and can be previewed later; a draft for another H3 mode can only be applied after switching back. **Clear history** removes drafts without changing the active prompt; the Director's **Clear** removes both. Reference packs save the applied prompt, not Forge history.
 
-Click **Generate** to write a draft. The preview does **not** change the Director prompt until you click **Apply to node**, which replaces the field. **Regenerate** produces another draft; **Cancel** or closing the dialog stops an in-progress generation. Forge reports model warnings and unload status after the run. The last three successful drafts remain selectable in that Director node's saved workflow, including after closing and reopening Forge. Drafts belong to their original mode: switch back to that mode before applying one. **Clear history** removes drafts but preserves the active prompt; the Director's **Clear** removes both. Reference packs save the applied prompt, not Forge history. Review and edit the applied text in the Director before queueing.
+**Connect a model using one of these sources:**
+
+| Source | Setup | How it appears in Forge |
+| --- | --- | --- |
+| Local ComfyUI model | Put a supported model directory (with its model configuration and weights) or a GGUF file under `ComfyUI/models/llm/`; reopen Forge to refresh the dynamically listed models. GGUF additionally needs `llama-cpp-python`. Bare `.safetensors` files without a model directory are not chat models. | `local:<name>`; runs in the ComfyUI process and unloads after generation. |
+| Ollama | Install and start Ollama, then download a chat or vision model using Ollama's own model management. The default address is `http://127.0.0.1:11434`; for an Ollama instance on another machine, set **Settings → DaSiWa → H3 Forge → Ollama address**. | `ollama:<name>` from Ollama's `/api/tags`; embedding models are filtered out. |
+| OpenAI-compatible server | Start a server exposing `/v1/models` and `/v1/chat/completions`, then set **Settings → DaSiWa → H3 Forge → OpenAI-compatible server address** to its base URL (for example `http://127.0.0.1:8080`). Leave it empty to disable this source. | `openai:<model-id>` from `/v1/models`. The setting accepts the server root or a URL ending in `/v1`; do not add `/chat/completions` yourself. |
+
+These server addresses are **ComfyUI Settings, not workflow fields**; you must set them on the ComfyUI instance actually running Forge. Reopen Forge after changing a URL to refresh its picker; a missing configured server appears as a source-specific error, not as an available model. The server must support streaming chat responses. Ollama normally unloads the requested model on completion; other OpenAI-compatible servers may keep it in VRAM, and Forge reports that warning. Forge refuses a new generation while a workflow is sampling so it does not evict the video model. If you use a server on another GPU, its memory is managed by that server.
+
+Forge uses the Director's current H3 mode and duration. Timeline references are sent in lane order: REF2VA images can be tagged **subject**, **style** or **keyframe**; image/video references may carry a **keep** instruction, and video rows state whether their video/audio streams are used. A vision-capable model can receive attached reference pictures; a text-only model receives the idea and reference descriptions, **not** visual contents. Neither path analyzes soundtrack audio. If using **Continue**, its separate Analyze → Draft action uses a selected completed clip's chronological tail thumbnails where available; **Apply draft** updates only the Continue prompt and does not queue a video. This action uses the same Forge model sources/Settings, not a second `llm_config.json`.
 
 ## Limits and validation
 
@@ -308,9 +346,10 @@ The Guide is a thin adapter between your authored timeline and ComfyUI's native 
    - FL2VA / I2VA / L2VA / T2VA → calls `MiniMaxH3ImageToVideo` with endpoint frames and prompt.
    - Image Inpaint → calls `MiniMaxH3ImageToVideo` with the single image as first frame, `last_frame = None`, and a fixed 5-frame length.
    - REF2VA → calls `MiniMaxH3ReferenceToVideo` with all reference maps and prompt.
-4. Emits standard ComfyUI outputs:
+4. Emits standard ComfyUI outputs plus an optional continuity context:
    - `positive` (conditioning)
    - `latent` (image batch — a one-frame batch for Image Inpaint; extract the result with **Get Image from Batch**)
+   - `continuity_context` (disabled for older workflows and uncaptured New takes; wire only to **H3 Continuity • Append & Stage** in the continuity workflow).
    - These feed downstream samplers and decoders exactly like any other H3 workflow.
 
 You never call the native MiniMax H3 nodes directly when using Director+Guide; the Guide abstracts that away.

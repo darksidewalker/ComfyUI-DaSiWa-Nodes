@@ -134,7 +134,8 @@ def test_guide_passes_audio_refmod_without_decoding(monkeypatch):
     monkeypatch.setattr(guide_module, "_native_node", lambda _: Native)
     guide = {"mode": "REF2VA", "resolved_prompt": "<Audio 1>", "width": 64, "height": 64, "length": 5,
              "minimax_ref_items": [{"kind": "audio", "latent": torch.ones(1, 32, 2, 4), "latent_t": 4}]}
-    positive, _ = guide_module.MiniMaxH3DirectorGuide().apply(Clip(), Vae(), guide, None)
+    positive, _, context = guide_module.MiniMaxH3DirectorGuide().apply(Clip(), Vae(), guide, None)
+    assert context == {"disabled": True}
     assert seen["minimax_ref_items"] == [{"type": "audio"}]
     assert positive[0][1]["minimax_refs"][0]["audio_latent"].shape == (1, 32, 2, 4)
 
@@ -159,7 +160,8 @@ def test_guide_passes_ref_items_to_tokenize_without_new_socket(monkeypatch):
     guide = {"mode": "REF2VA", "resolved_prompt": "<Video 1>", "width": 64, "height": 64,
              "length": 5, "minimax_ref_items": [{"kind": "video", "latent": torch.ones(1, 24, 2, 4, 4),
              "latent_t": 2, "latent_h": 4, "latent_w": 4}], "selection_stamp": 10}
-    positive, _ = guide_module.MiniMaxH3DirectorGuide().apply(Clip(), Vae(), guide, None)
+    positive, _, context = guide_module.MiniMaxH3DirectorGuide().apply(Clip(), Vae(), guide, None)
+    assert context == {"disabled": True}
     assert seen["kwargs"]["minimax_ref_items"][0]["type"] == "video"
     assert len(positive[0][1]["minimax_refs"]) == 1
     assert "ref_mods" not in guide_module.MiniMaxH3DirectorGuide.INPUT_TYPES()["optional"]

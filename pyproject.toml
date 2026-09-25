@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
 description = "DaSiWa Custom Nodes Collection"
-version = "0.4.57"
+version = "0.4.58"
 license = {file = "LICENSE"}
 dependencies = [
     "torch",
@@ -12,6 +12,7 @@ dependencies = [
     "accelerate",
     "psutil>=5.9",
     "av>=18.0",
+    "safetensors",
 ]
 
 [project.urls]

@@ -3,6 +3,7 @@
 from .helper_minimax_h3_director import normalize_guide
 from .helper_refmod_format import refmod_fingerprint
 from .helper_logging import log_dasiwa
+import uuid
 
 
 def _describe_output(value) -> str:
@@ -76,17 +77,49 @@ class MiniMaxH3DirectorGuide:
             "optional": {"audio_vae": ("VAE",)},
         }
 
-    RETURN_TYPES = ("CONDITIONING", "LATENT")
-    RETURN_NAMES = ("positive", "latent")
+    RETURN_TYPES = ("CONDITIONING", "LATENT", "DF_H3_CONTINUITY_CONTEXT")
+    RETURN_NAMES = ("positive", "latent", "continuity_context")
     FUNCTION = "apply"
     CATEGORY = "DaSiWa/MiniMax H3"
 
     @classmethod
     def IS_CHANGED(cls, clip, vae, guide, audio_vae=None):
+        if isinstance(guide, dict) and "continuity" in guide:
+            from .h3_continuity.core import parse_settings
+            settings = parse_settings(guide["continuity"])
+            if settings["capture"] or settings["operation"] == "continue":
+                return float("nan")
         items = guide.get("minimax_ref_items", []) if isinstance(guide, dict) else []
         return tuple((item["name"], refmod_fingerprint(item["name"])) for item in items if item.get("name"))
 
     def apply(self, clip, vae, guide, audio_vae=None):
+        raw = guide.get("continuity") if isinstance(guide, dict) else None
+        if raw is None:
+            return (*self._apply_native(clip, vae, guide, audio_vae), {"disabled": True})
+        from .h3_continuity.core import ClipStore, parse_settings, prepare_continuation, add_tail
+        from .h3_continuity.vendor.continuation_nodes import _require_native_arbitrary_guides
+        settings = parse_settings(raw)
+        continuing = settings["operation"] == "continue"
+        if not continuing and (not settings["capture"] or guide["mode"] == "Image Inpaint"):
+            return (*self._apply_native(clip, vae, guide, audio_vae), {"disabled": True})
+        if guide["mode"] == "Image Inpaint":
+            raise ValueError("Continuity requires a video mode, not Image Inpaint.")
+        if abs(float(guide.get("frame_rate", 24)) - 24) > 1e-6:
+            raise ValueError("H3 continuity uses native 24 fps. Set Director frame_rate to 24.")
+        _require_native_arbitrary_guides()
+        context = {**settings, "run_id": uuid.uuid4().hex, "mode": guide["mode"],
+                   "resolved_prompt": guide.get("resolved_prompt", guide.get("prompt", ""))}
+        if not continuing:
+            positive, latent = self._apply_native(clip, vae, guide, audio_vae)
+            context.update(source_id="", overlap_frames=0, extension_frames=0)
+            return positive, latent, context
+        previous, metadata = ClipStore().load(settings["session"], settings["source_id"])
+        updated, target, layout = prepare_continuation(previous, metadata, guide, settings)
+        positive, _ = self._apply_native(clip, vae, updated, audio_vae)
+        context.update(layout=layout, resolved_prompt=updated["resolved_prompt"])
+        return add_tail(positive, previous, target, layout), target, context
+
+    def _apply_native(self, clip, vae, guide, audio_vae=None):
         state = normalize_guide(guide)
         pure_preencoded = bool(state.minimax_ref_items) and not any((
             state.ref_images, state.ref_videos, state.ref_video_audios, state.ref_audios))

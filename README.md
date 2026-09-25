@@ -21,7 +21,8 @@ Timeline-based authoring for MiniMax H3 generation workflows. Separate Image/Vid
 - 🔀 **Reference handling:** drag-reorder between slots, external soundtracks per video, visual crop via draggable markers, incompatible media preserved on mode toggle
 - 📋 **Paste & upload:** lane selection + Ctrl+V paste into chosen lane, drag-and-drop from file manager, paste-replace onto selected tile
 - ✍️ **Prompt editor:** one free-text field per mode, with optional structure, shot/RefMod insertion, and reference-label prefill; legacy prompts migrate into the same field.
-- ✨ **Prompt Forge:** write H3 prompts from an idea and timeline references with a local ComfyUI LLM, Ollama, or a configured OpenAI-compatible server; review before applying and keep three drafts per Director node.
+- ✨ **Prompt Forge:** write and review H3 drafts via `models/llm`, Ollama, or an OpenAI-compatible server; [model/server setup →](docs/minimax_h3_director.md#prompt-forge-connect-an-llm-and-apply-a-draft).
+- 🔗 **Continue (opt-in):** extend a completed 24-fps H3 video/audio take from its pinned latent checkpoint; compact Director view, separate next-action prompt, explicit source advancement, optional Forge draft; [wiring and limits →](docs/minimax_h3_director.md#continuity-wiring-and-pictogram-legend).
 - 📐 **Resolution panel:** Aspect/Resolution/Input Scaling selectors (all default Auto) on 32px grid; grouped dropdowns; CUSTOM values; Torch Resize preprocessing (Off/Auto/Target/Fit/Fill/Fit+pad/Divisible crop)
 - 💾 **Save/Load packs:** reference files + prompt + RefMod selections persisted independently; append or overwrite with limit validation and missing-file checks
 - 🎬 **Video thumbnails:** first-frame preview behind each video clip tile

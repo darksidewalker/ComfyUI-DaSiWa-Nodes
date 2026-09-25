@@ -345,6 +345,10 @@ class MiniMaxH3Director:
         if refmod_items:
             guide["minimax_ref_items"] = refmod_items
             guide["selection_stamp"] = max(refmod_fingerprint(item["name"])[0] for item in refmod_items)
+        if "continuity" in state:
+            from .h3_continuity.core import parse_settings
+            guide["continuity"] = parse_settings(state["continuity"])
+        guide["frame_rate"] = frame_rate
         normalize_guide(guide)
         selected_model = ref2va_model if mode == "REF2VA" else fl2va_model
         log_dasiwa("MiniMax H3 Director", f"mode={mode}; requested_model={'ref2va_model' if mode == 'REF2VA' else 'fl2va_model'}; passed_model={_describe_model(selected_model)}; canvas={width}x{height}; frames={length}; fps={frame_rate}; refs=images:{len(ref_images)},videos:{len(ref_videos)},video_audio:{len(ref_video_audios)},audio:{len(ref_audios)}; timeline_items={len(items)}")
