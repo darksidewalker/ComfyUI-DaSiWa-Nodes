@@ -1,16 +1,14 @@
-"""Keep the newly published Comfy Registry version and four deprecated predecessors."""
+"""Prune older Registry versions without depending on the latest publish being indexed."""
 
 import json
 import os
 import sys
-import time
 import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
 
 BASE = "https://api.comfy.org"
-ACTIVE = "NodeVersionStatusActive"
 DELETED = "NodeVersionStatusDeleted"
 
 
@@ -51,37 +49,28 @@ def list_versions(node):
 
 
 def prune(node, publisher, current, token):
-    versions = []
-    for attempt in range(20):
-        versions = [v for v in list_versions(node) if v["status"] != DELETED]
-        matches = [v for v in versions if v["version"] == current]
-        if len(matches) == 1 and matches[0]["status"] == ACTIVE:
-            break
-        if len(matches) == 1 and matches[0]["status"] == "NodeVersionStatusPending" and attempt < 19:
-            time.sleep(15)
-            continue
-        raise RuntimeError(f"Published version {current} is not active yet; refusing to prune")
+    # The just-published version may not be indexed (or may still be flagged).
+    # Never mutate it; only operate on older versions already in the listing.
+    versions = [v for v in list_versions(node) if v["status"] != DELETED and v["version"] != current]
     versions.sort(key=lambda v: (v["createdAt"], v["version"]), reverse=True)
-    if versions[0]["version"] != current:
-        raise RuntimeError("Published version is not the newest; refusing to prune")
     if len({v["id"] for v in versions}) != len(versions):
         raise RuntimeError("Duplicate version IDs; refusing to prune")
     prefix = f"/publishers/{urllib.parse.quote(publisher, safe='')}/nodes/{urllib.parse.quote(node, safe='')}/versions/"
-    for version in versions[1:5]:
+    for version in versions[:4]:
         if version["deprecated"]:
             continue
         path = prefix + urllib.parse.quote(version["id"], safe="")
         request("PUT", path, token, {"deprecated": True})
         print(f"Deprecated {version['version']}")
-    for version in versions[5:]:
+    for version in versions[4:]:
         path = prefix + urllib.parse.quote(version["id"], safe="")
         request("DELETE", path, token)
         print(f"Unpublished {version['version']}")
-    remaining = [v for v in list_versions(node) if v["status"] != DELETED]
-    expected = {v["id"] for v in versions[:5]}
-    if {v["id"] for v in remaining} != expected or any(v["version"] != current and not v["deprecated"] for v in remaining):
+    remaining = [v for v in list_versions(node) if v["status"] != DELETED and v["version"] != current]
+    expected = {v["id"] for v in versions[:4]}
+    if {v["id"] for v in remaining} != expected or any(not v["deprecated"] for v in remaining):
         raise RuntimeError("Registry cleanup verification failed")
-    print(f"Verified {current} and {len(remaining) - 1} deprecated predecessors remain")
+    print(f"Verified {len(remaining)} deprecated predecessors remain; excluded newly published {current}")
 
 
 if __name__ == "__main__":

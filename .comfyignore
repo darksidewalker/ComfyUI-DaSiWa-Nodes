@@ -1,0 +1,7 @@
+# CI, test fixtures, and maintenance utilities are not runtime node assets.
+/.github/
+/.tests/
+/tools/
+/docs/registry_security_review.md
+/.ignore
+/.gitignore
