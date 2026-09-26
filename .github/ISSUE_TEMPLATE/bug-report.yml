@@ -73,6 +73,8 @@ body:
         - "DaSiWa Inpaint Composite"
         - "MiniMax H3 Director"
         - "MiniMax H3 Director Guide"
+        - "H3 Continuity • Append & Stage"
+        - "H3 Continuity • Publish Export"
         - "MiniMax H3 Cache"
         - "Other / general"
     validations:
