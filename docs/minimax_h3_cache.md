@@ -6,16 +6,11 @@
 
 Place it on the `MODEL` path before the guider/sampler:
 
-```text
-MiniMax H3 Model Loader
-          |
-          v
-MiniMax H3 Cache
-          |
-          +--> Patch Comfy Kitchen Attention (optional)
-          |              |
-          +--------------v
-                    Guider / Sampler
+```mermaid
+flowchart TB
+    LOADER[MiniMax H3 Model Loader] --> CACHE[MiniMax H3 Cache]
+    CACHE --> PKA[Patch Comfy Kitchen Attention<br>(optional)]
+    PKA --> GUIDER[Guider / Sampler]
 ```
 
 The Cache and **Patch Comfy Kitchen Attention** are model-clone patches and may be chained in either order. Cache-hit steps bypass the complete H3 block stack, so no attention backend runs on those steps. On cache-miss steps, Comfy Kitchen's selected attention override remains present in `transformer_options` and is used normally.

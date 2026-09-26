@@ -51,41 +51,25 @@ Ensure your ComfyUI version includes native MiniMax H3 support. Add these nodes 
 
 Wire the basic generation path like this:
 
-```text
-┌──────────────────────────────────────┐
-│ UNET Loader                          │     diffusion_models/*.safetensors
-│ CLIP Loader                          │     text_encoders/qwen3vl_32b_minimax_h3_*.safetensors
-│ VAE Loader (visual)                  │     vae/minimax_h3_video_vae_fp16.safetensors
-│ VAE Loader (audio)                   │     vae/minimax_h3_audio_vae_fp32.safetensors
-│                                      │     (only for REF2VA mode)
-└───┬────────────┬──────────┬──────────┘
-    │            │          │
-    ▼            ▼          ▼
-┌──────────────────────────────────────────────┐
-│ DaSiWa MiniMax H3 Director                   │
-│  - add/edit references                       │
-│  - set trims, ordering, prompts              │
-│  - emits structured "guide" dict             │
-└────┬─────────────────────────────────────────┘
-     │ guide
-     ▼
-┌──────────────────────────────────────────────┐
-│ DaSiwa MiniMax H3 Director Guide             │
-│  - validates director output                 │
-│  - assembles final prompt                    │
-│  - CALLS the native ComfyUI H3 nodes:        │
-│      • MiniMaxH3ImageToVideo   (FL2VA)       │
-│      • MiniMaxH3ReferenceToVideo (REF2VA)    │
-│  - you NEVER wire those native nodes yourself│
-└────┬─────────────────────────────────────────┘
-     │ positive, latent
-     ▼
-┌──────────────────────────────────────────────┐
-│ Standard ComfyUI sampling/decoding chain     │
-│  - KSampler                                  │
-│  - VAE Decode                                │
-│  - Enhanced Video Combine / Image Save etc.  │
-└──────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph loaders[Loaders]
+        UNET["UNET Loader<br>diffusion_models/*.safetensors"]
+        CLIP["CLIP Loader<br>text_encoders/qwen3vl_32b_minimax_h3_*"]
+        VAE_V["VAE Loader (visual)<br>vae/minimax_h3_video_vae_fp16.safetensors"]
+        VAE_A["VAE Loader (audio)<br>vae/minimax_h3_audio_vae_fp32.safetensors<br>(REF2VA only)"]
+    end
+
+    DIR[DaSiWa MiniMax H3 Director<br>references, trims, ordering, prompts]
+    GUIDE[DaSiwa MiniMax H3 Director Guide<br>validates, assembles prompt,<br>calls native H3 nodes internally]
+    CHAIN[Standard ComfyUI sampling/decoding chain<br>KSampler → VAE Decode → Enhanced Video Combine / Image Save]
+
+    UNET --> DIR
+    CLIP --> GUIDE
+    VAE_V --> GUIDE
+    VAE_A -.-> GUIDE
+    DIR -->|guide| GUIDE
+    GUIDE -->|positive, latent| CHAIN
 ```
 
 Connections detail:
@@ -99,16 +83,15 @@ Connections detail:
 
 For **optional continuity**, insert the companion nodes *after sampling and before decoding/export*. Keep the Guide's normal `positive` → guider and `latent` → sampler connections:
 
-```text
-Director.guide ──► Director Guide ──► positive + latent ──► Sampler
-                         │                                 │ sampled LATENT
-                         └─ continuity_context ─┐          ▼
-                                                └──► H3 Continuity • Append & Stage
-                                                            │ cumulative_latent       │ ticket
-                                                            ▼                         ▼
-                                                   decode / upscale → video exporter  H3 Continuity • Publish Export
-                                                            │ filename                 ▲
-                                                            └──────────────────────────┘
+```mermaid
+flowchart LR
+    DIR[Director] -->|guide| GUIDE[Director Guide]
+    GUIDE -->|positive + latent| SAMPLER[Sampler]
+    GUIDE -->|continuity_context| APPEND[H3 Continuity • Append & Stage]
+    SAMPLER -->|sampled LATENT| APPEND
+    APPEND -->|cumulative_latent| DECODE["decode / upscale → video exporter"]
+    APPEND -->|ticket| PUBLISH[H3 Continuity • Publish Export]
+    DECODE -->|filename| PUBLISH
 ```
 
 - Guide `continuity_context` → **Append & Stage** `context`; sampler output → **Append & Stage** `sampled`.
