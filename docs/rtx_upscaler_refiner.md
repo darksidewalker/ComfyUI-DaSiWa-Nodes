@@ -2,6 +2,12 @@
 
 This node leverages NVIDIA RTX Video SDK features to provide professional-grade image/video enhancement directly within ComfyUI. It executes up to three sequential passes in a single node, processing frame-by-frame to keep VRAM usage predictable and low.
 
+```mermaid
+flowchart LR
+    VD[VAE Decode<br>or sampler] -->|IMAGE batch| RTX[RTX Upscaler & Refiner<br>VSR, Scale 2.0, denoise on]
+    RTX -->|IMAGE batch upscaled| EVC[Enhanced Video Combine]
+```
+
 > **Fix (v0.4.13):** `empty_cache` is now an **optional** input with a default of `False`. It had previously been a required positional input, which broke API workflows that did not pass it (fixes #24). Existing workflows are unaffected — the default preserves the original behavior.
 
 ## ⚡ Processing Pipeline

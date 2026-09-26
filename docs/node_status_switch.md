@@ -33,6 +33,14 @@ The Node Status Switch lets you mute or bypass any node in your workflow using a
 
 Wire the `enabled_out` output of one switch into the `enabled` input of another. The downstream switch receives the upstream switch's effective `enabled` value (raw, not post-`trigger_on`) and applies its own logic on top.
 
+```mermaid
+flowchart LR
+    T[Primitive Toggle] -->|enabled| B[Switch B<br>true→active / bypass]
+    B -->|target_01| U[Upscale node]
+    B -->|enabled_out| C[Switch C<br>false→active / mute]
+    C -->|target_01| P[Preview branch]
+```
+
 This lets you drive any number of switches from a single master toggle while keeping each branch's `trigger_on` and `action` independent. For example, with one master toggle:
 
 - Switch B uses `trigger_on = true → active`, `action = bypass` to gate an upscale branch

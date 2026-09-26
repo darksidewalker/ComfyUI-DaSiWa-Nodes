@@ -117,22 +117,34 @@ Every slot row shows a small ASCII-drawn trash button directly to the right of t
 ## Example Workflows
 
 ### Scenario 1: Single voice LoRA with full control
-```
+```text
 STR: 1.0, V×: 1.0, A×: 1.0    (Normal, both video and audio)
 STR: 1.0, V×: 0.0, A×: 1.0    (Audio only)
 STR: 1.0, V×: 1.0, A×: 0.0    (Video only)
 ```
 
 ### Scenario 2: Stacking two character LoRAs
-```
+```text
 Slot 1: Celebrity A    STR: 1.0, V×: 1.0, A×: 0.0  (their face)
 Slot 2: Celebrity B    STR: 1.0, V×: 0.0, A×: 1.0  (their voice)
 Result: A's face + B's voice
 ```
 
 ### Scenario 3: Blending with negative strength
-```
+```text
 STR: −0.5, V×: 1.0, A×: 0.0   (Reduce specific video features)
+```
+
+### Typical wiring in a workflow
+
+```mermaid
+flowchart LR
+    CL[Checkpoint Loader] -->|MODEL| ALR[Advanced LoRA Loader<br>Slot 1: face V×1.0 A×0.0<br>Slot 2: voice V×0.0 A×1.0]
+    CL -->|CLIP| CTE[CLIP Text Encode]
+    ALR -->|MODEL patched| KS[KSampler]
+    CTE -->|CONDITIONING| KS
+    KS -->|latent| VD[VAE Decode]
+    VD -->|IMAGE batch| out((output))
 ```
 
 ---

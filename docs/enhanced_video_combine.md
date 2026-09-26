@@ -12,6 +12,13 @@ Click the small `?` at the right of the node title for the same concise in-app r
 4. Optionally enable **Save first frame** and/or **Save last frame**.
 5. Run the workflow. The node returns the generated file path and, when enabled, the input frame batch for downstream nodes.
 
+```mermaid
+flowchart LR
+    VD[VAE Decode<br>or sampler] -->|IMAGE batch| EVC[Enhanced Video Combine<br>codec: Auto, container: Auto]
+    AL[Audio Loader<br>/ VAE Decode] -->|AUDIO| EVC
+    EVC --> out((filename + path))
+```
+
 ## Enhanced automations
 
 The node is deliberately designed to avoid fixed, host-specific video settings:
