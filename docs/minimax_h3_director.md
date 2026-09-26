@@ -42,12 +42,14 @@ Install dependencies and restart ComfyUI:
 pip install -r requirements.txt
 ```
 
-Ensure your ComfyUI version includes native MiniMax H3 support. Add these two nodes from `DaSiWa/MiniMax H3`:
+Ensure your ComfyUI version includes native MiniMax H3 support. Add these nodes from `DaSiWa/MiniMax H3`:
 
 1. **MiniMax H3 Director** — your timeline, references, and prompt editor.
 2. **MiniMax H3 Director Guide** — validation and routing to native H3 nodes.
+3. **H3 Continuity • Append & Stage** (optional) — joins new samples to a pinned source and stages the latent checkpoint.
+4. **H3 Continuity • Publish Export** (optional) — publishes that checkpoint only after the video exporter has produced a valid file.
 
-Wire them like this:
+Wire the basic generation path like this:
 
 ```text
 ┌──────────────────────────────────────┐
@@ -95,13 +97,32 @@ Connections detail:
 - In REF2VA: audio VAE → Guide `audio_vae`
 - Guide outputs `positive` and `latent` → standard MiniMax H3 sampler/decoder chain
 
+For **optional continuity**, insert the companion nodes *after sampling and before decoding/export*. Keep the Guide's normal `positive` → guider and `latent` → sampler connections:
+
+```text
+Director.guide ──► Director Guide ──► positive + latent ──► Sampler
+                         │                                 │ sampled LATENT
+                         └─ continuity_context ─┐          ▼
+                                                └──► H3 Continuity • Append & Stage
+                                                            │ cumulative_latent       │ ticket
+                                                            ▼                         ▼
+                                                   decode / upscale → video exporter  H3 Continuity • Publish Export
+                                                            │ filename                 ▲
+                                                            └──────────────────────────┘
+```
+
+- Guide `continuity_context` → **Append & Stage** `context`; sampler output → **Append & Stage** `sampled`.
+- **Append & Stage** `cumulative_latent` → your existing latent upscale (if any), video/audio decode and exporter. Do **not** decode only the sampler's new segment for a continuation.
+- **Append & Stage** `ticket` → **Publish Export** `ticket`; the actual video exporter's `filename` STRING output → **Publish Export** `filename`. Keep Publish as an output node so export completes before the checkpoint becomes selectable.
+- With capture off and no source, Append passes the sample through and Publish does nothing. Enable **∞ Save new takes** to retain fresh takes as checkpoints; choosing a source activates continuation regardless of that toggle, and continuations are always saved. Both companion nodes are needed for checkpoint capture/continuation, but neither is needed for ordinary generation without it.
+
 Important: the Guide node replaces and wraps ComfyUI's native `MiniMaxH3ImageToVideo` and `MiniMaxH3ReferenceToVideo` nodes. You do not add or wire those native nodes yourself — the Guide calls them internally based on the chosen mode.
 
 The Director has optional model sockets (`fl2va_model`, `ref2va_model`) for lazy loading: connect whichever model matches your active mode. The Guide refuses REF2VA without an audio VAE and detects a swapped MiniMax H3 video/audio VAE before native execution (v0.4.37).
 
 ### Continuity
 
-Selecting a completed H3 checkpoint or an ordinary video with **Choose start video…** automatically shows **Continuity Active** in the Director row. There is no separate Continue model mode: the selected H3 backend remains in use. Duration controls newly added seconds, and the row shows source + added = total. Continuity policy is automatic; the prompt describes the next action. Clear source restores the normal prompt. The latter is normalized and encoded with the connected H3 video/audio VAEs during the normal queue run. The source stays pinned until explicitly changed.
+Selecting a completed H3 checkpoint or an ordinary video with **Choose start video…** automatically shows **Continuity Active** in the Director row. There is no separate Continue model mode: the selected H3 backend remains in use. Duration controls newly added seconds, and the row shows source + added = total. Continuity policy is automatic; the prompt describes the next action. Clear source restores the normal prompt. The latter is normalized and encoded with the connected H3 video/audio VAEs during the normal queue run. The source stays pinned until explicitly changed. Ordinary-video import needs both video and audio VAEs even for silent input, plus `ffmpeg` and `ffprobe` on PATH.
 
 See [H3 Continuity](h3_continuity.md) for the source picker, capture toggle, native AV tail behaviour, socket table, wiring diagram, temporal alignment and resource costs. Do not install the old standalone DF continuity extension alongside this integrated build.
 
