@@ -9,7 +9,7 @@ Place it on the `MODEL` path before the guider/sampler:
 ```mermaid
 flowchart TB
     LOADER[MiniMax H3 Model Loader] --> CACHE[MiniMax H3 Cache]
-    CACHE --> PKA[Patch Comfy Kitchen Attention<br>(optional)]
+    CACHE --> PKA["Patch Comfy Kitchen Attention (optional)"]
     PKA --> GUIDER[Guider / Sampler]
     CACHE -.->|skip optional patch| GUIDER
 ```
