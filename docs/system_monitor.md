@@ -75,7 +75,7 @@ Hover over any metric chip to see detailed information:
 | Linux | AMD | `rocm-smi` JSON output |
 | Linux | Intel | DRM/sysfs device tree |
 | Windows | NVIDIA | NVML (`nvidia-ml-py`), then `nvidia-smi`, otherwise CIM `Win32_VideoController` |
-| Windows | AMD | CIM `Win32_VideoController` fallback |
+| Windows | AMD | ADLX (`amd-adlx`), otherwise CIM `Win32_VideoController` |
 | Windows | Intel | CIM `Win32_VideoController` fallback |
 
 When multiple GPUs of the same vendor exist, each receives a sequential index starting at 0. If a specific GPU tool is unavailable, the system gracefully degrades to generic device enumeration.
@@ -83,6 +83,8 @@ When multiple GPUs of the same vendor exist, each receives a sequential index st
 On Windows the CIM `Win32_VideoController` query is expensive (a fresh `powershell.exe` per call) and its data — adapter name, `PNPDeviceID`, `AdapterRAM` — is static, so it is probed **once** and cached for the lifetime of the monitor instance. A successful non-empty result is reused on every subsequent tick; an empty result is retried on the next tick until an adapter is found. This avoids spawning a powershell process on every telemetry interval.
 
 NVIDIA telemetry uses **one NVML session opened on the first sample and kept for the life of the monitor**. Spawning `nvidia-smi` every tick opens a new NVML session each time, and under Docker Desktop / WSL2 on Windows every session opened in the guest leaks NVIDIA driver memory on the host until reboot; queries on one open session do not. If NVML cannot load, the monitor falls back to `nvidia-smi`, retrying NVML at most every 10 minutes.
+
+AMD telemetry on Windows goes through ADLX, the AMD driver's own telemetry library, since `rocm-smi` and `amdsmi` have no Windows build. Like NVML it is opened once and kept for the life of the monitor. VRAM from ADLX is device-wide, covering memory held by other applications. Without `amd-adlx` an AMD card still appears through CIM, but utilization, VRAM usage and temperature show `n/a`.
 
 ## Responsive Behavior
 
@@ -101,7 +103,8 @@ A ResizeObserver monitors window changes and adjusts visibility dynamically with
 - **psutil** — Cross-platform system metrics (CPU, RAM, swap, disk). Included in project dependencies.
 - **nvidia-ml-py** — NVIDIA telemetry through NVML (installed from `requirements.txt`; pure Python, harmless without an NVIDIA GPU).
 - **nvidia-smi** — Optional fallback when NVML cannot load, bundled with NVIDIA drivers.
-- **rocm-smi** — Optional, part of ROCm toolkit for AMD GPUs.
+- **amd-adlx** — AMD telemetry on Windows through ADLX (installed from `requirements.txt` on Windows only; the driver library is loaded only when an AMD driver is present).
+- **rocm-smi** — Optional, part of ROCm toolkit for AMD GPUs on Linux.
 - No additional GPU tools required on Windows beyond standard drivers.
 
 ## API Endpoints

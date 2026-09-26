@@ -1,3 +1,4 @@
+import atexit
 import json
 import os
 import re
@@ -182,6 +183,106 @@ def _nvidia_telemetry():
     return _nvidia_gpus() if gpus is None else gpus
 
 
+class _AdlxSession:
+    """AMD telemetry on Windows through ADLX, kept open for the life of the process.
+
+    ``rocm-smi`` and ``amdsmi`` have no Windows build, so without ADLX an AMD card only
+    gets the static CIM entry. ADLX ships with the AMD driver; ``amd-adlx`` provides the
+    Python binding.
+    """
+
+    RETRY_SECONDS = 600
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._helper = None
+        self._perf = None
+        self._gpus = []
+        self._static = []
+        self._failed_at = None
+        self._unavailable = False
+
+    def _ensure(self):
+        if self._helper is not None:
+            return True
+        if self._unavailable:
+            return False
+        if self._failed_at is not None and time.monotonic() - self._failed_at < self.RETRY_SECONDS:
+            return False
+        try:
+            from adlx import ADLX  # provided by amd-adlx
+        except Exception:
+            self._unavailable = True
+            return False
+        helper = ADLX.ADLXHelper()
+        if _probe(helper.Initialize, None) != ADLX.ADLX_RESULT.ADLX_OK:  # no AMD driver
+            self._unavailable = True
+            return False
+        if _probe(lambda: self._open(helper), False):
+            self._helper = helper
+            atexit.register(self.close)
+            return True
+        self._perf, self._gpus, self._static = None, [], []
+        _probe(helper.Terminate, None)
+        self._failed_at = time.monotonic()
+        return False
+
+    def _open(self, helper):
+        system = helper.GetSystemServices()
+        gpus = list(system.GetGPUs())
+        self._static = [(str(g.PNPString()), str(g.Name()), int(g.TotalVRAM()) * 1024 * 1024) for g in gpus]
+        self._perf = system.GetPerformanceMonitoringServices()
+        self._gpus = gpus
+        return True
+
+    def close(self):
+        # Interfaces still alive when ADLX is torn down crash the interpreter on exit,
+        # so they are dropped before Terminate.
+        with self._lock:
+            helper, self._helper = self._helper, None
+            self._perf, self._gpus = None, []
+            if helper is not None:
+                _probe(helper.Terminate, None)
+
+    def gpus(self):
+        """Returns AMD GPU samples, or None when ADLX is unavailable (caller falls back)."""
+        with self._lock:
+            if not self._ensure():
+                return None
+            gpus = []
+            for index, (gpu, (identifier, name, total_bytes)) in enumerate(zip(self._gpus, self._static)):
+                support = _probe(lambda: self._perf.GetSupportedGPUMetrics(gpu), None)
+                metrics = _probe(lambda: self._perf.GetCurrentGPUMetrics(gpu), None)
+                used_bytes = _adlx_metric(support, metrics, "GPUVRAM")
+                if used_bytes is not None:
+                    used_bytes *= 1024 * 1024
+                gpus.append({
+                    "id": f"AMD:{identifier}", "index": index, "vendor": "AMD", "name": name,
+                    "uuid": identifier, "utilization": _adlx_metric(support, metrics, "GPUUsage"),
+                    "memory_used": used_bytes, "memory_total": total_bytes,
+                    "memory_percent": _percent(used_bytes, total_bytes),
+                    "temperature": _adlx_metric(support, metrics, "GPUTemperature"),
+                })
+            return gpus
+
+
+def _adlx_metric(support, metrics, name):
+    # An unsupported metric still returns a value, just a meaningless one.
+    if support is None or metrics is None:
+        return UNKNOWN
+    if not _probe(getattr(support, f"IsSupported{name}"), False):
+        return UNKNOWN
+    return _number(_probe(getattr(metrics, name), UNKNOWN))
+
+
+_ADLX_SESSION = _AdlxSession()
+
+
+def _amd_telemetry():
+    gpus = _ADLX_SESSION.gpus() if os.name == "nt" else None
+    return _amd_gpus() if gpus is None else gpus
+
+
 def _rocm_value(data, field):
     if isinstance(data, dict):
         for key, value in data.items():
@@ -320,7 +421,7 @@ class DaSiWaSystemMonitor:
             return gpus
 
     def gpu_info(self):
-        gpus = _probe(_nvidia_telemetry, []) + _probe(_amd_gpus, [])
+        gpus = _probe(_nvidia_telemetry, []) + _probe(_amd_telemetry, [])
         if os.name == "nt":
             vendor_telemetry = {gpu["vendor"] for gpu in gpus}
             gpus.extend(gpu for gpu in self._windows_gpus_cached() if gpu["vendor"] not in vendor_telemetry)
