@@ -1,10 +1,8 @@
 # DaSiWa Custom Nodes Collection
 
-> **H3 Continuity 1.2.5:** Start from a completed H3 checkpoint or an ordinary video and extend it with synchronized video/audio context. Selecting a source activates continuity; the existing Duration controls added seconds and the existing Prompt Forge uses the source context. See [H3 Continuity](docs/h3_continuity.md) for wiring and usage. Disable the old standalone DF continuity extension to avoid duplicate routes.
-
 A high-performance collection of custom nodes for ComfyUI, optimized for video workflows, resolution management, and logic control. Its installed version is shown in **ComfyUI → Settings → About**. 
 
-Use **ComfyUI → Settings → Other → DaSiWa → ... to enable or disable extra settings.
+Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable extra settings.
 
 [📰 News & Changelog — release notes and complete change history across the collection →](docs/news_and_changelog.md)
 
@@ -12,7 +10,7 @@ Use **ComfyUI → Settings → Other → DaSiWa → ... to enable or disable ext
 
 ### 🎬 MiniMax H3 Director
 
-Timeline-based authoring for MiniMax H3 generation workflows. Separate Image/Video/Audio lanes, drag-and-drop/paste/upload, per-clip trims, save/load packs, and structured prompt builders.
+> 🎬 MiniMax H3 Director — The Ultimate One-Stop Video Creation Pipeline: Experience the most advanced, feature-complete MiniMax H3 Director node available for ComfyUI. Built as a comprehensive production hub, it seamlessly merges timeline-based multi-modal authoring, intelligent LLM/VLM Prompt Forge assistance, deep RefMod persona control, and high-precision continuity extensions into a single, unified workflow. Whether starting from text, images, or an existing H3 video, the Director serves as your central command deck for end-to-end synchronized video and audio generation.
 
 ![MiniMax H3 Director](assets/DaSiWa-MiniMaxH3-Director.png)
 ![MiniMax H3 Director](assets/DaSiWa-MiniMaxH3-Director-PromptForge.png)

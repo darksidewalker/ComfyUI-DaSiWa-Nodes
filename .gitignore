@@ -230,3 +230,8 @@ lorainfo/
 # Local environment overrides (keep a deliberately named example trackable).
 .env.*
 !.env.example
+
+# Retired in-repository test suites; local probes stay local.
+/.tests/
+/test/
+/tests/

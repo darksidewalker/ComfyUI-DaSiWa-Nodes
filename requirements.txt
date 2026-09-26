@@ -8,3 +8,4 @@ psutil>=5.9
 av>=18.0
 safetensors
 nvidia-ml-py
+llama-cpp-python>=0.3.26

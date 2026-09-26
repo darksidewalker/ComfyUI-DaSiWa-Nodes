@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-09-24**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-09-26**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **H3 Continuity Advanced overlay (0.4.61):** The rounded Advanced button now sits between Use latest output and Clear source. It opens a separate settings overlay instead of growing the Director node. The new ∞ Save new takes button before Choose start video controls checkpoint capture; choosing a source activates continuation separately. Capture, preferred context, references, session ID and source selection stay in saved workflow state; saved checkpoints remain available after ComfyUI restarts. Unsaved workflow changes still require saving.
 
 - **Prompt Forge guide:** The [Director guide](minimax_h3_director.md#prompt-forge-writing-and-applying-a-draft) now walks through idea, model, creativity and detail choices, reference roles, draft review, applying, cancellation, and saved-history behavior. The README lists Prompt Forge as a separate major Director feature.
 
