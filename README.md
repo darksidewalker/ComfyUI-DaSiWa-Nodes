@@ -23,7 +23,7 @@ Timeline-based authoring for MiniMax H3 generation workflows. Separate Image/Vid
 - 🔀 **Reference handling:** drag-reorder between slots, external soundtracks per video, visual crop via draggable markers, incompatible media preserved on mode toggle
 - 📋 **Paste & upload:** lane selection + Ctrl+V paste into chosen lane, drag-and-drop from file manager, paste-replace onto selected tile
 - ✍️ **Prompt editor:** one free-text field per mode, with optional structure, shot/RefMod insertion, and reference-label prefill; legacy prompts migrate into the same field.
-- ✨ **Prompt Forge:** write and review H3 drafts via `models/llm`, Ollama, or an OpenAI-compatible server; [model/server setup →](docs/minimax_h3_director.md#prompt-forge-connect-an-llm-and-apply-a-draft).
+- ✨ **Prompt Forge:** write and review H3 drafts via `models/llm`, Ollama, or an OpenAI-compatible server. Use a model with vision so Forge can see your pictures, and the biggest one your GPU fits: an 8B works, but can misread details such as outfits and lighting (describe them in the picture's **keep** box if it does); below 8B, drafts copy the built-in example and get shot timing wrong. [Model/server setup →](docs/minimax_h3_director.md#prompt-forge-connect-an-llm-and-apply-a-draft).
 - 🔗 **Continue (opt-in):** extend a completed 24-fps H3 video/audio take from its pinned latent checkpoint; compact Director view, separate next-action prompt, explicit source advancement, optional Forge draft; [wiring and limits →](docs/minimax_h3_director.md#continuity-wiring-and-pictogram-legend).
 - 📐 **Resolution panel:** Aspect/Resolution/Input Scaling selectors (all default Auto) on 32px grid; grouped dropdowns; CUSTOM values; Torch Resize preprocessing (Off/Auto/Target/Fit/Fill/Fit+pad/Divisible crop)
 - 💾 **Save/Load packs:** reference files + prompt + RefMod selections persisted independently; append or overwrite with limit validation and missing-file checks
@@ -348,7 +348,7 @@ Search for **DaSiWa-Nodes** and install.
 
 ### Repository contents versus local data
 
-The `workflows/` JSON files are shipped examples, not generated cache; keep them in Git. Likewise `assets/` screenshots, `docs/`, `data/` starter libraries, `nodes/`, `js/`, and tests belong to the node pack. A formerly bundled Spectrum v0.2.20 compatibility patch targeted a separate project, was never applied by this pack, and is no longer shipped.
+The repository ships `assets/` screenshots, `docs/`, `data/` starter libraries, `nodes/` and `js/`. The former example `workflows/` and in-repository test suites were retired; they are not part of the current package or its push workflow. A formerly bundled Spectrum v0.2.20 compatibility patch targeted a separate project, was never applied by this pack, and is no longer shipped.
 
 Runtime files do **not** belong in the node pack repository: `lorainfo/` is a regenerable Civitai metadata cache; `.hermes/`, `.projectatlas/`, `graft/`, Python bytecode and test caches are local tooling state. H3 Continuity checkpoints live in the ComfyUI **output** directory at `output/df_h3_continuity/` (not beside `nodes/`); browser video previews live in ComfyUI's **temp** directory. The root-level `input/`, `output/`, `temp/`, `models/`, and `cache/` are ignored as safeguards if someone uses this checkout as a ComfyUI base directory. The `.gitignore` rules prevent *new* matching files being staged; they do not remove files already tracked or delete anyone's local files.
 

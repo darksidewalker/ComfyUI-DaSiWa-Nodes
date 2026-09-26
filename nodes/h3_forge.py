@@ -371,9 +371,9 @@ def _is_this_machine(url):
     return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
 
 
-def _http(url, payload=None, timeout=10):
+def _http(url, payload=None, timeout=10, headers=None):
     data = json.dumps(payload).encode() if payload is not None else None
-    req = urlrequest.Request(url, data=data, headers={"Content-Type": "application/json"})
+    req = urlrequest.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})})
     with urlrequest.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode() or "{}")
 
@@ -381,7 +381,7 @@ def _http(url, payload=None, timeout=10):
 CANCELLED = "Cancelled. Nothing was applied to the node."
 
 
-def _stream_lines(url, payload, timeout, cancel):
+def _stream_lines(url, payload, timeout, cancel, headers=None):
     """POST and yield the response line by line, stopping when Cancel is pressed.
 
     Leaving the `with` closes the connection, which is what makes a server
@@ -389,7 +389,7 @@ def _stream_lines(url, payload, timeout, cancel):
     The check runs between lines, so a cancel lands at the next token - or,
     during the prompt read before the first token, as soon as one arrives.
     """
-    req = urlrequest.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    req = urlrequest.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **(headers or {})})
     with urlrequest.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
             if cancel is not None and cancel.is_set():
@@ -470,13 +470,17 @@ class Ollama:
 class OpenAICompatible:
     kind = "openai"
 
-    def __init__(self, base):
+    def __init__(self, base, api_key=""):
         self.base = base
         self.api = base if base.endswith("/v1") else base + "/v1"
         self.root = self.api[: -len("/v1")]
+        # Sent only to this server: llama-server --api-key, llama-swap apiKeys,
+        # LM Studio with authentication on, or a hosted OpenAI-compatible API.
+        self.headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
     def models(self):
-        return [{"id": f"openai:{m['id']}", "label": m["id"]} for m in _http(self.api + "/models").get("data", [])]
+        return [{"id": f"openai:{m['id']}", "label": m["id"]}
+                for m in _http(self.api + "/models", headers=self.headers).get("data", [])]
 
     def can_see(self, name):
         # No standard capability endpoint; the request itself is the test.
@@ -489,7 +493,7 @@ class OpenAICompatible:
         # llama-swap has a per-model unload; a plain llama.cpp server or LM
         # Studio holds its model for the life of the process.
         try:
-            _http(f"{self.root}/api/models/unload/{urlparse.quote(name, safe='')}", {}, timeout=30)
+            _http(f"{self.root}/api/models/unload/{urlparse.quote(name, safe='')}", {}, timeout=30, headers=self.headers)
             return True
         except Exception:
             return False
@@ -506,7 +510,7 @@ class OpenAICompatible:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             # llama.cpp server honours this; others ignore unknown fields.
             "chat_template_kwargs": {"enable_thinking": False},
-        }, timeout, cancel):
+        }, timeout, cancel, self.headers):
             if not line.startswith("data:"):
                 continue
             data = line[5:].strip()
@@ -592,11 +596,21 @@ class Local:
                 # "org--Model" is how Hugging Face downloads name folders; the
                 # org prefix makes the model hard to find in the list.
                 shown = name.split("--", 1)[-1]
-                kind = "GGUF" if gguf else "transformers"
+                if gguf:
+                    kind = "GGUF, sees pictures" if self._mmproj(llm, name) else "GGUF, text only - no mmproj file beside it"
+                else:
+                    kind = "transformers"
                 if not gguf and self._compressed_tensors(llm, name):
                     kind += ", FP8 compressed-tensors: very slow in ComfyUI, get the normal version"
                 out.append({"id": f"local:{name}", "label": f"{shown} ({kind})"})
         return out
+
+    @staticmethod
+    def _mmproj(llm, name):
+        try:
+            return llm._find_mmproj(llm._resolve_model_path(name, "", allow_gguf=True))
+        except Exception:
+            return None
 
     @staticmethod
     def _compressed_tensors(llm, name):
@@ -617,7 +631,8 @@ class Local:
         return quant.get("quant_method") == "compressed-tensors"
 
     def can_see(self, name):
-        return not name.lower().endswith(".gguf")  # nodes_llm's llama.cpp path is text-only
+        # A GGUF sees only with its mmproj projector beside it.
+        return bool(self._mmproj(self._llm(), name)) if name.lower().endswith(".gguf") else True
 
     def loaded(self):
         return set()
@@ -643,13 +658,21 @@ class Local:
         loaded = None
         try:
             if gguf:
-                loaded = llm._load_llama_cpp_model(config, need_vision=False)
+                content = user
+                if images_b64:
+                    config["llama_mmproj_path"] = self._mmproj(llm, name)
+                    content = [{"type": "text", "text": user}] + [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images_b64]
+                loaded = llm._load_llama_cpp_model(config, need_vision=bool(images_b64))
                 # Streamed here rather than through _run_llama_cpp_generation so
                 # Cancel can stop it between tokens.
                 parts = []
                 for chunk in loaded.model.create_chat_completion(
-                        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-                        max_tokens=NUM_PREDICT, temperature=temperature, top_p=top_p, stream=True):
+                        messages=[{"role": "system", "content": system}, {"role": "user", "content": content}],
+                        max_tokens=NUM_PREDICT, temperature=temperature, top_p=top_p, stream=True,
+                        # llama-cpp-python samples with a fixed seed unless given
+                        # one, so Regenerate would return the same draft every time.
+                        seed=__import__("random").randrange(2**31)):
                     if cancel is not None and cancel.is_set():
                         raise ForgeError("cancelled", CANCELLED)
                     parts.append(((chunk.get("choices") or [{}])[0].get("delta") or {}).get("content") or "")
@@ -695,8 +718,16 @@ def backends(settings):
     out = {"local": Local(), "ollama": Ollama(_base_url(settings.get("ollama_url"), DEFAULT_OLLAMA))}
     openai_url = _base_url(settings.get("openai_url"))
     if openai_url:
-        out["openai"] = OpenAICompatible(openai_url)
+        out["openai"] = OpenAICompatible(openai_url, str(settings.get("openai_api_key") or "").strip())
     return out
+
+
+KEY_REFUSED = ("The server at {where} refused the API key ({code}). Set the key the server expects in "
+               "Settings > DaSiWa > H3 Forge > OpenAI-compatible API key, or clear it if the server needs none.")
+
+
+def _key_refused(exc):
+    return isinstance(exc, urlerror.HTTPError) and exc.code in (401, 403)
 
 
 # Models Forge loaded on a server, so the Director can make sure they are gone
@@ -729,6 +760,9 @@ def list_all(settings):
             if kind == "ollama" and not settings.get("ollama_url"):
                 continue
             where = getattr(backend, "base", "ComfyUI/models/llm")
+            if _key_refused(exc):
+                errors[kind] = KEY_REFUSED.format(where=where, code=exc.code)
+                continue
             errors[kind] = f"Could not reach {where} ({exc.__class__.__name__}). Check the address in Settings > DaSiWa > H3 Forge."
     return models, errors
 
@@ -811,6 +845,8 @@ def _generate(body, input_directory, release_memory, stop):
         try:
             raw, stats = run(images)
         except urlerror.HTTPError as exc:
+            if _key_refused(exc):
+                raise ForgeError("backend", KEY_REFUSED.format(where=backend.base, code=exc.code))
             # An OpenAI-compatible server that cannot take images says so with
             # a 4xx; try once more with words only rather than failing.
             if images and sees is None and 400 <= exc.code < 500:
@@ -949,6 +985,8 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
             raw, stats = backend.chat(name, CONTINUATION_SYSTEM, user, images,
                                        sampling, bundle["context_length"], 600, cancel)
         except urlerror.HTTPError as exc:
+            if _key_refused(exc):
+                raise ForgeError("backend", KEY_REFUSED.format(where=backend.base, code=exc.code))
             if not images or sees is not None or not 400 <= exc.code < 500:
                 raise
             images = []

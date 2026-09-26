@@ -63,12 +63,13 @@ function installStyles() {
     .ds-h3{box-sizing:border-box;width:100%;min-width:0;min-height:0;align-self:stretch;background:transparent;border:0;border-radius:0;padding:0 0 25px 0;font:12px system-ui,sans-serif;display:flex;flex-direction:column;gap:6px;overflow:visible}
     .ds-h3 button{background:#202b35;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;padding:4px 7px;cursor:pointer}.ds-h3 button:hover{background:#2c3c49}.ds-h3-lane-add{position:absolute;right:6px;z-index:3;width:22px;height:22px;padding:0!important;border-radius:50%!important;font-size:17px;line-height:18px;background:rgba(70,150,105,.3)!important;border-color:rgba(126,210,157,.75)!important;color:#bff3d0!important}
     .ds-h3-continuity-row{width:100%;box-sizing:border-box;gap:7px;flex-wrap:wrap;padding:7px 9px;background:#17120f;border:1px solid #624027;border-radius:9px}
+    .ds-h3-continuity-title{white-space:nowrap}.ds-h3-continuity-state{margin-left:auto;text-align:right;white-space:nowrap;color:#e9a262;font-size:11px;font-weight:600}
     .ds-h3-continuity-row button{border-radius:999px!important;color:#dba677!important;border:1px solid #775032!important;background:#251a12!important;transition:background .15s,box-shadow .15s,border-color .15s}
     .ds-h3-continuity-row button:hover:not(:disabled){color:#ffe0ba!important;background:#493020!important;border-color:#ac6834!important;box-shadow:0 0 10px #b9643266}
     .ds-h3-continuity-row button.active{color:#ffd8ad!important;background:#382418!important;border-color:#ac6834!important;box-shadow:0 0 9px #b9643255}
     .ds-h3-continuity-row button:disabled{opacity:.45;cursor:default;box-shadow:none}
     .ds-h3-continuity-row select,.ds-h3-continuity-row input{min-width:0;max-width:100%;background:#211913;color:#e7c4a2;border:1px solid #644730;border-radius:6px;padding:4px}
-    .ds-h3-continuity-row .ds-h3-source{max-width:380px}.ds-h3-continuity-info{width:100%;color:#baaa9c;font-size:11px;white-space:pre-wrap}.ds-h3-continuity-row details{width:100%}.ds-h3-continuity-row summary{cursor:pointer;color:#b79576}
+    .ds-h3-continuity-row .ds-h3-source{max-width:380px}.ds-h3-continuity-info{width:100%;color:#baaa9c;font-size:11px;white-space:pre-wrap}
     .ds-h3-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ds-h3-modebar{display:flex;gap:4px;padding:4px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-modebar button{padding:4px 9px!important;border-radius:999px!important;background:transparent!important;color:#9fb3c2!important}.ds-h3-modebar button:hover{background:rgba(126,235,167,.10)!important;box-shadow:0 0 10px rgba(126,235,167,.5)}.ds-h3-modebar button.active{color:#efe6ff!important;border-color:rgba(177,128,255,.8)!important;box-shadow:0 0 10px rgba(151,91,255,.6);font-weight:700}.ds-h3-clear-btn,.ds-h3-remove-btn{padding:3px 7px!important;font-size:11px;border-radius:999px!important}.ds-h3-modebar .ds-h3-clear-btn{background:rgba(255,100,100,.08)!important;color:#ffb0b0!important;border:1px solid rgba(255,100,100,.35)!important}.ds-h3-modebar .ds-h3-remove-btn{background:rgba(255,150,60,.08)!important;color:#ffcfab!important;border:1px solid rgba(255,150,60,.3)!important}.ds-h3-modebar .ds-h3-clear-btn:hover{background:rgba(255,100,100,.35)!important;color:#ffe2e2!important;border-color:rgba(255,100,100,.95)!important;box-shadow:0 0 14px rgba(255,100,100,.75)}.ds-h3-modebar .ds-h3-remove-btn:hover{background:rgba(255,150,60,.35)!important;color:#ffeadb!important;border-color:rgba(255,150,60,.95)!important;box-shadow:0 0 14px rgba(255,150,60,.75)}.ds-h3-modebar .ds-h3-clear-btn-empty{opacity:.45}.ds-h3-modebar .ds-h3-clear-btn-empty:hover{opacity:1}.ds-h3-modebar .ds-h3-io-dropdown{min-width:0!important;display:inline-flex!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-btn{min-height:0!important;padding:3px 8px!important;font-size:11px!important;border-radius:999px!important;gap:4px!important;font-weight:400}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn{background:rgba(90,160,255,.08)!important;border:1px solid rgba(90,160,255,.35)!important;color:#bcd9ff!important}.ds-h3-modebar .ds-h3-io-dropdown.load .ds-h3-res-btn:hover{background:rgba(90,160,255,.35)!important;border-color:rgba(90,160,255,.95)!important;box-shadow:0 0 14px rgba(90,160,255,.75)!important;color:#e5f1ff!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn{background:rgba(90,220,140,.08)!important;border:1px solid rgba(90,220,140,.35)!important;color:#bdf5d3!important}.ds-h3-modebar .ds-h3-io-dropdown.save .ds-h3-res-btn:hover{background:rgba(90,220,140,.35)!important;border-color:rgba(90,220,140,.95)!important;box-shadow:0 0 14px rgba(90,220,140,.75)!important;color:#e3fff0!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-caret{color:inherit!important;font-size:8px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-menu.cols.open{gap:4px!important}.ds-h3-modebar .ds-h3-io-dropdown .ds-h3-res-col{min-width:110px!important}.ds-h3-prompt{width:100%;min-height:88px;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;resize:vertical}.ds-h3-prompt-panel{width:100%;box-sizing:border-box;border:0;border-radius:0;padding:0;display:flex;flex-direction:column;gap:6px;background:transparent;flex-shrink:0}.ds-h3-status{min-height:16px;color:#f3c67a;flex-shrink:0}.ds-h3-info-field{box-sizing:border-box;min-height:28px;border:1px solid #40515e;border-radius:4px;padding:6px 7px;background:#0d1217}.ds-h3-status.error{color:#ff6f6f;font-weight:700}.ds-h3-small{font-size:11px;color:#9fb3c2}.ds-h3-ruler{position:relative;height:19px;color:#8fa3b2;font-size:10px;white-space:nowrap;overflow:hidden}.ds-h3-ruler span{position:absolute;top:1px;border-left:1px solid #587084;padding-left:2px;height:16px}.ds-h3-track{position:relative;min-height:0;max-width:100%;overflow-x:auto;overflow-y:auto;background:#0b1015;border:1px solid #344452;border-radius:5px;padding:7px 6px 6px;flex-shrink:0}.ds-h3-track::before{content:none}.ds-h3-track-inner{position:relative;min-width:100%;height:360px;overflow:visible;background:repeating-linear-gradient(90deg,#111a21 0,#111a21 49px,#1b2933 50px)}.ds-h3-track-inner::after{content:'';position:absolute;left:var(--insert-x,-8px);top:0;height:100%;border-left:2px solid #f3c67a;pointer-events:none}.ds-h3-track-inner.over{outline:2px solid #8dd7ff;outline-offset:-2px}.ds-h3-timeline-lane{position:absolute;left:0;right:0;height:120px;box-sizing:border-box;border-bottom:1px solid #344452;cursor:pointer}.ds-h3-empty-slot{position:absolute;top:21px;height:88px;box-sizing:border-box;border:1px dashed #587084;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#7890a0;font-size:10px;pointer-events:none}.ds-h3-timeline-lane.disabled .ds-h3-empty-slot{display:none}.ds-h3-timeline-lane.visual{top:0;background:rgba(17,30,39,.72)}.ds-h3-timeline-lane.audio{top:120px;background:rgba(22,49,36,.55)}.ds-h3-timeline-lane.selected{box-shadow:inset 0 0 0 2px #8dd7ff}.ds-h3-timeline-lane.disabled{background:rgba(51,55,60,.72);filter:grayscale(1);cursor:not-allowed}.ds-h3-timeline-lane.disabled::after{content:"Not supported by the selected mode";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#a1a8ad;font-size:11px;font-weight:600;background:rgba(0,0,0,.35);pointer-events:none}.ds-h3-lane-label{position:absolute;left:5px;top:2px;color:#8fa3b2;font-size:10px;text-transform:uppercase;pointer-events:none;z-index:1}.ds-h3-grip{position:absolute;top:0;width:11px;height:100%;cursor:ew-resize;background:rgba(255,255,255,.22);z-index:4}.ds-h3-grip.left{left:0;border-right:1px solid rgba(255,255,255,.65)}.ds-h3-grip.right{right:0;border-left:1px solid rgba(255,255,255,.65)}.ds-h3-clip{position:absolute;top:18px;height:48px;min-width:64px;box-sizing:border-box;border:1px solid #73c7ef;border-radius:4px;background:#1b4558;color:#e5eef4;padding:6px 14px 19px;cursor:grab;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-clip.image,.ds-h3-clip.video{min-width:112px!important;width:112px!important;height:112px;top:7px}.ds-h3-clip.audio{border-color:#7ecf9d;background:#254b38;top:7px;height:112px}.ds-h3-waveform{position:absolute;inset:22px 12px 55px;width:calc(100% - 24px);height:calc(100% - 77px);pointer-events:none;opacity:.9}.ds-h3-crop-marker,.ds-h3-audio-crop-marker{position:absolute;top:20px;bottom:18px;width:4px;background:#fff;box-shadow:0 0 4px #000;cursor:ew-resize;z-index:6}.ds-h3-crop-marker.start,.ds-h3-audio-crop-marker.start{background:#f3c67a}.ds-h3-crop-marker.end,.ds-h3-audio-crop-marker.end{background:#8dd7ff;transform:translateX(-4px)}.ds-h3-crop-readout{position:absolute;left:14px;right:14px;bottom:3px;font-size:10px;line-height:12px;color:#d9f5e2;background:rgba(0,0,0,.36);pointer-events:none;text-align:center;overflow:hidden;white-space:nowrap}.ds-h3-clip-close{position:absolute!important;right:2px;top:2px;width:18px;height:18px;padding:0!important;line-height:15px!important;font-size:16px;color:#fff!important;background:rgba(105,28,28,.9)!important;border-color:#f08080!important;z-index:5}.ds-h3-clip.video{border-color:#b887d8;background:#432e52}.ds-h3-clip.text{border-color:#83c98a;background:#27442d}
   `;
   style.textContent += `.ds-h3-prompt-toolbar{width:100%;box-sizing:border-box;flex-wrap:wrap;gap:6px;padding:6px;background:#0d1217;border:1px solid #344452;border-radius:6px}.ds-h3-prompt-toolbar .ds-h3-small{color:#9fb3c2;font-weight:600;margin-right:6px}.ds-h3-prompt-toolbar button{white-space:nowrap;transition:background .16s ease,box-shadow .16s ease}`;
@@ -81,7 +82,7 @@ function installStyles() {
   `;
   style.textContent += `.ds-h3-res-field{display:flex;flex-direction:column;gap:3px;min-width:150px;font-size:10px;font-weight:600;letter-spacing:.4px;color:#8fb3d6;text-transform:uppercase}.ds-h3-res-control{display:flex;position:relative}.ds-h3-res-select{position:absolute;inset:0;width:100%;opacity:0;pointer-events:none}.ds-h3-res-btn{position:relative;width:100%;display:flex;align-items:center;gap:8px;box-sizing:border-box;min-height:30px;padding:0 9px;background:#16283a;border:1px solid #2f5478;border-radius:5px;color:#d6ebff;font:12px system-ui,sans-serif;cursor:pointer;text-align:left;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-btn:hover:not(:disabled){background:#1d3550;border-color:#3f79b4;box-shadow:0 0 9px rgba(74,144,217,.28)}.ds-h3-res-btn:focus-visible{outline:none;border-color:#4f97d6;box-shadow:0 0 0 2px rgba(74,144,217,.35)}.ds-h3-res-btn:disabled{opacity:.4;cursor:not-allowed}.ds-h3-res-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-res-caret{flex:none;color:#6fa8e0;font-size:9px;transition:transform .18s ease}.ds-h3-res-btn[aria-expanded="true"] .ds-h3-res-caret{transform:rotate(180deg)}.ds-h3-res-swatch{flex:none;display:flex;align-items:center;justify-content:center;width:20px;height:20px}.ds-h3-res-swatch-box{background:#3f79b4;border:1px solid #9fd0ff;border-radius:1px;box-shadow:inset 0 0 4px rgba(0,0,0,.4);transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-btn:hover:not(:disabled) .ds-h3-res-swatch-box,.ds-h3-res-btn[aria-expanded="true"] .ds-h3-res-swatch-box{background:#5b9be0;border-color:#c4e4ff}.ds-h3-res-menu{position:absolute;top:calc(100% + 4px);left:0;z-index:2500;min-width:100%;max-height:290px;overflow-y:auto;padding:4px;background:#101c28;border:1px solid #35618f;border-radius:6px;box-shadow:0 10px 30px rgba(0,0,0,.65);display:none}.ds-h3-res-menu.open{display:block}.ds-h3-res-menu.grid.open{display:grid;gap:2px}.ds-h3-res-menu.grid .ds-h3-res-item-label{white-space:normal;overflow-wrap:anywhere}.ds-h3-res-menu[data-place="up"]{top:auto;bottom:calc(100% + 4px)}.ds-h3-res-item{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;padding:6px 9px;background:transparent;border:0;border-radius:4px;color:#cfe3f7;font:12px system-ui,sans-serif;cursor:pointer;text-align:left;transition:background .12s ease,color .12s ease,box-shadow .12s ease}.ds-h3-res-item:hover{background:rgba(74,144,217,.24);color:#fff;box-shadow:inset 0 0 0 1px rgba(96,168,232,.35)}.ds-h3-res-item.active{background:rgba(74,144,217,.34);color:#fff;font-weight:600;box-shadow:inset 0 0 0 1px rgba(120,190,255,.55)}.ds-h3-res-item.active:hover{background:rgba(74,144,217,.44)}.ds-h3-res-item-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-h3-res-num{width:100%;box-sizing:border-box;height:30px;padding:0 8px;background:#16283a;border:1px solid #2f5478;border-radius:5px;color:#d6ebff;font:12px system-ui,sans-serif;transition:background .16s ease,border-color .16s ease,box-shadow .16s ease}.ds-h3-res-num:hover:not(:disabled){background:#1d3550;border-color:#3f79b4}.ds-h3-res-num:focus{outline:none;border-color:#4f97d6;box-shadow:0 0 0 2px rgba(74,144,217,.3)}.ds-h3-res-num:disabled{opacity:.4;cursor:not-allowed}.ds-h3-res-menu.cols.open{display:flex;align-items:flex-start;gap:7px}.ds-h3-res-col{display:flex;flex-direction:column;gap:2px;min-width:84px}.ds-h3-res-col-title{font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#6fa8e0;padding:1px 9px 3px;border-bottom:1px solid #2f5478;margin-bottom:2px}.ds-h3-res-menu.cols .ds-h3-res-item{white-space:nowrap}`;
   style.textContent += `.ds-h3-clip.refmod .ds-h3-grip,.ds-h3-clip.refmod .ds-h3-crop-marker,.ds-h3-clip.refmod .ds-h3-audio-crop-marker,.ds-h3-clip.refmod .ds-h3-crop-readout{display:none!important}.ds-h3-clip.refmod .ds-h3-waveform{pointer-events:none}`;
-  style.textContent += `.ds-h3-continuity-row select,.ds-h3-continuity-row input:not([type="checkbox"]){box-sizing:border-box;max-width:100%;padding:4px 6px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;font:inherit}.ds-h3-continuity-row details{color:#9fb3c2}.ds-h3-continuity-row summary{cursor:pointer}`;
+  style.textContent += `.ds-h3-continuity-row select,.ds-h3-continuity-row input:not([type="checkbox"]){box-sizing:border-box;max-width:100%;padding:4px 6px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;font:inherit}.ds-h3-continuity-overlay{position:fixed;inset:0;z-index:10002;display:flex;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;background:rgba(5,9,13,.76);backdrop-filter:blur(3px)}.ds-h3-continuity-panel{width:min(540px,96vw);max-height:90vh;display:flex;flex-direction:column;background:#101820;color:#dbe7f0;border:1px solid #775032;border-radius:10px;box-shadow:0 18px 60px rgba(0,0,0,.72);font:12px system-ui,sans-serif}.ds-h3-continuity-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #624027;font-size:16px;font-weight:700}.ds-h3-continuity-header button,.ds-h3-continuity-content button{border-radius:999px;background:#251a12;color:#e7c4a2;border:1px solid #775032;padding:5px 10px;cursor:pointer}.ds-h3-continuity-content{display:flex;flex-direction:column;align-items:flex-start;gap:12px;overflow:auto;padding:16px}.ds-h3-continuity-content label{display:flex;align-items:center;gap:6px}.ds-h3-continuity-content input:not([type="checkbox"]),.ds-h3-continuity-content select{box-sizing:border-box;max-width:100%;padding:5px 7px;background:#111a21;color:#dbe7f0;border:1px solid #40515e;border-radius:4px;font:inherit}.ds-h3-continuity-content .ds-h3-continuity-info{color:#baaa9c;white-space:pre-wrap}`;
   document.head.appendChild(style);
 }
 
@@ -476,7 +477,8 @@ function install(node) {
     else builderState.simple_prompt = value;
     emit();
   }
-  let continuityClips = [], continuityLatest = "", continuityLoading = false, continuityError = "", continuityUploading = false, continuityAdvanced = false;
+  let continuityClips = [], continuityLatest = "", continuityLoading = false, continuityError = "", continuityUploading = false;
+  let closeContinuityAdvanced = null, refreshContinuityAdvanced = null;
   let continuitySummary = {}, savedSessions = [], sessionsLoaded = false, sessionsLoading = false, sessionError = "", pendingResume = "";
   let sourceRevision = 0;
   let checkKey = "", checkResult = null, checkTimer = null, checkAbort = null;
@@ -530,7 +532,7 @@ function install(node) {
         if (controller.signal.aborted || nodeRemoved || checkKey !== key) return;
         checkResult = { ok: false, issues: [`Source check unavailable: ${error.message || error}`] };
       }
-      if (!nodeRemoved && checkKey === key) { paintSourceCheck(); paintContinuityTiming(); syncNodeBounds("grow"); }
+      if (!nodeRemoved && checkKey === key) { paintSourceCheck(); paintContinuityTiming(); refreshContinuityAdvanced?.(); syncNodeBounds("grow"); }
     }, 160);
   }
   async function refreshSessions() {
@@ -542,7 +544,7 @@ function install(node) {
       if (!response.ok) throw new Error(data.error || "Could not load saved sessions.");
       savedSessions = data.sessions || []; sessionsLoaded = true; sessionError = "";
     } catch (error) { sessionError = error.message || String(error); }
-    finally { sessionsLoading = false; if (!nodeRemoved) render(); }
+    finally { sessionsLoading = false; if (!nodeRemoved) { render(); refreshContinuityAdvanced?.(); } }
   }
   function switchContinuitySession(id, resume = false) {
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(id) || id === "_imports") { setStatus("Session ID: letters, numbers, _ and - only; _imports is reserved.", true); return; }
@@ -599,7 +601,7 @@ function install(node) {
         }
       }
     } catch (error) { if (state.continuity?.session === session) continuityError = error.message || String(error); }
-    finally { continuityLoading = false; if (!nodeRemoved) { render(); scheduleSourceCheck(true); if (state.continuity?.session !== session) void refreshContinuity(); } }
+    finally { continuityLoading = false; if (!nodeRemoved) { render(); refreshContinuityAdvanced?.(); scheduleSourceCheck(true); if (state.continuity?.session !== session) void refreshContinuity(); } }
   }
   function clearContinuitySource() {
     sourceRevision++;
@@ -655,15 +657,74 @@ function install(node) {
     } catch (error) { setStatus(error.message || String(error), true); }
     finally { continuityUploading = false; render(); }
   }
+  function openContinuityAdvanced() {
+    if (closeContinuityAdvanced) return;
+    const overlay = document.createElement("div"); overlay.className = "ds-h3-continuity-overlay";
+    const panel = document.createElement("div"); panel.className = "ds-h3-continuity-panel";
+    panel.setAttribute("role", "dialog"); panel.setAttribute("aria-modal", "true"); panel.setAttribute("aria-label", "Continuity advanced settings");
+    const header = document.createElement("div"); header.className = "ds-h3-continuity-header";
+    header.append(document.createTextNode("Continuity · Advanced"));
+    const closeButton = document.createElement("button"); closeButton.type = "button"; closeButton.textContent = "×"; closeButton.setAttribute("aria-label", "Close advanced settings");
+    header.append(closeButton);
+    const content = document.createElement("div"); content.className = "ds-h3-continuity-content";
+    panel.append(header, content); overlay.append(panel);
+    const close = () => { document.removeEventListener("keydown", onKey); overlay.remove(); closeContinuityAdvanced = null; refreshContinuityAdvanced = null; };
+    const onKey = event => { if (event.key === "Escape") { event.stopPropagation(); close(); } };
+    closeButton.onclick = close;
+    overlay.addEventListener("pointerdown", event => { if (event.target === overlay) close(); });
+    document.addEventListener("keydown", onKey);
+    closeContinuityAdvanced = close;
+    const button = (text, action) => { const el = document.createElement("button"); el.type = "button"; el.textContent = text; el.onclick = action; content.append(el); return el; };
+    const renderAdvanced = () => {
+      if (!overlay.isConnected) return;
+      content.replaceChildren();
+      const c = continuityState(), selected = selectedContinuitySource();
+      button("Refresh sources", () => { ensureContinuitySession(); emit(); void refreshContinuity(); void refreshSessions(); });
+      const saved = document.createElement("select"); saved.setAttribute("aria-label", "Saved continuity sessions"); saved.append(new Option(sessionsLoading ? "Loading sessions…" : "Resume saved session…", ""));
+      savedSessions.forEach(item => saved.append(new Option(`${item.session.slice(0, 24)} · ${item.output_count} outputs · ${formatBytes(item.latent_bytes)}`, item.session)));
+      saved.onchange = () => { if (saved.value) { switchContinuitySession(saved.value, true); renderAdvanced(); } }; content.append(saved);
+      button("New session", () => { switchContinuitySession(newContinuitySession()); renderAdvanced(); });
+      if (sessionError) content.append(document.createTextNode(sessionError));
+      const summary = document.createElement("div"); summary.className = "ds-h3-continuity-info";
+      summary.textContent = `${continuitySummary.ready_count || 0} available checkpoints · ${formatBytes(continuitySummary.latent_bytes)} in available latent files${continuitySummary.staged_count ? ` · ${continuitySummary.staged_count} not exported` : ""}${continuitySummary.unavailable_count ? ` · ${continuitySummary.unavailable_count} unavailable` : ""}.`;
+      content.append(summary);
+      const checked = currentCheck();
+      if (checked?.estimated_scratch_bytes) { const budget = document.createElement("div"); budget.className = "ds-h3-continuity-info"; budget.textContent = `Import temporary disk estimate: ${formatBytes(checked.estimated_scratch_bytes)} · free ${formatBytes(checked.scratch_free_bytes)}. Excludes models and cumulative export.`; content.append(budget); }
+      const overlap = document.createElement("select"); overlap.setAttribute("aria-label", "Preferred context frames");
+      for (const value of [5, 22, 39, 56, 73]) overlap.append(new Option(`${value} frames`, String(value)));
+      overlap.value = String(c.overlap_frames); overlap.onchange = () => { c.overlap_frames = Number(overlap.value); emit(); render(); };
+      const contextLabel = document.createElement("label"); contextLabel.append(document.createTextNode("Preferred context (shrinks to fit) "), overlap); content.append(contextLabel);
+      const refs = document.createElement("input"); refs.type = "checkbox"; refs.checked = c.use_references; refs.setAttribute("aria-label", "Keep REF2VA timeline references"); refs.onchange = () => { c.use_references = refs.checked; emit(); };
+      const refLabel = document.createElement("label"); refLabel.append(refs, document.createTextNode("Keep REF2VA timeline references")); content.append(refLabel);
+      const session = document.createElement("input"); session.type = "text"; session.value = c.session; session.placeholder = "Session ID"; session.setAttribute("aria-label", "Session ID"); allowNativeTextEditing(session);
+      session.onchange = () => { switchContinuitySession(session.value); renderAdvanced(); }; const sessionLabel = document.createElement("label"); sessionLabel.append(document.createTextNode("Session "), session); content.append(sessionLabel);
+      if (selected && c.source_kind === "checkpoint") { const match = button("Match source settings", () => matchContinuitySource(selected)); match.disabled = hasExternalCanvas(); match.title = hasExternalCanvas() ? "Change the connected width/height inputs upstream." : "Restore checkpoint canvas, model mode and 24 fps"; }
+    };
+    refreshContinuityAdvanced = renderAdvanced;
+    document.body.append(overlay);
+    renderAdvanced();
+    closeButton.focus();
+    if (!sessionsLoaded && !sessionsLoading) void refreshSessions();
+  }
   function buildContinuityControls(parent) {
     const c = continuityState(), active = isContinuing(), selected = selectedContinuitySource();
     const row = document.createElement("div"); row.className = "ds-h3-continuity-row ds-h3-actions";
-    const heading = document.createElement("strong"); heading.textContent = "∞ Continuity:"; row.append(heading);
-    const badge = document.createElement("span"); badge.className = "ds-h3-continuity-state"; badge.textContent = active ? `Continuity Active · ${mode()}` : "Inactive"; row.append(badge);
+    // Heading, buttons and state share one line; the state sits at its right end.
+    const heading = document.createElement("strong"); heading.className = "ds-h3-continuity-title"; heading.textContent = "∞ Continuity:"; row.append(heading);
+    const badge = document.createElement("span"); badge.className = "ds-h3-continuity-state";
+    badge.textContent = [active ? `Continuity Active · ${mode()}` : !c.capture ? "No source selected" : "", c.capture ? "New takes activated" : ""].filter(Boolean).join(" · ");
     const button = (text, action, target = row) => { const el = document.createElement("button"); el.type = "button"; el.textContent = text; el.onclick = action; target.append(el); return el; };
     const info = text => { const el = document.createElement("div"); el.className = "ds-h3-continuity-info"; el.textContent = text; row.append(el); return el; };
     const file = document.createElement("input"); file.type = "file"; file.accept = "video/*,.mkv,.avi,.mov,.webm,.mp4,.m4v,.mts,.m2ts"; file.hidden = true;
     file.setAttribute("aria-label", "Start video file"); file.onchange = () => void chooseContinuityVideo(file.files?.[0]); row.append(file);
+    const capture = button("∞ Save new takes", () => {
+      const next = !continuityState().capture;
+      if (next && !continuityGraphReady()) { continuityGraphError(); return; }
+      ensureContinuitySession().capture = next; emit(); render(); void refreshContinuity();
+    });
+    capture.classList.toggle("active", c.capture);
+    capture.setAttribute("aria-pressed", String(c.capture));
+    capture.title = "Keep new takes as checkpoints (uses disk space). Continuations are always saved. Selecting a source activates continuation independently.";
     button(continuityUploading ? "Checking video…" : "Choose start video…", () => file.click()).disabled = continuityUploading || mode() === "Image Inpaint";
     const source = document.createElement("select"); source.className = "ds-h3-source"; source.title = "Selecting a source activates continuity"; source.setAttribute("aria-label", "Continuity source");
     source.append(new Option("No source · new take", ""));
@@ -674,45 +735,14 @@ function install(node) {
     source.disabled = mode() === "Image Inpaint";
     source.onchange = () => { const [kind, id] = source.value.split(":"); if (!id) clearContinuitySource(); else if (kind === "video") { sourceRevision++; pendingResume = ""; c.source_kind = kind; c.source_video_id = id; emit(); render(); } else selectContinuitySource(id); }; row.append(source);
     button("Use latest output", () => selectContinuitySource(continuityLatest)).disabled = !continuityLatest || mode() === "Image Inpaint";
+    button("Advanced", openContinuityAdvanced);
+    if (active) button("Clear source", clearContinuitySource);
+    row.append(badge);
     if (active) {
-      button("Clear source", clearContinuitySource);
       const timing = info(""); timing.classList.add("ds-h3-duration-info"); paintContinuityTiming(timing);
       const sourceCheck = info(""); sourceCheck.classList.add("ds-h3-source-check"); paintSourceCheck(sourceCheck);
       info("Describe what happens next in Prompt, or use Prompt Forge. Continuity instructions are added automatically. Source stays pinned for rerolls.");
     }
-    const advanced = document.createElement("details"), summary = document.createElement("summary"); summary.textContent = "Advanced"; advanced.append(summary); advanced.open = continuityAdvanced;
-    advanced.ontoggle = () => { if (!advanced.isConnected) return; continuityAdvanced = advanced.open; if (advanced.open && !sessionsLoaded && !sessionsLoading && !sessionError) void refreshSessions(); };
-    const capture = document.createElement("input"); capture.type = "checkbox"; capture.checked = c.capture; capture.setAttribute("aria-label", "Keep new takes as checkpoints");
-    capture.onchange = () => { if (capture.checked && !continuityGraphReady()) { capture.checked = false; continuityGraphError(); return; } ensureContinuitySession().capture = capture.checked; emit(); void refreshContinuity(); };
-    const captureLabel = document.createElement("label"); captureLabel.append(capture, document.createTextNode(" Keep new takes as checkpoints (uses disk space). Continuations are always saved. ")); advanced.append(captureLabel);
-    button("Refresh sources", () => { ensureContinuitySession(); emit(); void refreshContinuity(); void refreshSessions(); }, advanced);
-    const overlap = document.createElement("select"); overlap.setAttribute("aria-label", "Preferred context frames");
-    for (const value of [5, 22, 39, 56, 73]) overlap.append(new Option(`${value} frames`, String(value)));
-    overlap.value = String(c.overlap_frames); overlap.onchange = () => { c.overlap_frames = Number(overlap.value); emit(); render(); };
-    const refs = document.createElement("input"); refs.type = "checkbox"; refs.checked = c.use_references; refs.onchange = () => { c.use_references = refs.checked; emit(); };
-    const refLabel = document.createElement("label"); refLabel.append(refs, document.createTextNode(" Keep REF2VA timeline references "));
-    const session = document.createElement("input"); session.type = "text"; session.value = c.session; session.placeholder = "Session ID"; session.setAttribute("aria-label", "Session ID"); allowNativeTextEditing(session);
-    session.onchange = () => { switchContinuitySession(session.value); session.value = continuityState().session; };
-    const saved = document.createElement("select"); saved.setAttribute("aria-label", "Saved continuity sessions"); saved.append(new Option(sessionsLoading ? "Loading sessions…" : "Resume saved session…", ""));
-    savedSessions.forEach(item => saved.append(new Option(`${item.session.slice(0, 24)} · ${item.output_count} outputs · ${formatBytes(item.latent_bytes)}`, item.session)));
-    saved.onchange = () => { if (saved.value) switchContinuitySession(saved.value, true); };
-    advanced.append(document.createElement("br"), saved);
-    button("New session", () => switchContinuitySession(newContinuitySession()), advanced);
-    if (sessionError) advanced.append(document.createTextNode(` ${sessionError}`));
-    const summaryInfo = document.createElement("div"); summaryInfo.className = "ds-h3-continuity-info";
-    summaryInfo.textContent = `${continuitySummary.ready_count || 0} available checkpoints · ${formatBytes(continuitySummary.latent_bytes)} in available latent files${continuitySummary.staged_count ? ` · ${continuitySummary.staged_count} not exported` : ""}${continuitySummary.unavailable_count ? ` · ${continuitySummary.unavailable_count} unavailable` : ""}.`;
-    advanced.append(summaryInfo);
-    const budget = document.createElement("div"); budget.className = "ds-h3-import-budget ds-h3-continuity-info";
-    const checked = currentCheck();
-    if (checked?.estimated_scratch_bytes) budget.textContent = `Import temporary disk estimate: ${formatBytes(checked.estimated_scratch_bytes)} · free ${formatBytes(checked.scratch_free_bytes)}. Excludes models and cumulative export.`;
-    advanced.append(budget);
-
-    advanced.append(document.createElement("br"), document.createTextNode("Preferred context (shrinks to fit) "), overlap, refLabel, document.createTextNode(" Session "), session);
-    if (selected && c.source_kind === "checkpoint") {
-      const match = button("Match source settings", () => matchContinuitySource(selected), advanced);
-      match.disabled = hasExternalCanvas(); match.title = hasExternalCanvas() ? "Change the connected width/height inputs upstream." : "Restore checkpoint canvas, model mode and 24 fps";
-    }
-    row.append(advanced);
     if (continuityError) info(continuityError);
     if (!active && c.capture && mode() !== "Image Inpaint" && Number(node.widgets?.find(w => w.name === "frame_rate")?.value) !== 24) info("Checkpoint capture requires 24 fps.");
     if (!continuityGraphReady()) info("Capture needs the supplied workflow's Append & Stage → export → Publish path.");
@@ -1482,8 +1512,6 @@ function install(node) {
   async function acceptFile(file, targetLane = null) { const type = mediaTypeFor(file); const validLane = targetLane === "image" ? type === "image" : targetLane === "video" ? type === "video" : targetLane === "audio" ? (type === "audio" || type === "video") : true; const modeSupportsType = !!type && allowsType(type); const lane = (type === "video" && targetLane === "audio") ? "audio" : type === "audio" ? "audio" : type === "video" ? "video" : "image"; if (!type || !validLane || !modeSupportsType) { const requirement = mode() === "FL2VA" ? "FL2VA supports image references only; video and audio are unavailable." : targetLane ? `Drop ${targetLane === "audio" ? "audio or video" : targetLane === "video" ? "video" : "image"} files on this lane.` : "This media type is not available in the selected MiniMax mode."; setStatus(requirement, true); return; } if (occupiedSlotsForLane(activeItems(), lane).size >= MAX[lane] || activeItems().length >= MAX.total) { setStatus(`Limit reached: ${MAX[lane]} ${lane}s / ${MAX.total} files.`, true); return; } const laneAvail = availableSlots(lane); const laneOccupied = occupiedSlotsForLane(activeItems(), lane); const laneFree = laneAvail.some(slot => !laneOccupied.has(slot)); if (!laneFree) { setStatus(`No free ${lane} slot is available.`, true); return; } try { const value = await uploadFile(file, status); const [sourceDuration, dimensions] = await Promise.all([probeDuration(value, type), probeDimensions(value, type)]); if (sourceDuration !== null && sourceDuration < 2) { setStatus(`${file.name}: MiniMax references must be at least 2 seconds.`, true); return; } const duration = sourceDuration === null ? null : Math.min(sourceDuration, 15); let thumbnail = null; if (type === "video") { thumbnail = await captureFirstFrame(viewUrl(value)); } const item = { type, value, thumbnail, ...dimensions, ...(duration !== null ? { duration, source_duration: sourceDuration } : {}), ...((type === "video" || type === "audio") ? { trim_start: 0, trim_end: duration } : {}), ...(type === "video" && targetLane === "audio" ? { media_mode: "audio" } : {}) }; addItem(item); applyResolution(); const added = state.items[state.items.length - 1]; if (type === "audio") void extractWaveform(value, added.id); setStatus(sourceDuration > 15 ? `${file.name} added; cropped to the first 15 seconds.` : `${file.name} added.`); } catch (error) { setStatus(error.message || "Upload failed", true); } }
   const render = () => {
     if (nodeRemoved) return;
-    const continuityDetails = timeline.querySelector(".ds-h3-continuity-row details");
-    if (continuityDetails) continuityAdvanced = continuityDetails.open;
     const focused = document.activeElement;
     const edit = timeline.contains(focused) && ["TEXTAREA", "INPUT"].includes(focused?.tagName) && ["text", "textarea"].includes(focused.type)
       ? { key: focused.dataset.h3FieldKey || focused.getAttribute("aria-label"), value: focused.value, start: focused.selectionStart, end: focused.selectionEnd } : null;
@@ -1772,6 +1800,7 @@ function install(node) {
   const oldRemoved = node.onRemoved;
   node.onRemoved = function (...args) {
     nodeRemoved = true;
+    closeContinuityAdvanced?.();
     window.clearTimeout(checkTimer); checkAbort?.abort();
     window.removeEventListener("dasiwa-h3-field-resized", onFieldResized);
     window.DaSiWaH3Forge?.close?.(node);

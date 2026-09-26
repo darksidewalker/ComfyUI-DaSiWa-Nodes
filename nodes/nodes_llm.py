@@ -8,6 +8,8 @@ does not hold a live reference to a very large model.
 import gc
 import json
 import os
+import random
+import re
 from urllib import error as urlerror
 from urllib import request as urlrequest
 from dataclasses import dataclass
@@ -146,6 +148,39 @@ def _folder_paths_for_llm():
         return [_LLM_DIR]
 
 
+def _is_mmproj(name):
+    """A llama.cpp vision projector: half of a vision GGUF, never a model on its own."""
+    return "mmproj" in os.path.basename(name).lower()
+
+
+def _find_mmproj(gguf_path):
+    """The mmproj file beside a GGUF model, or None.
+
+    Vision GGUFs ship as two files (model + mmproj). They are paired by folder:
+    one mmproj next to the model is taken as its own; with several, the one
+    whose name shares the longest start with the model's wins.
+    """
+    folder = os.path.dirname(gguf_path)
+    try:
+        found = [n for n in os.listdir(folder) if n.lower().endswith(".gguf") and _is_mmproj(n)]
+    except OSError:
+        return None
+    if not found:
+        return None
+    def plain(n):
+        return re.sub(r"[^a-z0-9]", "", os.path.splitext(n)[0].lower().replace("mmproj", ""))
+    model = plain(os.path.basename(gguf_path))
+    if len(found) > 1:
+        found.sort(key=lambda n: -len(os.path.commonprefix([plain(n), model])))
+        if not plain(found[0]) or not os.path.commonprefix([plain(found[0]), model]):
+            return None
+    elif len([n for n in os.listdir(folder) if n.lower().endswith(".gguf") and not _is_mmproj(n)]) > 1:
+        # A shared folder with several models is ambiguous without a name match.
+        if not plain(found[0]) or not os.path.commonprefix([plain(found[0]), model]):
+            return None
+    return os.path.join(folder, found[0])
+
+
 def _list_llm_models():
     models = []
     seen = set()
@@ -161,13 +196,24 @@ def _list_llm_models():
                     rel = name
                 else:
                     rel = None
+                    ggufs = []
                     for root, _, files in os.walk(path):
                         if "config.json" in files:
                             rel = os.path.relpath(root, base)
                             break
+                        ggufs += [os.path.relpath(os.path.join(root, f), base) for f in sorted(files)
+                                  if f.lower().endswith(".gguf") and not _is_mmproj(f)]
+                    if not rel:
+                        # A folder of GGUFs: a vision model keeps its mmproj beside it.
+                        for gguf in ggufs:
+                            if gguf not in seen:
+                                models.append(gguf)
+                                seen.add(gguf)
                 if rel and rel not in seen:
                     models.append(rel)
                     seen.add(rel)
+            elif _is_mmproj(name):
+                continue
             elif name.lower().endswith((".safetensors", ".bin", ".gguf")) and name not in seen:
                 models.append(name)
                 seen.add(name)
@@ -445,7 +491,10 @@ def _load_transformers_model(config, need_vision):
 
 
 def _load_llama_cpp_model(config, need_vision):
-    if need_vision:
+    # Vision only when the caller names the model's mmproj (H3 Forge does);
+    # the analyze node's llama.cpp path still sends text only.
+    mmproj = config.get("llama_mmproj_path") or ""
+    if need_vision and not mmproj:
         raise ValueError("The llama.cpp backend currently supports text-only GGUF models.")
     try:
         from llama_cpp import Llama
@@ -453,10 +502,30 @@ def _load_llama_cpp_model(config, need_vision):
         raise ImportError(
             "GGUF loading requires llama-cpp-python. Install a CUDA-enabled build in the ComfyUI environment."
         ) from exc
+    chat_handler = None
+    if need_vision:
+        try:
+            from llama_cpp.llama_chat_format import MTMDChatHandler
+        except ImportError as exc:
+            raise ImportError(
+                "GGUF vision needs llama-cpp-python 0.3.26 or newer. Update it in the ComfyUI environment."
+            ) from exc
+        chat_handler = MTMDChatHandler(clip_model_path=mmproj, verbose=False)
+        try:
+            # mtmd logs through its own hook, not llama.cpp's, and prints the
+            # whole prompt on every image. Route it through llama-cpp-python's
+            # filtered logger so verbose=False keeps the console quiet.
+            import ctypes
+            from llama_cpp import mtmd_cpp
+            from llama_cpp._logger import llama_log_callback
+            mtmd_cpp.mtmd_log_set(llama_log_callback, ctypes.c_void_p(0))
+            mtmd_cpp.mtmd_helper_log_set(llama_log_callback, ctypes.c_void_p(0))
+        except Exception:
+            pass
 
     cache_key = (
         config["model_path"], config["llama_n_ctx"], config["llama_n_gpu_layers"],
-        config["llama_n_threads"], config["llama_chat_format"],
+        config["llama_n_threads"], config["llama_chat_format"], mmproj if need_vision else "",
     )
     if config["cache_mode"] == "cached" and cache_key in _LLM_CACHE:
         return _LLM_CACHE[cache_key]
@@ -471,7 +540,9 @@ def _load_llama_cpp_model(config, need_vision):
         kwargs["n_threads"] = config["llama_n_threads"]
     if config["llama_chat_format"]:
         kwargs["chat_format"] = config["llama_chat_format"]
-    loaded = _LoadedLLM(model=Llama(**kwargs), tokenizer=None, processor=None, is_vision=False)
+    if chat_handler is not None:
+        kwargs["chat_handler"] = chat_handler
+    loaded = _LoadedLLM(model=Llama(**kwargs), tokenizer=None, processor=None, is_vision=chat_handler is not None)
     if config["cache_mode"] == "cached":
         _LLM_CACHE[cache_key] = loaded
     return loaded
@@ -487,8 +558,9 @@ def _run_llama_cpp_generation(loaded, system_prompt, user_text, max_new_tokens, 
         "top_p": top_p,
         "repeat_penalty": repetition_penalty,
     }
-    if seed >= 0:
-        kwargs["seed"] = seed
+    # llama-cpp-python samples with a fixed seed unless given one, so -1 has to
+    # pick a fresh seed here or every run returns the same text.
+    kwargs["seed"] = seed if seed >= 0 else random.randrange(2**31)
     response = loaded.model.create_chat_completion(**kwargs)
     return response["choices"][0]["message"]["content"].strip(), 0
 
