@@ -2,7 +2,6 @@
 import logging
 from pathlib import Path
 from .core import ClipStore, append_tail
-from .media import make_tail_thumbnails
 log = logging.getLogger(__name__)
 
 class DaSiWaH3ContinuityAppend:
@@ -51,7 +50,7 @@ class DaSiWaH3ContinuityPublish:
         # Also catch an incorrect playback rate or a downstream time trim. FPS
         # interpolation is fine when the exported duration remains unchanged.
         import av
-        metadata = store.metadata(ticket["session"], ticket["clip_id"], ready=False)
+        metadata = store.inspect(ticket["session"], ticket["clip_id"], ready=False)
         with av.open(str(path)) as media:
             video = next(iter(media.streams.video), None)
             if video is None:
@@ -60,16 +59,7 @@ class DaSiWaH3ContinuityPublish:
                        else float(media.duration or 0) / av.time_base)
             if abs(seconds - metadata["seconds"]) > max(0.125, 2 / float(video.average_rate or 24)):
                 raise ValueError("Export duration differs from the saved H3 timeline. Check FPS, interpolation and trimming; checkpoint remains staged.")
-        warning = ""
-        try:
-            thumbnails = make_tail_thumbnails(path, store.clip_dir(ticket["session"], ticket["clip_id"]))
-        except Exception as exc:
-            # Prompt assistance is optional; an unavailable preview must not invalidate
-            # a successfully generated latent and exported movie.
-            thumbnails = []
-            warning = str(exc)
-            log.warning("H3 continuity preview unavailable: %s", exc)
-        data = store.publish(ticket, path, thumbnails, warning)
+        data = store.publish(ticket, path)
         message = f"Saved {data['frames']} frames ({data['seconds']:.3f}s), clip {data['clip_id'][:8]}."
         try:
             from server import PromptServer

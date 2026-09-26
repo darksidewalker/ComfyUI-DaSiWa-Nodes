@@ -1,6 +1,6 @@
 # DaSiWa Custom Nodes Collection
 
-> **H3 Continuity 1.1.0:** Start from a completed H3 checkpoint or an ordinary video and extend it with synchronized video/audio context. See [H3 Continuity](docs/h3_continuity.md) for wiring and the source picker. Disable the old standalone DF continuity extension to avoid duplicate routes.
+> **H3 Continuity 1.2.5:** Start from a completed H3 checkpoint or an ordinary video and extend it with synchronized video/audio context. Selecting a source activates continuity; the existing Duration controls added seconds and the existing Prompt Forge uses the source context. See [H3 Continuity](docs/h3_continuity.md) for wiring and usage. Disable the old standalone DF continuity extension to avoid duplicate routes.
 
 A high-performance collection of custom nodes for ComfyUI, optimized for video workflows, resolution management, and logic control. Its installed version is shown in **ComfyUI → Settings → About**. 
 

@@ -97,7 +97,7 @@ class MiniMaxH3DirectorGuide:
         raw = guide.get("continuity") if isinstance(guide, dict) else None
         if raw is None:
             return (*self._apply_native(clip, vae, guide, audio_vae), {"disabled": True})
-        from .h3_continuity.core import ClipStore, parse_settings, prepare_continuation, add_tail
+        from .h3_continuity.core import ClipStore, parse_settings, prepare_continuation, add_tail, continuation_timing
         from .h3_continuity.vendor.continuation_nodes import _require_native_arbitrary_guides
         settings = parse_settings(raw)
         continuing = settings["operation"] == "continue"
@@ -122,7 +122,16 @@ class MiniMaxH3DirectorGuide:
             previous, metadata, source_id = import_checkpoint(settings, guide, vae, audio_vae)
             context["source_id"] = source_id
         else:
-            previous, metadata = ClipStore().load(settings["session"], settings["source_id"])
+            from .h3_continuity.inspection import checkpoint_issues
+            store = ClipStore()
+            info = store.inspect(settings["session"], settings["source_id"])
+            issues = checkpoint_issues(info, guide["mode"], guide["width"], guide["height"])
+            if issues:
+                raise ValueError(" ".join(issues))
+            previous, metadata = store.load(settings["session"], settings["source_id"])
+        if settings.get("version", 2) >= 3:
+            settings.update(continuation_timing(settings["duration_seconds"], settings["overlap_frames"], metadata["frames"]))
+            context.update({key: settings[key] for key in ("overlap_frames", "extension_frames", "duration_seconds")})
         updated, target, layout = prepare_continuation(previous, metadata, guide, settings)
         positive, _ = self._apply_native(clip, vae, updated, audio_vae)
         context.update(layout=layout, resolved_prompt=updated["resolved_prompt"],

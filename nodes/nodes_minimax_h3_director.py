@@ -113,7 +113,8 @@ class MiniMaxH3Director:
                 "prompt": ("STRING", {"default": "", "multiline": True}),
                 "width": ("INT", {"default": 1344, "min": 16, "max": 8192, "step": 16}),
                 "height": ("INT", {"default": 768, "min": 16, "max": 8192, "step": 16}),
-                "duration": ("INT", {"default": 5, "min": 1, "max": 1000}),
+                "duration": ("FLOAT", {"default": 5.0, "min": 0.1, "max": 1000, "step": 0.01,
+                    "tooltip": "Seconds for a new take, or newly added seconds when Continuity is active (up to 15). Native H3 timing is rounded to its frame grid."}),
                 "ref_image_size": (["match", "max"], {"default": "match"}),
                 "timeline_data": ("STRING", {"default": "{\"version\":1,\"items\":[],\"prompt_blocks\":[]}", "multiline": False, "hidden": True}),
                 "builder_state": ("STRING", {"default": "", "multiline": False, "hidden": True}),
@@ -175,7 +176,7 @@ class MiniMaxH3Director:
             width, height = int(external_width_overwrite), int(external_height_overwrite)
             if width < 1 or height < 1:
                 raise ValueError("external width overwrite and external height overwrite must be positive")
-        length = align_frame_count(int(duration) * 24)
+        length = align_frame_count(max(5, math.floor(float(duration) * 24 + 0.5)))
         try:
             state = json.loads(timeline_data or "{}")
         except (TypeError, json.JSONDecodeError) as exc:
@@ -186,8 +187,11 @@ class MiniMaxH3Director:
         continuing = False
         if "continuity" in state:
             from .h3_continuity.core import parse_settings, compose_prompt
-            continuity = parse_settings(state["continuity"])
+            continuity = parse_settings(state["continuity"], duration_seconds=duration)
             continuing = continuity["operation"] == "continue"
+        if continuing and continuity.get("version", 2) >= 3:
+            from .h3_continuity.inspection import resolve_runtime_source
+            continuity = resolve_runtime_source(continuity, mode, width, height, frame_rate)
         use_references = not continuing or continuity["use_references"]
         refmod_items = _load_refmod_rows(state.get("refmods", [])) if mode == "REF2VA" and use_references else []
         input_scaling = "Off" if external_canvas else (state.get("resolution") or {}).get("input_scaling", "Auto")

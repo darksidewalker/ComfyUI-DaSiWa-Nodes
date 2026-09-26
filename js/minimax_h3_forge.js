@@ -27,6 +27,7 @@ const SOURCE_NAME = { local: "ComfyUI models/llm (loads inside ComfyUI)", ollama
 const NO_MODELS = "No models found. Easiest fix: put a vision model folder (for example Qwen3-VL-8B-Instruct from Hugging Face) in ComfyUI/models/llm and reopen Forge. Or install Ollama and run: ollama pull qwen3-vl:8b. Other servers: Settings > DaSiWa > H3 Forge.";
 
 const STORE_KEY = "dasiwa.h3forge";
+const openDialogs = new WeakMap();
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
 const HISTORY_KEY = "dasiwaH3ForgeHistory";
 function forgeHistory(node) {
@@ -36,7 +37,7 @@ function forgeHistory(node) {
 function saveForgeResult(node, result, brief) {
   const entry = {
     mode: result.mode, model: result.model, simple_prompt: result.simple_prompt,
-    fields: result.fields, brief, createdAt: Date.now(),
+    draftOptions: result.draftOptions, fields: result.fields, continuity: !!result.continuity, contextKey: result.contextKey, brief, createdAt: Date.now(),
   };
   node.properties ||= {};
   node.properties[HISTORY_KEY] = [entry, ...forgeHistory(node)].slice(0, 3);
@@ -113,30 +114,36 @@ function referencesFor(hook) {
 async function open(node) {
   const hook = node.__dasiwaH3Forge;
   if (!hook) return;
+  openDialogs.get(node)?.();
   installStyles();
   const mode = hook.mode();
   const prefs = remembered();
+  const continuity = hook.continuity?.();
+  const openedKey = hook.contextKey?.();
+  const compatible = entry => entry.mode === hook.mode() && !!entry.continuity === !!hook.continuity?.() && (!entry.contextKey || entry.contextKey === hook.contextKey?.());
 
   const overlay = el("div", { className: "ds-forge-overlay" });
   const box = el("div", { className: "ds-forge" });
   overlay.append(box);
   // A run in flight, so Cancel and closing the pop-out can stop it.
-  let running = null;
-  const cancelRun = () => { if (running) { const id = running; running = null; api.fetchApi("/dasiwa/h3/forge/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: id }) }).catch(() => {}); } };
-  const close = () => { cancelRun(); overlay.remove(); document.removeEventListener("keydown", onKey); };
+  let running = null, closed = false, loadingModels = true, statusTimer = null;
+  const cancelRun = () => { clearInterval(statusTimer); statusTimer = null; if (running) { const id = running; running = null; api.fetchApi("/dasiwa/h3/forge/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ request_id: id }) }).catch(() => {}); } };
+  const close = () => { if (closed) return; closed = true; cancelRun(); overlay.remove(); document.removeEventListener("keydown", onKey); openDialogs.delete(node); };
+  openDialogs.set(node, close);
   const onKey = e => { if (e.key === "Escape") close(); };
   document.addEventListener("keydown", onKey);
   overlay.addEventListener("pointerdown", e => { if (e.target === overlay) close(); });
 
   const closeBtn = el("button", { textContent: "×", title: "Close (Esc)", onclick: close });
-  box.append(el("h3", {}, el("span", { textContent: `H3 Forge — ${mode}` }), closeBtn));
+  box.append(el("h3", {}, el("span", { textContent: `H3 Forge — ${mode}${continuity ? " · Continuity Active" : ""}` }), closeBtn));
 
-  const brief = el("textarea", { placeholder: "What should the clip be? A sentence or two is enough.", value: briefs.get(node.id) || forgeHistory(node)[0]?.brief || "" });
-  box.append(el("div", { className: "field" }, el("label", { textContent: "Idea" }), brief));
+  const brief = el("textarea", { placeholder: continuity ? "What happens next? Leave empty to continue naturally." : "What should the clip be? A sentence or two is enough.", value: continuity ? "" : briefs.get(node.id) || forgeHistory(node).find(e => !e.continuity)?.brief || "" });
+  box.append(el("div", { className: "field" }, el("label", { textContent: continuity ? "Next action" : "Idea" }), brief));
 
   // References from the timeline. REF2VA pictures need a role; base-mode
   // pictures are frames by definition.
-  const refs = referencesFor(hook);
+  const refs = continuity ? [] : referencesFor(hook);
+  if (continuity) box.append(el("div", { className: "muted", textContent: "The source ending and Duration guide this draft. A vision model uses tail frames internally; audio is not analyzed. Review the result, then Apply to node." }));
   if (refs.length) {
     const list = el("div", { className: "refs" });
     let counts = { image: 0, video: 0, audio: 0 };
@@ -155,7 +162,7 @@ async function open(node) {
       list.append(el("div", { className: "ref" }, thumb, el("span", { textContent: name }), roleCell, ref.kind === "audio" ? el("span") : keep));
     }
     box.append(el("div", { className: "field" }, el("label", { textContent: "References on the timeline" }), list));
-  } else if (mode !== "T2VA") {
+  } else if (mode !== "T2VA" && !continuity) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
   }
 
@@ -170,25 +177,36 @@ async function open(node) {
 
   const status = el("span", { className: "status" });
   const setStatus = (msg, err = false) => { status.textContent = msg; status.classList.toggle("error", err); };
-  const genBtn = el("button", { className: "primary", textContent: "Generate" });
+  const genBtn = el("button", { className: "primary", textContent: "Generate", disabled: true });
   const applyBtn = el("button", { textContent: "Apply to node", disabled: true });
   box.append(el("div", { className: "actions" }, status, genBtn, applyBtn));
   const output = el("pre", { hidden: true });
   box.append(output);
   const historyBox = el("div", { className: "history" });
   box.append(historyBox);
+  const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select"));
+  const controls = [brief, modelSel, detail, creativity, ...referenceControls];
+  controls.forEach(c => { c.disabled = true; });
   let result = null;
   const showResult = entry => {
+    if (closed) return;
+    brief.value = entry.brief || "";
+    if (entry.draftOptions) {
+      const { model, detail: level, creativity: preset } = entry.draftOptions;
+      if (Array.from(modelSel.options).some(o => o.value === model)) modelSel.value = model;
+      detail.value = level; creativity.value = preset;
+      if (detail.oninput) detail.oninput();
+    }
     result = entry;
     output.hidden = false;
     output.textContent = entry.simple_prompt;
-    applyBtn.disabled = !!running || entry.mode !== hook.mode();
-    if (entry.mode !== hook.mode()) setStatus(`This draft is for ${entry.mode}; switch the Director to that mode before applying.`, true);
+    applyBtn.disabled = loadingModels || !!running || !compatible(entry);
+    if (!compatible(entry)) setStatus("Draft belongs to a different source, duration, model or prompt. Generate again for the current context.", true);
     renderHistory();
   };
   const renderHistory = () => {
     const entries = forgeHistory(node);
-    const clear = el("button", { type: "button", textContent: "Clear history", disabled: !entries.length, title: "Remove the three saved Forge prompts from this node" });
+    const clear = el("button", { type: "button", textContent: "Clear history", disabled: loadingModels || !!running || !entries.length, title: "Remove the three saved Forge prompts from this node" });
     clear.onclick = () => {
       clearForgeHistory(node);
       node.__dasiwaH3Render?.();
@@ -199,25 +217,27 @@ async function open(node) {
     if (!entries.length) { historyBox.append(el("span", { className: "muted", textContent: "No prompts generated yet." })); return; }
     entries.forEach((entry, index) => {
       const date = Number.isFinite(entry.createdAt) ? new Date(entry.createdAt).toLocaleString() : "Saved draft";
-      const button = el("button", { type: "button", className: result === entry ? "selected" : "", title: "Show this prompt; Apply to node to use it" },
-        el("span", { textContent: `${index + 1}. ${entry.mode} · ${entry.model || "model"} · ${date}` }),
+      const button = el("button", { type: "button", disabled: loadingModels || !!running, className: result === entry ? "selected" : "", title: "Show this prompt; Apply to node to use it" },
+        el("span", { textContent: `${index + 1}. ${entry.mode}${entry.continuity ? " · Continuity" : ""} · ${entry.model || "model"} · ${date}` }),
         el("span", { className: "excerpt", textContent: entry.simple_prompt.replace(/\s+/g, " ").slice(0, 150) }));
       button.onclick = () => showResult(entry);
       historyBox.append(button);
     });
   };
-  const latest = forgeHistory(node)[0];
-  if (latest) showResult(latest); else renderHistory();
+  const latest = forgeHistory(node).find(compatible);
+  renderHistory();
   document.body.append(overlay);
   brief.focus();
 
   const notes = el("div", { className: "muted" });
   box.insertBefore(notes, status.parentElement);
   let levels = {};
+  setStatus("Loading Forge models…");
   try {
     const res = await api.fetchApi("/dasiwa/h3/forge/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: forgeSettings() }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || res.statusText);
+    if (closed) return;
     notes.textContent = Object.values(data.errors || {}).join(" ");
     notes.style.color = notes.textContent ? "#ff8a8a" : "";
     const usable = data.models.filter(m => !m.disabled);
@@ -234,25 +254,47 @@ async function open(node) {
     creativity.value = prefs.creativity && data.creativity.includes(prefs.creativity) ? prefs.creativity : data.default_creativity;
     levels = data.detail_levels;
     detail.value = prefs.detail || data.default_detail;
+    genBtn.disabled = false;
+    setStatus("Ready. Generate a draft, then review and Apply.");
   } catch (err) {
     setStatus(err.message, true);
     genBtn.disabled = true;
   }
+  if (closed) return;
+  loadingModels = false;
+  controls.forEach(c => { c.disabled = false; });
+  brief.focus();
   const syncDetail = () => { detailLabel.textContent = `${detail.value} of 10 — ${levels[detail.value] || ""}`; };
   detail.oninput = syncDetail; syncDetail();
-
+  if (latest) showResult(latest); else renderHistory();
+  const clearDraft = () => {
+    if (running || closed) return;
+    result = null; applyBtn.disabled = true; output.hidden = true; output.textContent = "";
+    setStatus("Idea or options changed. Generate a new draft, or choose a saved draft.");
+    renderHistory();
+  };
+  brief.addEventListener("input", clearDraft);
+  modelSel.addEventListener("change", clearDraft);
+  creativity.addEventListener("change", clearDraft);
+  detail.addEventListener("input", clearDraft);
+  referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
   genBtn.onclick = async () => {
+    if (closed) return;
     if (running) { cancelRun(); genBtn.disabled = true; setStatus("Cancelling… the model stops at its next token, then unloads."); return; }
     const text = brief.value.trim();
-    if (!text) { setStatus("Write the idea first.", true); return; }
-    briefs.set(node.id, text);
+    if (openedKey !== hook.contextKey?.()) { setStatus("Director context changed. Close and reopen Forge.", true); return; }
+    if (!text && !continuity) { setStatus("Write the idea first.", true); return; }
+    if (!continuity) briefs.set(node.id, text);
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
+    result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
+    controls.forEach(c => { c.disabled = true; });
+    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value };
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    running = requestId;
+    running = requestId; renderHistory();
     genBtn.textContent = "Cancel";
     const started = Date.now();
-    const tick = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (Cancel stops it; the model unloads either way)`), 500);
+    statusTimer = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (Cancel stops it; the model unloads either way)`), 500);
     try {
       const res = await api.fetchApi("/dasiwa/h3/forge", {
         method: "POST",
@@ -260,29 +302,35 @@ async function open(node) {
         body: JSON.stringify({
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           detail: Number(detail.value), creativity: creativity.value,
-          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(),
+          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity,
         }),
       });
       const data = await res.json();
       if (!res.ok) { output.hidden = !data.raw; output.textContent = data.raw || ""; throw new Error(data.message || res.statusText); }
+      if (closed || running !== requestId) throw new Error("Draft cancelled; no prompt was changed.");
+      if (openedKey !== hook.contextKey?.()) throw new Error("Source, duration, model or prompt changed during drafting. Reopen Forge and generate again.");
+      if (!!data.continuity !== !!continuity || (continuity && data.source_id !== continuity.clip_id)) throw new Error("Draft does not match the selected continuity source.");
+      data.contextKey = openedKey; data.draftOptions = draftOptions;
       const saved = saveForgeResult(node, data, text);
       showResult(saved);
-      const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
+      const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
       setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
     } catch (err) {
       setStatus(err.message, true);
     } finally {
-      clearInterval(tick);
+      clearInterval(statusTimer); statusTimer = null;
       running = null;
-      applyBtn.disabled = !result || result.mode !== hook.mode();
+      controls.forEach(c => { c.disabled = false; });
+      applyBtn.disabled = !result || !compatible(result);
       genBtn.disabled = false;
       genBtn.textContent = "Regenerate";
+      renderHistory();
     }
   };
   applyBtn.onclick = () => {
     if (!result) return;
-    hook.apply(result);
+    if (!compatible(result) || hook.apply(result) === false) { setStatus("Draft is stale. Generate again for the current source, duration and prompt.", true); return; }
     hook.setStatus(`Forge prompt applied (${result.model}).`);
     close();
   };
@@ -290,4 +338,4 @@ async function open(node) {
 
 // At load, not on first open: the toolbar button's style lives here too.
 installStyles();
-window.DaSiWaH3Forge = { open, clearHistory: clearForgeHistory, settings: forgeSettings };
+window.DaSiWaH3Forge = { open, close: node => openDialogs.get(node)?.(), clearHistory: clearForgeHistory, settings: forgeSettings };

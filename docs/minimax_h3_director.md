@@ -101,7 +101,7 @@ The Director has optional model sockets (`fl2va_model`, `ref2va_model`) for lazy
 
 ### Continuity
 
-Continue remains a Director view with a separate prompt and existing Forge assistance. It can start from a completed H3 checkpoint or an ordinary video selected with **Choose start video…**. The latter is normalized and encoded with the connected H3 video/audio VAEs during the normal queue run. The source stays pinned until explicitly changed.
+Selecting a completed H3 checkpoint or an ordinary video with **Choose start video…** automatically shows **Continuity Active** in the Director row. There is no separate Continue model mode: the selected H3 backend remains in use. Duration controls newly added seconds, and the row shows source + added = total. Continuity policy is automatic; the prompt describes the next action. Clear source restores the normal prompt. The latter is normalized and encoded with the connected H3 video/audio VAEs during the normal queue run. The source stays pinned until explicitly changed.
 
 See [H3 Continuity](h3_continuity.md) for the source picker, capture toggle, native AV tail behaviour, socket table, wiring diagram, temporal alignment and resource costs. Do not install the old standalone DF continuity extension alongside this integrated build.
 
@@ -257,7 +257,7 @@ For a local Ollama example, start `ollama serve` in its own terminal if it is no
 
 These server addresses are **ComfyUI Settings, not workflow fields**; you must set them on the ComfyUI instance actually running Forge. Reopen Forge after changing a URL to refresh its picker; a missing configured server appears as a source-specific error, not as an available model. The server must support streaming chat responses. Ollama normally unloads the requested model on completion; other OpenAI-compatible servers may keep it in VRAM, and Forge reports that warning. Forge refuses a new generation while a workflow is sampling so it does not evict the video model. If you use a server on another GPU, its memory is managed by that server.
 
-Forge uses the Director's current H3 mode and duration. Timeline references are sent in lane order: REF2VA images can be tagged **subject**, **style** or **keyframe**; image/video references may carry a **keep** instruction, and video rows state whether their video/audio streams are used. A vision-capable model can receive attached reference pictures; a text-only model receives the idea and reference descriptions, **not** visual contents. Neither path analyzes soundtrack audio. If using **Continue**, its separate Analyze → Draft action uses a selected completed clip's chronological tail thumbnails where available; **Apply draft** updates only the Continue prompt and does not queue a video. This action uses the same Forge model sources/Settings, not a second `llm_config.json`.
+Forge uses the Director's current H3 mode and duration. Timeline references are sent in lane order: REF2VA images can be tagged **subject**, **style** or **keyframe**; image/video references may carry a **keep** instruction, and video rows state whether their video/audio streams are used. A vision-capable model can receive attached reference pictures; a text-only model receives the idea and reference descriptions, **not** visual contents. Neither path analyzes soundtrack audio. When **Continuity Active**, the same Forge button/modal automatically uses the selected source ending, next action and snapped added Duration. Tail images are prepared only when a vision model needs them and are not displayed as tiles. **Apply to node** updates only the continuation prompt; it does not queue a video. Detail, creativity, cancellation, history and backend settings are shared. Text-only fallback is labelled; changed source/duration/mode/prompt invalidates the draft.
 
 ## Limits and validation
 
@@ -447,3 +447,8 @@ Example: `The camera pushes in with small amplitude at slow speed toward her han
 Official MiniMax H3 guides (canonical conventions):
 - [Video Prompt Writing Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_base_en.md)
 - [Full-Reference Rewrite Format Guide](https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/main/docs/VIDEO_PROMPT_WRITING_GUIDE_ref_en.md)
+
+
+### Continuity 1.2.5 readiness and sessions
+
+Source selection now runs a lightweight metadata/safetensors-header check for availability, canvas, model family, FPS and effective context. Mismatches remain visible until corrected; the existing backend is not silently changed. Under **Advanced**, resume a saved session, start a new one, review available latent size/counts or refresh externally changed files. **Use latest output** excludes imported source checkpoints. Raw-video imports show a temporary disk estimate; GPU/RAM and cumulative export costs remain separate. Forge clears stale results when the idea/options change and protects against late responses. See [H3 Continuity](h3_continuity.md) for limits and queue-time checks.

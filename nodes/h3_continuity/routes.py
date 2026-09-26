@@ -43,10 +43,31 @@ def register_routes(server=None):
     @routes.get("/df_h3_continuity/session/{session}")
     async def session(request):
         try:
-            result = await asyncio.to_thread(ClipStore().list_clips, safe_id(request.match_info["session"]))
+            selected = request.query.get("selected") or None
+            if selected:
+                safe_id(selected)
+            result = await asyncio.to_thread(ClipStore().list_clips, safe_id(request.match_info["session"]), selected)
             return web.json_response(result)
         except (ValueError, OSError) as exc:
             return web.json_response({"error": str(exc)}, status=400)
+
+    @routes.get("/df_h3_continuity/sessions")
+    async def sessions(request):
+        try:
+            return web.json_response(await asyncio.to_thread(ClipStore().list_sessions))
+        except (OSError, ValueError) as exc:
+            return web.json_response({"error": str(exc)}, status=400)
+
+    @routes.post("/df_h3_continuity/preflight")
+    async def check_source(request):
+        from .inspection import preflight
+        try:
+            if request.content_length is not None and request.content_length > 16384:
+                raise ValueError("Source check exceeds 16 KiB.")
+            result = await asyncio.to_thread(preflight, await request.json(), ClipStore())
+            return web.json_response(result)
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            return web.json_response({"ok": False, "issues": [str(exc)], "notes": []}, status=400)
 
     @routes.get("/df_h3_continuity/tail/{session}/{clip}/{index}")
     async def tail(request):

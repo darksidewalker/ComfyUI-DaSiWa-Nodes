@@ -1,6 +1,6 @@
 """Import ordinary videos through the connected H3 VAEs during queue execution.
 
-HTTP preparation only probes media and extracts previews. No model is loaded there.
+HTTP preparation only probes and hashes media. No model is loaded there.
 The source is content-addressed; replacing an uploaded file cannot change a queued
 take. Native VAE calls preserve ComfyUI's model loading/offloading behaviour.
 """
@@ -20,7 +20,6 @@ import torch
 from comfy.nested_tensor import NestedTensor
 
 from .core import ClipStore, atomic_json, mode_family, safe_id
-from .media import make_tail_thumbnails
 from .vendor.continuation_nodes import validate_h3_av_latent
 
 IMPORT_VERSION = 1
@@ -81,10 +80,13 @@ def input_video(filename, input_root=None):
     return path
 
 
-def file_digest(path):
+def file_digest(path, interrupt=False):
     digest = hashlib.sha256()
     with Path(path).open("rb") as stream:
         for block in iter(lambda: stream.read(4 * 1024 * 1024), b""):
+            if interrupt:
+                from comfy.model_management import throw_exception_if_processing_interrupted
+                throw_exception_if_processing_interrupted()
             digest.update(block)
     return digest.hexdigest()
 
@@ -113,8 +115,8 @@ def manifest_dir(store, source_id):
 
 
 def read_manifest(store, source_id):
-    data = json.loads((manifest_dir(store, source_id) / "source.json").read_text(encoding="utf-8"))
-    if data.get("clip_id") != source_id:
+    data = json.loads(store.member("_imports", source_id, "source.json").read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("clip_id") != source_id:
         raise ValueError("Imported video identity does not match its manifest.")
     return data
 
@@ -130,15 +132,11 @@ def prepare_video(filename, store=None, input_root=None):
         return read_manifest(store, source_id)
     info = probe_video(path)
     directory.mkdir(parents=True, exist_ok=True)
-    try:
-        thumbnails = make_tail_thumbnails(path, directory)
-        warning = ""
-    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
-        thumbnails, warning = [], str(exc)
+    # Tail images are only needed on an explicit vision Forge request.
     if file_digest(path) != digest:
         raise ValueError("The source changed during preparation. Select it again.")
     data = {**info, "clip_id": source_id, "filename": filename, "sha256": digest,
-            "kind": "video", "prompt": "", "thumbnails": thumbnails, "preview_warning": warning}
+            "kind": "video", "prompt": "", "thumbnails": [], "preview_warning": ""}
     atomic_json(directory / "source.json", data)
     return data
 
@@ -179,6 +177,8 @@ def encode_source(path, info, width, height, vae, audio_vae):
     ffmpeg = executable("ffmpeg")
     with tempfile.TemporaryDirectory(prefix="dasiwa-h3-import-") as work:
         work = Path(work)
+        from .inspection import check_import_space
+        check_import_space(info["seconds"], width, height, work)
         raw_video = work / "video.rgb"
         # ffmpeg applies rotation, timebase conversion and aspect-preserving fit.
         vf = (f"fps=24,scale={width}:{height}:force_original_aspect_ratio=decrease,"
@@ -228,20 +228,24 @@ def encode_source(path, info, width, height, vae, audio_vae):
                         "fit": "contain", "audio": "encoded" if info["has_audio"] else "encoded silence"}
 
 
+def import_cache_id(manifest, guide):
+    key = [IMPORT_VERSION, manifest["clip_id"], guide["width"], guide["height"], mode_family(guide["mode"])]
+    return "import_" + hashlib.sha256(json.dumps(key).encode()).hexdigest()[:48]
+
+
 def import_checkpoint(settings, guide, vae, audio_vae, store=None, input_root=None):
     store = store or ClipStore()
     manifest = read_manifest(store, settings["source_video_id"])
     path = input_video(manifest["filename"], input_root)
-    if file_digest(path) != manifest["sha256"]:
+    if file_digest(path, interrupt=True) != manifest["sha256"]:
         raise ValueError("The selected source video changed. Select it again before continuing.")
-    key = [IMPORT_VERSION, manifest["clip_id"], guide["width"], guide["height"], mode_family(guide["mode"])]
-    clip_id = "import_" + hashlib.sha256(json.dumps(key).encode()).hexdigest()[:48]
+    clip_id = import_cache_id(manifest, guide)
     directory = store.clip_dir(settings["session"], clip_id)
     if (directory / "clip.json").exists():
         # An immutable source checkpoint is reused on rerolls of the same upload/canvas.
         return (*store.load(settings["session"], clip_id), clip_id)
     latent, normalization = encode_source(path, manifest, guide["width"], guide["height"], vae, audio_vae)
-    if file_digest(path) != manifest["sha256"]:
+    if file_digest(path, interrupt=True) != manifest["sha256"]:
         raise ValueError("Source video changed during encoding. Select it again.")
     context = {"session": settings["session"], "run_id": clip_id, "mode": guide["mode"],
                "resolved_prompt": "", "provenance": {"kind": "imported_video",
