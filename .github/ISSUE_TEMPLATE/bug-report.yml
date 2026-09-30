@@ -68,6 +68,7 @@ body:
         - "DaSiWa LLM Model Selector"
         - "DaSiWa LLM Analyze"
         - "DaSiWa Enhanced Video Combine"
+        - "Seamless Loop"
         - "DaSiWa Inpaint Crop Prep"
         - "DaSiWa Inpaint Composite"
         - "MiniMax H3 Director"
