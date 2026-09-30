@@ -63,7 +63,7 @@ Workflow-only labels for the classic canvas and Nodes 2.0. Add **Lable (DaSiWa)*
 - Embedded PNG/JPEG/WebP images: auto-scaled background, floating beside text, or above/below text. Images travel with saved workflows.
 - Drag, resize, fit to text, and pin/click-through. No rgthree dependency, server route, or execution node.
 
-[Full documentation, compatibility, and standalone migration →](docs/lable.md)
+[Full documentation and compatibility →](docs/lable.md)
 
 ---
 

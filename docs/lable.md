@@ -40,11 +40,11 @@ Image position choices:
 
 Node-owned controls and tooltips are English. Native browser color dialogs and OS file dialogs follow browser/system language. User-provided text and filenames are not translated.
 
-## Standalone migration and coexistence
+## Workflow compatibility
 
-If the earlier `ComfyUI-Simple-Label` extension is installed, remove or disable that standalone extension after updating this pack, then restart ComfyUI and hard-refresh the browser. Keep any saved workflows; the integrated node preserves the exact **`Lable (DaSiWa)`** type, title, properties, and embedded-image format. No workflow conversion is needed for that node type. Existing rgthree labels are not automatically converted.
+Labels save their title, properties, and embedded images in workflow JSON. Existing rgthree labels are not automatically converted.
 
-The integrated extension has its own `DaSiWa.Lable` registration name, uses label-scoped styles, and skips registering its node type when it already exists. It does not modify rgthree, other node classes, or global canvas rendering. Disabling the obsolete standalone installation ensures that the integrated implementation is used regardless of extension load order.
+The extension uses its own `DaSiWa.Lable` registration name and label-scoped styles, and skips registering its node type when it already exists. It does not modify rgthree, other node classes, or global canvas rendering.
 
 ## Compatibility and verification
 
