@@ -8,6 +8,21 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 ## Included Nodes
 
+### 🏷️ Lable (DaSiWa)
+
+Workflow-only labels for the classic canvas and Nodes 2.0. Add **Lable (DaSiWa)** from **DaSiWa / utilities**, then double-click it to edit.
+
+- Font previews, alignment, rotation, independent text/background opacity, and sliders with editable numbers.
+- 48 color swatches, RGB picker, editable HEX values, and a screen-eyedropper icon. Native ComfyUI node colors respect label opacity.
+- Embedded PNG/JPEG/WebP images: auto-scaled background, floating beside text, or above/below text. Images travel with saved workflows.
+- Drag, resize, fit to text, and pin/click-through. No rgthree dependency, server route, or execution node.
+
+![Lable (DaSiWa)](assets/DaSiWa-Lable.png)
+
+[Full documentation, compatibility, and standalone migration →](docs/lable.md)
+
+---
+
 ### 🎬 MiniMax H3 Director
 
 > 🎬 MiniMax H3 Director — The Ultimate One-Stop Video Creation Pipeline: Experience the most advanced, feature-complete MiniMax H3 Director node available for ComfyUI. Built as a comprehensive production hub, it seamlessly merges timeline-based multi-modal authoring, intelligent LLM/VLM Prompt Forge assistance, deep RefMod persona control, and high-precision continuity extensions into a single, unified workflow. Whether starting from text, images, or an existing H3 video, the Director serves as your central command deck for end-to-end synchronized video and audio generation.

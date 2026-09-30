@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-09-30**. Older history lives in the 
 
 ## News
 
+- **Lable (DaSiWa), 0.4.67:** Integrated workflow annotations for classic canvas and Nodes 2.0, with font previews, RGB/HEX colors, eyedropper, embedded images, precise numeric controls, and opacity-safe native node colors. Existing standalone label workflows retain their node identifier and properties. [Label guide →](lable.md)
+
 - **System Monitor Ultra compact (09-30, 0.4.66):** Optional mode switches from the default Lite top bar to a right-docked card with every enabled metric visible and no internal scrollbar. Switching back restores Lite's top row and saved width. [Monitor guide →](system_monitor.md#ultra-compact)
 
 - **System Monitor layout (09-28, 0.4.64, #59):** Lite defaults to its own top row instead of crowding ComfyUI controls; a horizontal-only resize handle wraps complete meters without cropping their values. The drag grip stays meter-height. The monitor reattaches after ComfyUI rebuilds its toolbar when the Properties panel toggles. The settings menu opens within the viewport, and background/content opacity controls are independently adjustable. The Free Memory button remains beside the top controls in every monitor placement. [Monitor guide →](system_monitor.md)
