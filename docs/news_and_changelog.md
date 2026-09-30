@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-09-30**. Older history lives in the 
 
 ## News
 
+- **Attention patch retired, 0.4.68:** Patch Comfy Kitchen Attention is deprecated and removed from the nodepack, registry, and issue-form options. MiniMax H3 Cache remains supported. In older workflows, remove the retired node and reconnect its incoming `MODEL` to its downstream consumer. README layout and asset changes are retained. [Migration notes →](minimax_h3_cache.md#retired-attention-patch)
+
 - **Lable (DaSiWa), 0.4.67:** Integrated workflow annotations for classic canvas and Nodes 2.0, with font previews, RGB/HEX colors, eyedropper, embedded images, precise numeric controls, and opacity-safe native node colors. Existing standalone label workflows retain their node identifier and properties. [Label guide →](lable.md)
 
 - **System Monitor Ultra compact (09-30, 0.4.66):** Optional mode switches from the default Lite top bar to a right-docked card with every enabled metric visible and no internal scrollbar. Switching back restores Lite's top row and saved width. [Monitor guide →](system_monitor.md#ultra-compact)
@@ -177,6 +179,8 @@ Quick reference for the version bumps inside this window, newest first:
 - **Earlier additions (pre-window):** embedded video audio extraction (a video can supply its own audio reference; V / A / V+A stream switch per video clip), standalone-audio trim support with waveform preview + draggable crop markers, attached soundtracks that share a video's trim window, FL2VA ↔ REF2VA mode-switch safety (incompatible references are preserved, not deleted), and hardened video duration detection with a container-level fallback.
 
 ### MiniMax H3 Cache & Patch Comfy Kitchen Attention
+
+Patch Comfy Kitchen Attention was retired in **0.4.68**; the entries below describe historical releases.
 
 - **08-29:** **PDD compatibility:** the node detects the live `FinalLayer.forward` signature at patch time and passes the ComfyUI 0.34+ PDD sigma-schedule arguments, so the PDD LoRA head bank works with cache enabled. **Per-token masks:** honors `denoise_mask` / `audio_denoise_mask` exactly like Core — mixed masks run masked rows at their own strength via per-row `rows_to_mod_index` modulation; absent or uniform masks collapse to the scalar path, byte-identical to the previous behaviour. **Spectrum patch artifact:** `patches/comfyui-spectrum-minimax-h3-pdd.patch` for xmarre's ComfyUI-Spectrum-MiniMax-H3 v0.2.20, which silently degrades on the PDD signature.
 - **08-16:** both nodes added: an approximate, model-scoped whole-block-stack residual cache (relative-L1 threshold sampling, 15–90% sampling window, bounded cache hits, auto/CUDA/CPU storage) and a one-input INT8-attention model patch; both are model-clone patches and chain in either order.

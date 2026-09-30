@@ -4,7 +4,6 @@ if __package__:
     from .nodes.nodes_rtx_upscaler_refiner import DaSiWa_RTX_UpscalerRefiner
     from .nodes.nodes_metadata import DaSiWa_MetadataImageSaver, DaSiWa_MetadataImageSaverFull, DaSiWa_MetadataConfig, DaSiWa_CreateExtraMetadata
     from .nodes.nodes_advanced_lora_loader import DaSiWa_AdvancedLoRALoader
-    from .nodes.nodes_comfy_kitchen_attention import PathchComfyKitchenAttentionDaSiWa
     from .nodes.nodes_watermark import DaSiWa_Watermark
     from .nodes.nodes_random_string_picker import DaSiWa_RandomStringPicker
     from .nodes.nodes_seed_control import DaSiWa_SeedControl
@@ -37,7 +36,6 @@ if __package__:
         "DaSiWa_MetadataConfig": DaSiWa_MetadataConfig,
         "DaSiWa_CreateExtraMetadata": DaSiWa_CreateExtraMetadata,
         "DaSiWa_LTX2LoraLoader": DaSiWa_AdvancedLoRALoader,
-        "PathchComfyKitchenAttentionDaSiWa": PathchComfyKitchenAttentionDaSiWa,
         "DaSiWa_Watermark": DaSiWa_Watermark,
         "DaSiWa_RandomStringPicker": DaSiWa_RandomStringPicker,
         "DaSiWa_SeedControl": DaSiWa_SeedControl,
@@ -65,7 +63,6 @@ if __package__:
         "DaSiWa_MetadataConfig": "DaSiWa Metadata Config",
         "DaSiWa_CreateExtraMetadata": "DaSiWa Create Extra Metadata",
         "DaSiWa_LTX2LoraLoader": "Advanced LoRA Loader",
-        "PathchComfyKitchenAttentionDaSiWa": "Patch Comfy Kitchen Attention",
         "DaSiWa_Watermark": "DaSiWa Watermark Overlay",
         "DaSiWa_RandomStringPicker": "DaSiWa Random String Picker",
         "DaSiWa_SeedControl": "Seed Control",

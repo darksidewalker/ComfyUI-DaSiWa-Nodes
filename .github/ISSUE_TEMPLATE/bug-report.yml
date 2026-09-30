@@ -61,7 +61,6 @@ body:
         - "DaSiWa Metadata Config"
         - "DaSiWa Create Extra Metadata"
         - "Advanced LoRA Loader"
-        - "Patch Comfy Kitchen Attention"
         - "DaSiWa Watermark Overlay"
         - "DaSiWa Random String Picker"
         - "Seed Control"

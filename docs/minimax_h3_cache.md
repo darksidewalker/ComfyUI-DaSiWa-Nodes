@@ -9,12 +9,14 @@ Place it on the `MODEL` path before the guider/sampler:
 ```mermaid
 flowchart TB
     LOADER[MiniMax H3 Model Loader] --> CACHE[MiniMax H3 Cache]
-    CACHE --> PKA["Patch Comfy Kitchen Attention (optional)"]
-    PKA --> GUIDER[Guider / Sampler]
-    CACHE -.->|skip optional patch| GUIDER
+    CACHE --> GUIDER[Guider / Sampler]
 ```
 
-The Cache and **Patch Comfy Kitchen Attention** are model-clone patches and may be chained in either order. Cache-hit steps bypass the complete H3 block stack, so no attention backend runs on those steps. On cache-miss steps, Comfy Kitchen's selected attention override remains present in `transformer_options` and is used normally.
+Cache-hit steps bypass the complete H3 block stack, so no attention backend runs on those steps. Cache-miss steps preserve model-scoped optimized-attention overrides in `transformer_options`.
+
+## Retired attention patch
+
+**Patch Comfy Kitchen Attention** is deprecated and removed from this collection in **0.4.68**, including its legacy type `PathchComfyKitchenAttentionDaSiWa`. It is no longer imported, registered, or selectable. Older workflows containing it need a manual update: delete the retired node and reconnect its incoming `MODEL` directly to the downstream guider/sampler or other model consumer. This removes the old attention override; ComfyUI or another remaining model patch selects the attention backend. **MiniMax H3 Cache** remains supported and does not require the retired patch.
 
 ## Controls
 
@@ -48,5 +50,5 @@ No AGPL-licensed source code from UtilsCollection was copied into this GPL-3.0 c
 - Requires a ComfyUI version exposing `ModelPatcher.add_object_patch`, `set_model_patch_replace`, and `add_wrapper`.
 - Works with ComfyUI's PDD LoRA head bank (0.34+): the node detects the live `FinalLayer.forward` signature at patch time and passes the PDD sigma-schedule arguments automatically, so cache and PDD coexist with no extra setup.
 - Honors per-token denoise masks (video and audio): masked rows run at their own strength exactly like Core, so cached and region-masked generations match Core quality. Unmasked and all-generate masks are unaffected.
-- Is compatible with this collection's **Patch Comfy Kitchen Attention** model patch.
+- Preserves model-scoped optimized-attention overrides without requiring an attention-patch node from this collection.
 - Do not characterize this cache as superior to another cache without matched benchmarks and quality comparisons.
