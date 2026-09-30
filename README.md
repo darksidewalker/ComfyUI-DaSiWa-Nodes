@@ -235,14 +235,14 @@ IMAGE ────────────────────────�
 
 ### 🖥️ System Monitor
 
-A compact telemetry bar that defaults to its own row below ComfyUI's top controls, leaving Run, panel navigation, and custom-node buttons accessible.
+A compact telemetry bar that defaults to its own row below ComfyUI's top controls; switching to Ultra compact docks a small card on the right.
 
 - **Multi-GPU Support:** Separate metrics per GPU device (NVIDIA, AMD, Intel) labeled as GPU0, GPU1, etc.
 - **Resource Metrics:** CPU, RAM, SWAP/Pagefile, DISK, GPU Utilization, GPU VRAM, and GPU Temperature.
 - **Visual Feedback:** Color-coded borders and proportional background fills (0–100%) for instant at-a-glance assessment.
-- **Lite / Full Modes:** Lite defaults to one row of meters; Full shows detailed values and live 60-second graphs.
-- **Resizable Lite Bar:** Drag its corner horizontally; meters keep their size and wrap into new rows as the bar narrows. Reset to default Lite bar from its menu.
-- **Dock or Float:** Keep the separate top row, dock left or right, or drag the dotted grip to float the monitor. Placement and width persist across reloads.
+- **Lite / Ultra compact / Full Modes:** Lite defaults to a top toolbar row; Ultra compact switches to a right-docked card with every enabled metric visible; Full shows detailed values and live 60-second graphs.
+- **Resizable Lite Bar:** Drag its corner horizontally; meters keep their size and wrap into new rows as the bar narrows. Reset to the default Lite bar from its menu.
+- **Dock or Float:** The default is a separate top row; Ultra compact switches to the right. Either mode can then be docked elsewhere or floated. Placement and Lite width persist across reloads.
 - **Viewport-Aware Menu:** The settings menu opens toward available screen space; separate background and drawing/text/lines opacity sliders are also available in ComfyUI Settings.
 - **Cross-Platform:** Works on Linux and Windows with automatic fallback detection for GPU tools.
 - **Container-safe:** In containers and sandboxes where parts of `/proc` are missing (e.g. `/proc/vmstat`), probes degrade to `n/a` instead of warning every second. Set `DASWA_SYSTEM_MONITOR=0` (also `false`/`no`/`off`/`disable`) to fully stop the backend polling thread.
@@ -255,6 +255,10 @@ A compact telemetry bar that defaults to its own row below ComfyUI's top control
 **Full mode**
 
 ![DaSiWa_System_Monitor-full.png](assets/DaSiWa_System_Monitor-full.png)
+
+**Ultra-Compact mode**
+
+![Ultra compact system monitor](assets/DaSiWa_System_Monitor-ultracompact.png)
 
 [Full documentation →](docs/system_monitor.md)
 

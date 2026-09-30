@@ -30,10 +30,10 @@ function loadSettings() {
     try {
         const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
         return {
-            mode: saved?.mode === "full" ? "full" : "lite",
-            placement: saved?.placement === "floating" ? "floating" : "top",
-            dockSide: ["top", "left", "right"].includes(saved?.dockSide) ? saved.dockSide : "top",
-            orientation: saved?.orientation === "vertical" ? "vertical" : "horizontal",
+            mode: ["lite", "ultra", "full"].includes(saved?.mode) ? saved.mode : DEFAULT_SETTINGS.mode,
+            placement: saved?.placement === "floating" ? "floating" : DEFAULT_SETTINGS.placement,
+            dockSide: ["top", "left", "right"].includes(saved?.dockSide) ? saved.dockSide : DEFAULT_SETTINGS.dockSide,
+            orientation: saved?.orientation === "horizontal" || saved?.orientation === "vertical" ? saved.orientation : DEFAULT_SETTINGS.orientation,
             widgets: saved?.widgets && typeof saved.widgets === "object" ? saved.widgets : {},
             x: Number.isFinite(saved?.x) ? saved.x : DEFAULT_SETTINGS.x,
             y: Number.isFinite(saved?.y) ? saved.y : DEFAULT_SETTINGS.y,
@@ -61,8 +61,10 @@ function hideSideDocks() {
 }
 
 function applySize(root) {
-    root.classList.toggle("is-resized", settings.width !== null);
-    root.style.width = settings.width === null ? "" : `${Math.min(settings.width, window.innerWidth - 16)}px`;
+    root.classList.toggle("is-ultra", settings.mode === "ultra");
+    root.classList.toggle("is-resized", settings.mode !== "ultra" && settings.width !== null);
+    root.style.width = settings.mode === "ultra" ? `${Math.min(240, window.innerWidth - 16)}px`
+        : settings.width === null ? "" : `${Math.min(settings.width, window.innerWidth - 16)}px`;
     root.style.height = "";
 }
 
@@ -220,7 +222,7 @@ function meterWidthLimits(root) {
 function enablePanelResize(root) {
     const handle = root.querySelector(".dasiwa-monitor-resize-handle");
     handle.addEventListener("pointerdown", (event) => {
-        if (event.button !== 0) return;
+        if (event.button !== 0 || settings.mode === "ultra") return;
         event.preventDefault();
         event.stopPropagation();
         const startWidth = root.getBoundingClientRect().width;
@@ -327,6 +329,13 @@ function renderLite(panel, snapshot) {
     panel.innerHTML = snapshotMetrics(snapshot).map(({ kind, label, value, text, detail }) => metric(kind, label, value, text, detail)).join("");
 }
 
+function renderUltra(panel, snapshot) {
+    panel.className = "dasiwa-monitor-display is-ultra";
+    panel.innerHTML = snapshotMetrics(snapshot).map(({ kind, label, value, text, detail }) =>
+        `<div class="dasiwa-monitor-ultra-row ${kind}" style="--fill:${meterFill(value)}%" title="${detail}"><span>${label}</span><strong>${text}</strong></div>`
+    ).join("");
+}
+
 function renderFull(panel, snapshot) {
     const root = monitorRoot;
     if (settings.dockSide === "top") {
@@ -388,10 +397,12 @@ function positionFullPanel(panel) {
 function render(snapshot = latestSnapshot) {
     const panel = document.getElementById(PANEL_ID);
     if (!panel || !snapshot) return;
+    applySize(monitorRoot);
     if (settings.mode === "full") renderFull(panel, snapshot);
     else {
         if (fullOverlay) fullOverlay.hidden = true;
-        renderLite(panel, snapshot);
+        if (settings.mode === "ultra") renderUltra(panel, snapshot);
+        else renderLite(panel, snapshot);
     }
 }
 
@@ -505,6 +516,7 @@ function openMenu(button) {
         <div class="dasiwa-monitor-menu-label">Display mode</div>
         <button type="button" class="dasiwa-monitor-reset">Reset to default Lite bar</button>
         <label><input type="radio" name="dasiwa-monitor-mode" value="lite" ${settings.mode === "lite" ? "checked" : ""}> Lite <small>toolbar meters</small></label>
+        <label><input type="radio" name="dasiwa-monitor-mode" value="ultra" ${settings.mode === "ultra" ? "checked" : ""}> Ultra compact <small>all enabled metric lines</small></label>
         <label><input type="radio" name="dasiwa-monitor-mode" value="full" ${settings.mode === "full" ? "checked" : ""}> Full <small>all metrics + 60s graphs</small></label>
         <div class="dasiwa-monitor-menu-label">Dock</div>
         <label><input type="radio" name="dasiwa-monitor-dock" value="top" ${settings.dockSide === "top" ? "checked" : ""}> Top toolbar</label>
@@ -521,11 +533,11 @@ function openMenu(button) {
     window.addEventListener("resize", repositionMenu);
     window.addEventListener("scroll", repositionMenu, true);
     menu.querySelector(".dasiwa-monitor-reset").addEventListener("click", () => {
-        settings.mode = "lite";
+        settings.mode = DEFAULT_SETTINGS.mode;
         settings.width = null;
-        settings.placement = "top";
+        settings.placement = DEFAULT_SETTINGS.placement;
         applySize(root);
-        placePanel(root, "top");
+        placePanel(root, DEFAULT_SETTINGS.dockSide);
         saveSettings();
         render();
         closeMenu();
@@ -536,6 +548,10 @@ function openMenu(button) {
     }));
     menu.querySelectorAll('input[name="dasiwa-monitor-mode"]').forEach((input) => input.addEventListener("change", (event) => {
         settings.mode = event.target.value;
+        if (settings.mode === "ultra" || settings.mode === "lite") {
+            settings.placement = "top";
+            placePanel(root, settings.mode === "ultra" ? "right" : "top");
+        }
         saveSettings();
         render();
         closeMenu();
@@ -609,6 +625,14 @@ function addStyles() {
         #${ROOT_ID} .dasiwa-monitor-settings { color: color-mix(in srgb, var(--input-text) var(--dasiwa-monitor-content-alpha, 100%), transparent); }
         #${ROOT_ID} .dasiwa-monitor-drag-handle::after, #${ROOT_ID} .dasiwa-monitor-metric > span, #${ROOT_ID} .dasiwa-monitor-metric > strong, #${ROOT_ID} .dasiwa-monitor-full-header, #${ROOT_ID} .dasiwa-monitor-full-metric > div, #${ROOT_ID} .dasiwa-monitor-full-metric > small, #dasiwa-monitor-full-overlay .dasiwa-monitor-full-header, #dasiwa-monitor-full-overlay .dasiwa-monitor-full-metric > div, #dasiwa-monitor-full-overlay .dasiwa-monitor-full-metric > small { opacity: var(--dasiwa-monitor-content-opacity, 1); }
         #${ROOT_ID} .dasiwa-monitor-metric::before, #${ROOT_ID} .dasiwa-monitor-full-metric > i, #dasiwa-monitor-full-overlay .dasiwa-monitor-full-metric > i { opacity: calc(.38 * var(--dasiwa-monitor-content-opacity, 1)); }
+        #${ROOT_ID}.is-ultra { height: auto; max-height: none; gap: 4px; padding: 5px; border: 1px solid color-mix(in srgb, var(--border-color) var(--dasiwa-monitor-content-alpha, 100%), transparent); background: color-mix(in srgb, var(--comfy-input-bg) var(--dasiwa-monitor-bg-opacity, 100%), transparent); }
+        #${ROOT_ID}.is-ultra .dasiwa-monitor-resize-handle { display: none; }
+        #${ROOT_ID}.is-ultra .dasiwa-monitor-settings { width: 26px; height: 26px; }
+        #${ROOT_ID}.is-ultra #${PANEL_ID}.is-ultra { position: static; display: flex; flex: 1 1 auto; flex-direction: column; gap: 0; width: auto; min-width: 0; height: auto; overflow: visible; padding: 0; border: 0; background: transparent; box-shadow: none; }
+        #${ROOT_ID} .dasiwa-monitor-ultra-row { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; flex: 0 0 29px; gap: 4px; min-width: 0; padding: 0 4px; border-bottom: 1px solid color-mix(in srgb, var(--border-color) 60%, transparent); white-space: nowrap; }
+        #${ROOT_ID} .dasiwa-monitor-ultra-row::after { content: ""; position: absolute; left: 0; bottom: 0; width: var(--fill); height: 2px; background: var(--meter); opacity: var(--dasiwa-monitor-content-opacity, 1); }
+        #${ROOT_ID} .dasiwa-monitor-ultra-row > span { overflow: hidden; text-overflow: ellipsis; font-size: 10px; color: var(--input-text); opacity: var(--dasiwa-monitor-content-opacity, 1); }
+        #${ROOT_ID} .dasiwa-monitor-ultra-row > strong { color: var(--meter); font: 600 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; opacity: var(--dasiwa-monitor-content-opacity, 1); }
         @media (max-width: 640px) { #${PANEL_ID}.is-full, #dasiwa-monitor-full-overlay { width: calc(100vw - 12px); padding: 9px; } #${ROOT_ID} .dasiwa-monitor-full-grid, #dasiwa-monitor-full-overlay .dasiwa-monitor-full-grid { grid-template-columns: 1fr; } }
     `;
     document.head.appendChild(style);

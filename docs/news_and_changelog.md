@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-09-28**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-09-30**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **System Monitor Ultra compact (09-30, 0.4.66):** Optional mode switches from the default Lite top bar to a right-docked card with every enabled metric visible and no internal scrollbar. Switching back restores Lite's top row and saved width. [Monitor guide →](system_monitor.md#ultra-compact)
 
 - **System Monitor layout (09-28, 0.4.64, #59):** Lite defaults to its own top row instead of crowding ComfyUI controls; a horizontal-only resize handle wraps complete meters without cropping their values. The drag grip stays meter-height. The monitor reattaches after ComfyUI rebuilds its toolbar when the Properties panel toggles. The settings menu opens within the viewport, and background/content opacity controls are independently adjustable. The Free Memory button remains beside the top controls in every monitor placement. [Monitor guide →](system_monitor.md)
 
@@ -78,6 +80,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.66 | 09-30 | System Monitor optional Ultra compact mode, right-docked when selected, all enabled metrics visible |
 | 0.4.64 | 09-28 | System Monitor independent default row, remount on Properties toggle, horizontal wrapping resize, viewport-aware menu and opacity controls (#59) |
 | 0.4.63 | 09-28 | H3 Forge explicit subject-aware picture groups and split-definition warning |
 | 0.4.62 | 09-27 | H3 Continuity PyAV media path and single-frame fixes; seam-aware prompts, canvas/serialization fixes; Windows AMD ADLX telemetry |
