@@ -11,6 +11,7 @@ if __package__:
     from .nodes.nodes_llm import DaSiWa_LLMModelSelector, DaSiWa_LLMAnalyze
     from .nodes.nodes_inpaint import DaSiWa_InpaintCropPrep, DaSiWa_InpaintComposite
     from .nodes.nodes_enhanced_video_combine import DaSiWa_EnhancedVideoCombine
+    from .nodes.nodes_seamless_loop import DaSiWa_SeamlessLoop
     from .nodes.nodes_minimax_h3_director import MiniMaxH3Director
     from .nodes.nodes_minimax_h3_director_guide import MiniMaxH3DirectorGuide
     from .nodes.h3_continuity.nodes import DaSiWaH3ContinuityAppend, DaSiWaH3ContinuityPublish
@@ -43,6 +44,7 @@ if __package__:
         "DaSiWa_LLMModelSelector": DaSiWa_LLMModelSelector,
         "DaSiWa_LLMAnalyze": DaSiWa_LLMAnalyze,
         "DaSiWa_EnhancedVideoCombine": DaSiWa_EnhancedVideoCombine,
+        "DaSiWa_SeamlessLoop": DaSiWa_SeamlessLoop,
         "DaSiWa_InpaintCropPrep": DaSiWa_InpaintCropPrep,
         "DaSiWa_InpaintComposite": DaSiWa_InpaintComposite,
         "MiniMaxH3Director": MiniMaxH3Director,
@@ -70,6 +72,7 @@ if __package__:
         "DaSiWa_LLMModelSelector": "DaSiWa LLM Model Selector",
         "DaSiWa_LLMAnalyze": "DaSiWa LLM Analyze",
         "DaSiWa_EnhancedVideoCombine": "DaSiWa Enhanced Video Combine",
+        "DaSiWa_SeamlessLoop": "Seamless Loop",
         "DaSiWa_InpaintCropPrep": "DaSiWa Inpaint Crop Prep",
         "DaSiWa_InpaintComposite": "DaSiWa Inpaint Composite",
         "MiniMaxH3Director": "MiniMax H3 Director",

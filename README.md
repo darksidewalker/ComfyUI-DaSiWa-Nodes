@@ -6,10 +6,9 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 [📰 News & Changelog — release notes and complete change history across the collection →](docs/news_and_changelog.md)
 
-**Retired in 0.4.68:** Patch Comfy Kitchen Attention is deprecated and removed. In older workflows, delete that node and reconnect its incoming `MODEL` directly to the downstream consumer. [Migration notes →](docs/minimax_h3_cache.md#retired-attention-patch)
-
 ## Included Nodes
 
+### ♾️ Seamless Loop
 
 ### 🎬 MiniMax H3 Director
 
@@ -64,6 +63,20 @@ Workflow-only labels for the classic canvas and Nodes 2.0. Add **Lable (DaSiWa)*
 - Drag, resize, fit to text, and pin/click-through. No rgthree dependency, server route, or execution node.
 
 [Full documentation and compatibility →](docs/lable.md)
+
+---
+
+![Seamless Loop](assets/DaSiWa-Seamless-Loop.png)
+
+One `IMAGE` batch in, one `IMAGE` batch out. A native RIFE/FILM safetensors combo selects a checkpoint from `models/frame_interpolation/`.
+
+- Automatic trim/overlap selection using PSNR/MSE, local SSIM, edges, temporal differences and exposure analysis.
+- Bidirectional native interpolation, eased overlap morphing and bounded local color correction; original middle frames remain unchanged.
+- `exact_endpoint` is off by default for continuous cyclic playback; enable it only when identical first/last pixels are required.
+- No additional dependency, `.pth` loader, model download or video-encoding step. Output duration can change; audio must be aligned downstream.
+- Arbitrary footage cannot be guaranteed visually seamless. The node logs residual temporal discontinuities instead of claiming perfect motion from endpoint equality.
+
+[Usage, research, model compatibility and verification →](docs/seamless_loop.md)
 
 ---
 

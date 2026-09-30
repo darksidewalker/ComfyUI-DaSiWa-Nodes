@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-09-30**. Older history lives in the 
 
 ## News
 
+- **Seamless Loop, 0.4.69:** New automatic `IMAGE`-batch loop node with native RIFE/FILM safetensors selection, multi-metric overlap/trim analysis, bidirectional morphing and bounded exposure matching. Optional exact endpoint copying guarantees first/last tensor equality, not artifact-free motion or lossless video encoding. [Usage and research →](seamless_loop.md)
+
 - **Attention patch retired, 0.4.68:** Patch Comfy Kitchen Attention is deprecated and removed from the nodepack, registry, and issue-form options. MiniMax H3 Cache remains supported. In older workflows, remove the retired node and reconnect its incoming `MODEL` to its downstream consumer. README layout and asset changes are retained. [Migration notes →](minimax_h3_cache.md#retired-attention-patch)
 
 - **Lable (DaSiWa), 0.4.67:** Integrated workflow annotations for classic canvas and Nodes 2.0, with font previews, RGB/HEX colors, eyedropper, embedded images, precise numeric controls, and opacity-safe native node colors. [Label guide →](lable.md)
