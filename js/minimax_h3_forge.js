@@ -399,6 +399,7 @@ async function open(node) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
+          output_canvas: hook.outputCanvas?.() ?? null,
           detail: Number(detail.value), creativity: creativity.value,
           references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity,
           structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),

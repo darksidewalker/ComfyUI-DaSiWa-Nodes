@@ -254,12 +254,31 @@ def scale_detail_rule(rule, duration):
     return out.replace(", the reference guide's own range", f" for this {float(duration):g}-second clip")
 
 
-def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image, attached_labels=None):
+def output_canvas_context(canvas):
+    """Only Director output dimensions establish the target aspect ratio."""
+    if canvas is None:
+        return ("Director output canvas is unknown (possibly externally overridden). "
+                "Omit aspect ratio and resolution; do not infer them from references, examples or the brief.")
+    if not isinstance(canvas, dict) or any(
+        type(canvas.get(key)) is not int or not 1 <= canvas[key] <= 8192
+        for key in ("width", "height")
+    ):
+        raise ForgeError("bad_canvas", "Output canvas requires integer width and height between 1 and 8192.")
+    from math import gcd
+    width, height = canvas["width"], canvas["height"]
+    divisor = gcd(width, height)
+    return (f"Director output canvas: {width}x{height} pixels; aspect ratio {width // divisor}:{height // divisor}. "
+            "These dimensions are authoritative, including over conflicting format requests in the brief. "
+            "Use this aspect ratio only; reference-image dimensions and example formats are not the output canvas.")
+
+
+def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image, attached_labels=None, output_canvas=None):
     lines = [f'Brief: "{str(brief).strip()}"']
     settings = [f"Creativity: {title_case(creativity)}", f"Mode: {mode}"]
     if duration:
         settings.append(f"Duration: {duration} sec")
     lines.append(f"Settings (context for how to write, never text to include): {' · '.join(settings)}")
+    lines.append(output_canvas_context(output_canvas))
 
     preset = bundle["creativity_presets"].get(creativity)
     if preset and preset.get("rule"):
@@ -971,7 +990,7 @@ def _generate(body, input_directory, release_memory, stop):
     def run(with_images):
         _, pictures = format_references(references, mode)
         attached_labels = [tag for ref, tag in pictures if ref.get("path")] if with_images else []
-        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels)
+        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels, output_canvas=body.get("output_canvas"))
         if mode == "REF2VA" and existing_definitions.strip():
             user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
                      "after existing ones; verify current media citations:\n" + existing_definitions)
@@ -1123,6 +1142,7 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
             f"\nDetail: {scale_detail_rule(detail['rule'], extension_frames / 24)}"
             f"\nCreativity: {sampling.get('rule', '')}"
             "\nApply detail and creativity within this one uninterrupted continuation: no cuts, restart or repeated dialogue.")
+    user += "\n" + output_canvas_context(options.get("output_canvas"))
     images, warnings = [], []
     if references or structured:
         user = user.replace("The attached images, if present, are chronological frames from the END of the source.",

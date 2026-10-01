@@ -580,7 +580,7 @@ function install(node) {
     return { session: c.session, source_kind: c.source_kind, clip_id: continuitySourceId(c), overlap_frames: c.overlap_frames, current_prompt: c.continuation_prompt, use_references: c.use_references };
   }
   const forgeContextKey = () => JSON.stringify([mode(), Number(node.widgets?.find(w => w.name === "duration")?.value), continuityContext(), activePrompt(),
-    Number(widthWidget?.value), Number(heightWidget?.value), Number(node.widgets?.find(w => w.name === "frame_rate")?.value), hasExternalCanvas(),
+    Number(widthWidget?.value), Number(heightWidget?.value), Number(node.widgets?.find(w => w.name === "frame_rate")?.value), ["external_width_overwrite", "external_height_overwrite"].map(name => externalCanvasInput(name)?.link ?? null),
     state.items.map(({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group }) => ({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group })), state.refmods || [], node.properties?.dasiwaH3ForgeSubjectGroups || {}, builderState.ref]);
   async function refreshContinuity() {
     const session = state.continuity?.session;
@@ -1907,6 +1907,12 @@ function install(node) {
       emit(); return true;
     },
     existingDefinitions: () => isContinuing() ? node.__dasiwaH3Continuity.existingDefinitions() : { text: "", warning: "" },
+    outputCanvas: () => {
+      if (node.inputs?.some(input => ["external_width_overwrite", "external_height_overwrite"].includes(input.name) && input.link != null)) return null;
+      const width = Number(node.widgets?.find(w => w.name === "width")?.value);
+      const height = Number(node.widgets?.find(w => w.name === "height")?.value);
+      return [width, height].every(value => Number.isInteger(value) && value > 0 && value <= 8192) ? { width, height } : null;
+    },
     duration: () => Number(node.widgets?.find(w => w.name === "duration")?.value) || null,
     items: () => activeItems().filter(item => !item._audioEcho && !isLockedSlot(item)).map(item => ({ ...item, lane: laneForItem(item) })),
     apply: (result) => {
