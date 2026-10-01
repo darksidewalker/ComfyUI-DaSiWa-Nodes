@@ -1906,7 +1906,7 @@ function install(node) {
       for (const key of ["forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group"]) if (typeof patch[key] === "string") item[key] = patch[key];
       emit(); return true;
     },
-    existingDefinitions: () => node.__dasiwaH3Continuity.existingDefinitions(),
+    existingDefinitions: () => isContinuing() ? node.__dasiwaH3Continuity.existingDefinitions() : { text: "", warning: "" },
     duration: () => Number(node.widgets?.find(w => w.name === "duration")?.value) || null,
     items: () => activeItems().filter(item => !item._audioEcho && !isLockedSlot(item)).map(item => ({ ...item, lane: laneForItem(item) })),
     apply: (result) => {

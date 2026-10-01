@@ -246,7 +246,7 @@ async function open(node) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
   }
 
-  const inherited = mode === "REF2VA" ? hook.existingDefinitions?.() || { text: "", warning: "" } : { text: "", warning: "" };
+  const inherited = continuity && mode === "REF2VA" ? hook.existingDefinitions?.() || { text: "", warning: "" } : { text: "", warning: "" };
   // Continuity identities belong to the Director prompt, not a second Forge editor.
   const definitions = { value: inherited.text };
   const structured = el("input", { type: "checkbox", checked: !!continuity && mode === "REF2VA" && (continuity.use_references || !!refPromptFields(hook.currentPrompt?.())) });
@@ -285,7 +285,7 @@ async function open(node) {
     if (closed) return;
     brief.value = entry.brief || "";
     if (typeof entry.structured === "boolean") structured.checked = entry.structured;
-    if (typeof entry.existing_definitions === "string") definitions.value = entry.existing_definitions;
+    // Saved drafts are previews, not a source of identities for the next request.
     if (entry.draftOptions) {
       const { model, detail: level, creativity: preset } = entry.draftOptions;
       if (Array.from(modelSel.options).some(o => o.value === model)) modelSel.value = model;
