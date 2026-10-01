@@ -12,8 +12,8 @@ from .helper_minimax_h3_director import (
     scale_input_media, validate_reference_limits,
 )
 from .helper_minimax_h3_prompt_builder import (
-    build_prompt, default_builder_state, has_builder_content, migrate_legacy_prompt, normalize_ref_schema,
-    validate_builder_state,
+    build_prompt, build_ref_prompt, default_builder_state, has_builder_content, migrate_legacy_prompt, normalize_ref_schema,
+    parse_ref_prompt, validate_builder_state,
 )
 
 BASE_MODES = {"T2VA", "I2VA", "FL2VA", "L2VA"}
@@ -186,7 +186,7 @@ class MiniMaxH3Director:
         continuity = None
         continuing = False
         if "continuity" in state:
-            from .h3_continuity.core import parse_settings, compose_prompt
+            from .h3_continuity.core import parse_settings, compose_prompt, compose_ref_fields
             continuity = parse_settings(state["continuity"], duration_seconds=duration)
             continuing = continuity["operation"] == "continue"
         if continuing and continuity.get("version", 2) >= 3:
@@ -324,13 +324,30 @@ class MiniMaxH3Director:
                                       audio_has_visual=bool(images or videos or refmod_items))
 
         tag_map = _refmod_tag_map(refmod_items, ref_images, ref_videos, ref_video_audios, ref_audios)
+        descriptions = [f"{tag_map[item['slot']]}: {_translate_refmods(item['description'], tag_map)}"
+                        for item in refmod_items if item["description"]]
+        continuation_fields = None
         if continuing:
             continuity["continuation_prompt"] = _translate_refmods(continuity["continuation_prompt"], tag_map)
             continuity["idea"] = _translate_refmods(continuity["idea"], tag_map)
+            if descriptions and mode == "REF2VA":
+                authored_fields = parse_ref_prompt(continuity["continuation_prompt"])
+                if authored_fields is not None:
+                    # Store reference annotations inside the authored description,
+                    # not after the music section, so preparation recomposes them.
+                    authored_fields["detailed_description"] += (
+                        "\n\nReference descriptions:\n" + "\n".join(descriptions))
+                    continuity["continuation_prompt"] = build_ref_prompt(
+                        {"ref": authored_fields}, preserve_empty=True)
             prompt = compose_prompt(continuity)
             merged = default_builder_state(mode)
+            continuation_fields = compose_ref_fields(continuity) if mode == "REF2VA" else None
+            if continuation_fields is not None:
+                merged["ref"].update(continuation_fields)
+                merged["prompt_mode"] = "structured"
+            else:
+                merged["simple_prompt"] = prompt
             normalize_ref_schema(merged["ref"])
-            merged["simple_prompt"] = prompt
             merged["mode"] = mode
             length = continuity["overlap_frames"] + continuity["extension_frames"]
         prompt = _translate_refmods(prompt, tag_map)
@@ -354,9 +371,7 @@ class MiniMaxH3Director:
                     mode != "REF2VA"):
                 resolved = assemble_prompt(prompt, blocks)
             resolved = _translate_refmods(resolved, tag_map)
-        descriptions = [f"{tag_map[item['slot']]}: {_translate_refmods(item['description'], tag_map)}"
-                        for item in refmod_items if item["description"]]
-        if descriptions:
+        if descriptions and continuation_fields is None:
             resolved += "\n\nReference descriptions:\n" + "\n".join(descriptions)
         for issue in validate_builder_state(merged):
             log_dasiwa("MiniMax H3 Director", f"[{issue['level'].upper()}] {issue['msg']}")
@@ -368,6 +383,18 @@ class MiniMaxH3Director:
             "timeline": [{key: item.get(key) for key in ("id", "type", "start", "duration", "order", "trim_start", "trim_end") if key in item} for _, item in items],
             "prompt_payload": {"mode": mode, "full_prompt": resolved, "is_ref_mode": mode == "REF2VA", "subject_definitions": merged["ref"]["subject_defs"], "summary": merged["ref"]["summary_text"], "retention_analysis": merged["ref"]["retention"], "detailed_description": {"style_line": merged["ref"]["style_line"], "detail": merged["ref"]["detail"]}, "overall_soundscape": merged["ref"]["soundscape"] if mode == "REF2VA" else merged["soundscape"], "non_diegetic_music": merged["ref"]["music"] if mode == "REF2VA" else merged["music"], "imd": merged.get("imd", ""), "p2_shot": merged.get("p2_shot", ""), "last_shot": merged.get("last_shot", "")},
         }
+        if continuation_fields is not None:
+            # Canonical strings are lossless; legacy normalization can discard
+            # task prefixes and retention prose. Keep the old payload for plain
+            # workflows, and expose all six authored fields for structured ones.
+            guide["prompt_payload"].update({
+                "subject_definitions": continuation_fields["subject_definitions"],
+                "summary": continuation_fields["summary"],
+                "retention_analysis": continuation_fields["retention_analysis"],
+                "detailed_description": continuation_fields["detailed_description"],
+                "overall_soundscape": continuation_fields["soundscape"],
+                "non_diegetic_music": continuation_fields["music"],
+            })
         if refmod_items:
             guide["minimax_ref_items"] = refmod_items
             guide["selection_stamp"] = max(refmod_fingerprint(item["name"])[0] for item in refmod_items)

@@ -120,10 +120,43 @@ def parse_settings(raw, duration_seconds=None):
             "continuation_prompt": prompt, "idea": idea}
 
 
-def compose_prompt(settings):
-    """Describe the sampled window, including its invisible leading context."""
+def _window_context(settings):
     head = settings["overlap_frames"] / 24
     visible = settings["extension_frames"] / 24
+    return (
+        f"This is a continuation window. Its opening {head:.3f} seconds are hidden "
+        "overlapping context from the end of the preceding shot. Weld to that tail "
+        "at the seam: same subjects, space, and instantaneous motion, camera, and sound. "
+        "Do not freeze its tempo or camera for the rest of the clip. "
+        f"The following {visible:.3f} seconds are the new visible continuation. "
+        "After the overlap, follow the next action if given; otherwise continue naturally."
+    )
+
+
+def compose_ref_fields(settings):
+    """Return assembled REF2VA fields or None for ordinary continuation prose.
+
+    Only authored continuation text is parsed. Never write the assembled window
+    back into settings: Director and latent preparation must render the same seam.
+    """
+    from ..helper_minimax_h3_prompt_builder import parse_ref_prompt
+    fields = parse_ref_prompt(settings["continuation_prompt"])
+    if fields is None:
+        return None
+    parts = [_window_context(settings), DEFAULT_PROMPT, fields["detailed_description"]]
+    idea = settings.get("idea", "").strip()
+    if idea:
+        parts.append("Next action: " + idea)
+    fields["detailed_description"] = "\n\n".join(part for part in parts if part)
+    return fields
+
+
+def compose_prompt(settings):
+    """Describe the sampled window, including its invisible leading context."""
+    from ..helper_minimax_h3_prompt_builder import build_ref_prompt
+    fields = compose_ref_fields(settings)
+    if fields is not None:
+        return build_ref_prompt({"ref": fields}, preserve_empty=True)
     text = settings["continuation_prompt"]
     idea = settings.get("idea", "").strip()
     if settings.get("version", 2) >= 3:
@@ -135,15 +168,7 @@ def compose_prompt(settings):
             text = DEFAULT_PROMPT + "\nWith no next action, continue the established action, camera motion, and sound naturally."
     if idea:
         text += "\nNext action: " + idea
-    return (
-        f"This is a continuation window. Its opening {head:.3f} seconds are hidden "
-        "overlapping context from the end of the preceding shot. Weld to that tail "
-        "at the seam: same subjects, space, and instantaneous motion, camera, and sound. "
-        "Do not freeze its tempo or camera for the rest of the clip. "
-        f"The following {visible:.3f} seconds are the new visible continuation. "
-        "After the overlap, follow the next action if given; otherwise continue naturally.\n\n"
-        f"{text}"
-    )
+    return _window_context(settings) + "\n\n" + text
 
 
 def mode_family(mode):

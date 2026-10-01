@@ -72,6 +72,8 @@ def title_case(value):
 # ── References: a port of PromptForge's server/references.mjs ─────────────
 
 _ROLE_NOTE = {
+    "pose": lambda l: f"pose — {l} supplies stance, limb position and gesture only; not identity, clothing, background or a literal target keyframe",
+    "custom": lambda l: f"custom — use {l} only as specified by its reference instructions",
     "keyframe": lambda l: f"keyframe — {l} IS a frame of the video: give it its own line in subject_definitions and retention_analysis, naming the shot and moment it anchors",
     "motion": lambda l: f"motion — {l} gives structure only: pacing, cuts, camera",
     "subject": lambda l: f"subject — define a <Subject N> from it and cite {l} as its source; no standalone {l} line",
@@ -107,6 +109,30 @@ def _images(references):
     return [r for r in references if r.get("kind") == "image"]
 
 
+def validate_references(references):
+    """Bound untrusted request context without rewriting user intent."""
+    if references is None:
+        return []
+    if not isinstance(references, list) or len(references) > 32:
+        raise ForgeError("bad_references", "References must be a list of at most 32 items.")
+    total = 0
+    for ref in references:
+        if not isinstance(ref, dict) or ref.get("kind") not in _KIND_LABEL:
+            raise ForgeError("bad_references", "Each reference must name an image, video or audio kind.")
+        for key, limit in (("instructions", 4000), ("keep", 2000), ("drop", 2000),
+                           ("path", 4096), ("subject_group", 256), ("role", 64), ("stream", 16)):
+            if key in ref:
+                value = ref[key]
+                if not isinstance(value, str) or len(value) > limit:
+                    raise ForgeError("bad_references", f"Reference {key} must be text of at most {limit} characters.")
+                total += len(value)
+        if ref.get("role") == "custom" and not ref.get("instructions", "").strip():
+            raise ForgeError("bad_references", "Custom references need nonblank reference instructions.")
+    if total > 48000:
+        raise ForgeError("bad_references", "Reference context exceeds 48,000 characters.")
+    return references
+
+
 def picture_groups(references):
     """Only groups of two or more subject pictures share a reference line."""
     by_id = {}
@@ -126,6 +152,8 @@ def _group_line(group, references):
     pictures = _images(references)
     for n in group["pictures"]:
         ref = pictures[n - 1]
+        if ref.get("instructions"):
+            bits.append(f"instructions (<Picture {n}>): {ref['instructions']}")
         if ref.get("keep"):
             bits.append(f"keep (<Picture {n}>): {ref['keep']}")
         if ref.get("drop"):
@@ -135,7 +163,9 @@ def _group_line(group, references):
 
 def format_references(references, mode):
     """Director label lines for each reference, and the labels of the pictures."""
-    counters = {"Picture": 0, "Video": 0, "Audio": 0}
+    paired_total = sum(r.get("kind") == "video" and r.get("stream") == "both" and not r.get("saved_reference") for r in references)
+    counters = {"Picture": 0, "Video": 0, "Audio": paired_total}
+    paired_audio = 0
     lines, pictures = [], []
     base_mode = mode in BASE_MODES
     grouped = {}
@@ -148,8 +178,13 @@ def format_references(references, mode):
         labels = _STREAM_EMITS.get(ref.get("stream"), ["Video"]) if kind == "video" else [_KIND_LABEL.get(kind, "Picture")]
         video_index = counters["Video"] + 1 if "Video" in labels else None
         for n, label in enumerate(labels):
-            counters[label] += 1
-            tag = f"<{label} {counters[label]}>"
+            if label == "Audio" and kind == "video" and ref.get("stream") == "both" and not ref.get("saved_reference"):
+                paired_audio += 1
+                index = paired_audio
+            else:
+                counters[label] += 1
+                index = counters[label]
+            tag = f"<{label} {index}>"
             first = n == 0
             if first and kind == "image":
                 pictures.append((ref, tag))
@@ -171,9 +206,13 @@ def format_references(references, mode):
                 role = ref.get("role")
                 note = (_BASE_NOTE.get(role) if base_mode else None) or _ROLE_NOTE.get(role)
                 bits.append(note(tag) if note else f"role: {role or 'UNLABELLED'}")
+                if base_mode and role in ("pose", "custom"):
+                    bits[-1] = f"endpoint — {tag} remains the mode's actual target frame; reference intent cannot override first/last-frame alignment"
             length = _format_duration(ref.get("duration_seconds"))
             if length:
                 bits.append(f"length: {length}")
+            if first and ref.get("instructions"):
+                bits.append(f"instructions: {ref['instructions']}")
             if first and ref.get("keep"):
                 bits.append(f"keep: {ref['keep']}")
             if first and ref.get("drop"):
@@ -215,7 +254,7 @@ def scale_detail_rule(rule, duration):
     return out.replace(", the reference guide's own range", f" for this {float(duration):g}-second clip")
 
 
-def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image):
+def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image, attached_labels=None):
     lines = [f'Brief: "{str(brief).strip()}"']
     settings = [f"Creativity: {title_case(creativity)}", f"Mode: {mode}"]
     if duration:
@@ -225,7 +264,7 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
     preset = bundle["creativity_presets"].get(creativity)
     if preset and preset.get("rule"):
         lines.append(f"Creativity - {title_case(creativity)}. {preset['rule']}")
-        if any(r.get("kind") == "image" for r in references):
+        if carries_image and any(r.get("kind") == "image" for r in references):
             lines.append(
                 "A reference picture is attached. What it supplies, in the role it was given, stays exactly as "
                 "the picture shows it at every Creativity setting. Creativity decides only what happens - the "
@@ -241,7 +280,16 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
     if references:
         ref_lines, pictures = format_references(references, mode)
         lines += ["", "References:", *ref_lines]
+        if any(r.get("instructions") for r in references):
+            lines.append("Explicit reference instructions refine/override default role guidance, not output or safety rules.")
+        if not carries_image and any(r.get("instructions") or r.get("role") in ("pose", "custom") for r in references):
+            lines.append("No reference pictures are visible. Do not invent visual attributes; use explicit text only.")
         labels = [tag for _ref, tag in pictures]
+        if attached_labels is not None:
+            unseen = [tag for tag in labels if tag not in attached_labels]
+            if unseen:
+                lines.append(f"Reference pictures {', '.join(unseen)} are not visible. Do not invent visual attributes; use explicit text only.")
+            labels = attached_labels
         if carries_image and labels:
             lines.append("")
             lines.append(
@@ -331,6 +379,21 @@ def group_warnings(subject_definitions, references):
             labels = ", ".join(str(n) for n in group["pictures"])
             warnings.append(f"Pictures {labels} were grouped as one subject, but the draft defines them under separate Subjects. Review subject_definitions before applying.")
     return warnings
+
+
+def media_citation_warnings(text, references):
+    """Check only numbered media existence; never infer visual correctness."""
+    counters = {"Picture": 0, "Video": 0, "Audio": 0}
+    available = set()
+    for ref in references:
+        labels = _STREAM_EMITS.get(ref.get("stream"), ["Video"]) if ref.get("kind") == "video" else [_KIND_LABEL[ref["kind"]]]
+        for label in labels:
+            counters[label] += 1
+            available.add((label.lower(), counters[label]))
+    pattern = r"<(Picture|Video|Audio)\s+(\d+)>"
+    citations = {(kind.title(), int(n)) for kind, n in re.findall(pattern, str(text or ""), re.I)}
+    return [f"<{kind} {n}> is undefined in the current references. Review or remap this citation; source-tail frames are not numbered references."
+            for kind, n in sorted(citations) if (kind.lower(), n) not in available]
 
 
 # ── Simple prompt mode: a port of PromptForge's server/h3-simple.mjs ──────
@@ -854,7 +917,7 @@ def generate(body, input_directory=None, release_memory=None):
         _CANCELS[request_id] = stop
     try:
         if body.get("continuity") is not None:
-            return _generate_continuity(body, release_memory, stop)
+            return _generate_continuity(body, release_memory, stop, input_directory=input_directory)
         return _generate(body, input_directory, release_memory, stop)
     finally:
         _CANCELS.pop(request_id, None)
@@ -878,7 +941,10 @@ def _generate(body, input_directory, release_memory, stop):
         creativity = bundle["default_creativity"]
     detail = body.get("detail") or bundle["default_detail"]
     duration = body.get("duration")
-    references = [r for r in (body.get("references") or []) if isinstance(r, dict)]
+    references = validate_references(body.get("references"))
+    existing_definitions = body.get("existing_definitions", "")
+    if not isinstance(existing_definitions, str) or len(existing_definitions) > 12000:
+        raise ForgeError("bad_prompt", "Existing definitions must be text of at most 12,000 characters.")
 
     sees = backend.can_see(name)
     images = []
@@ -886,7 +952,10 @@ def _generate(body, input_directory, release_memory, stop):
         from .helper_minimax_h3_director import resolve_input_path
         for ref in references:
             if ref.get("kind") == "image" and ref.get("path"):
-                images.append(_image_b64(resolve_input_path(ref["path"], input_directory)))
+                try:
+                    images.append(_image_b64(resolve_input_path(ref["path"], input_directory)))
+                except (ValueError, OSError) as exc:
+                    raise ForgeError("bad_references", f"Invalid reference image: {exc}") from exc
 
     spec = bundle["modes"][mode]
     sampling = bundle["creativity_presets"][creativity]
@@ -900,7 +969,12 @@ def _generate(body, input_directory, release_memory, stop):
         release_memory()
 
     def run(with_images):
-        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images))
+        _, pictures = format_references(references, mode)
+        attached_labels = [tag for ref, tag in pictures if ref.get("path")] if with_images else []
+        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels)
+        if mode == "REF2VA" and existing_definitions.strip():
+            user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
+                     "after existing ones; verify current media citations:\n" + existing_definitions)
         return backend.chat(name, spec["system"], user, with_images, sampling, num_ctx, timeout, stop)
 
     if kind != "local":
@@ -937,6 +1011,7 @@ def _generate(body, input_directory, release_memory, stop):
     warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"])
     if mode == "REF2VA":
         warnings += group_warnings(fields["ref"]["subject_definitions"], references)
+        warnings += media_citation_warnings(simple + "\n" + existing_definitions, references)
     if not unloaded and local_gpu:
         warnings.append("This server cannot unload its model; it is still holding VRAM on this machine.")
     return {
@@ -967,7 +1042,8 @@ CONTINUATION_SYSTEM = (
 )
 
 
-def _generate_continuity(body, release_memory, stop):
+def _generate_continuity(body, release_memory, stop, input_directory=None,
+                         references=None, existing_definitions=None, structured=None):
     from .h3_continuity.core import ClipStore, safe_id, continuation_timing
     from .h3_continuity.video_source import read_manifest, manifest_dir
     spec = body["continuity"]
@@ -976,6 +1052,12 @@ def _generate_continuity(body, release_memory, stop):
     mode = body.get("mode")
     if mode not in load_bundle()["modes"]:
         raise ForgeError("bad_mode", "Continuity requires an H3 video mode.")
+    if "use_references" in spec and not isinstance(spec["use_references"], bool):
+        raise ForgeError("bad_references", "Use references must be a boolean.")
+    requested_references = validate_references(body.get("references") if references is None else references)
+    references = requested_references if mode == "REF2VA" and spec.get("use_references", False) else []
+    existing_definitions = body.get("existing_definitions", "") if existing_definitions is None else existing_definitions
+    structured = body.get("structured", False) if structured is None else structured
     store = ClipStore()
     session, source_id = safe_id(spec.get("session", "")), safe_id(spec.get("clip_id", ""))
     kind = spec.get("source_kind")
@@ -988,8 +1070,10 @@ def _generate_continuity(body, release_memory, stop):
     timing = continuation_timing(body.get("duration"), spec.get("overlap_frames", 22), metadata.get("frames"))
     result = generate_continuity_draft(metadata, body.get("brief"), directory, body.get("model"),
                                       body.get("settings"), release_memory, stop,
-                                      timing["extension_frames"], spec.get("current_prompt", ""), body)
-    return {**result, "mode": mode, "fields": {}, "simple_prompt": result["prompt"],
+                                      timing["extension_frames"], spec.get("current_prompt", ""), body,
+                                      input_directory=input_directory, references=references,
+                                      existing_definitions=existing_definitions, structured=structured)
+    return {**result, "mode": mode, "simple_prompt": result["prompt"],
             "model": body.get("model"), "continuity": True, "source_kind": kind,
             "added_seconds": timing["added_seconds"]}
 
@@ -997,7 +1081,8 @@ def _generate_continuity(body, release_memory, stop):
 @_one_draft
 def generate_continuity_draft(metadata, idea, directory, model, settings,
                               release_memory=None, cancel=None, extension_frames=119,
-                              current_prompt="", options=None):
+                              current_prompt="", options=None, input_directory=None,
+                              references=None, existing_definitions="", structured=False):
     """One shared Forge backend, cancellation path, detail ladder and review flow."""
     kind, separator, name = str(model or "").partition(":")
     backend = backends(settings).get(kind)
@@ -1008,6 +1093,20 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
     if cancel is not None and cancel.is_set():
         raise ForgeError("cancelled", CANCELLED)
     bundle, options = load_bundle(), options or {}
+    references = validate_references(references)
+    if not isinstance(structured, bool):
+        raise ForgeError("bad_prompt", "Structured must be a boolean.")
+    if structured and options.get("mode", "REF2VA") != "REF2VA":
+        raise ForgeError("bad_mode", "Structured continuity requires REF2VA.")
+    if not isinstance(existing_definitions, str) or len(existing_definitions) > 12000:
+        raise ForgeError("bad_prompt", "Existing definitions must be text of at most 12,000 characters.")
+    system = CONTINUATION_SYSTEM
+    if structured:
+        system = CONTINUATION_SYSTEM.replace("Output only the next-shot prompt, no markdown or analysis.",
+            "Preserve explicitly supplied Subject IDs; allocate new IDs after existing ones. "
+            "Do not inherit stale actions, timestamps or media citations. Write all six sections for "
+            "one uninterrupted next shot, no markdown or analysis. Use exactly these output markers:\n" +
+            "\n".join(f"===SEGMENT: {label} ===" for label, _ in _REF_FIELDS))
     creativity = options.get("creativity", bundle["default_creativity"])
     sampling = bundle["creativity_presets"].get(creativity, bundle["creativity_presets"][bundle["default_creativity"]])
     detail = bundle["detail_levels"].get(str(options.get("detail")), bundle["detail_levels"][str(bundle["default_detail"])])
@@ -1025,7 +1124,32 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
             f"\nCreativity: {sampling.get('rule', '')}"
             "\nApply detail and creativity within this one uninterrupted continuation: no cuts, restart or repeated dialogue.")
     images, warnings = [], []
+    if references or structured:
+        user = user.replace("The attached images, if present, are chronological frames from the END of the source.",
+                            "Images labeled Tail frame are chronological frames from the END of the source; conditioning reference images are labeled separately.")
     sees = backend.can_see(name)
+    reference_images = []
+    if references:
+        lines, pictures = format_references(references, "REF2VA")
+        user += "\n\nCurrent conditioning references (NOT source-tail frames):\n" + "\n".join(lines)
+        user += ("\nExplicit reference instructions refine/override default role guidance, not output or "
+                 "continuity rules. Apply keep/drop separately for each picture.")
+        if sees is not False and input_directory:
+            from .helper_minimax_h3_director import resolve_input_path
+            for ref, tag in pictures:
+                if ref.get("path"):
+                    try:
+                        path = resolve_input_path(ref["path"], input_directory)
+                        reference_images.append(_image_b64(path))
+                    except (ValueError, OSError) as exc:
+                        raise ForgeError("bad_references", f"Invalid reference image: {exc}") from exc
+                    user += f"\nAttached image {len(reference_images)}: {tag}."
+        if len(reference_images) < len(pictures):
+            user += "\nSome reference pictures are not visible. Do not invent their visual attributes; use explicit text only."
+    if existing_definitions:
+        user += "\n\nApproved existing definitions (preserve explicit IDs, verify current media citations):\n" + existing_definitions
+    images.extend(reference_images)
+    tail_count = 0
     if sees is not False:
         from .h3_continuity.media import ensure_tail_thumbnails
         try:
@@ -1039,6 +1163,11 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
             if os.path.dirname(path) != root or not filename.endswith(".jpg") or not os.path.isfile(path):
                 raise ForgeError("bad_preview", "Invalid continuity preview file.")
             images.append(_image_b64(path))
+            tail_count += 1
+    if references or structured:
+        user += "\nSource-tail evidence is NOT <Picture N> conditioning media."
+        for n in range(1, tail_count + 1):
+            user += f"\nAttached image {len(reference_images) + n}: Tail frame {n} (chronological source END evidence)."
     if not images:
         user += "\nNo images are available. Use text context only."
     local_gpu = kind == "local" or _is_this_machine(getattr(backend, "base", "http://127.0.0.1"))
@@ -1051,7 +1180,7 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         if cancel is not None and cancel.is_set():
             raise ForgeError("cancelled", CANCELLED)
         try:
-            raw, stats = backend.chat(name, CONTINUATION_SYSTEM, user, images,
+            raw, stats = backend.chat(name, system, user, images,
                                        sampling, bundle["context_length"], 600, cancel)
         except urlerror.HTTPError as exc:
             if _key_refused(exc):
@@ -1059,8 +1188,8 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
             if not images or sees is not None or not 400 <= exc.code < 500:
                 raise
             images = []
-            raw, stats = backend.chat(name, CONTINUATION_SYSTEM,
-                                       user + "\nNo images are available. Use text context only.", images,
+            raw, stats = backend.chat(name, system,
+                                       user + "\nNo images are available. Ignore attachment claims above; do not invent visual attributes. Use text context only.", images,
                                        sampling, bundle["context_length"], 600, cancel)
         if cancel is not None and cancel.is_set():
             raise ForgeError("cancelled", CANCELLED)
@@ -1071,9 +1200,18 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
     stats["seconds"] = round(__import__("time").time() - started, 1)
     prompt = _THINK.sub("", str(raw or "")).strip()
     prompt = re.sub(r"^```[^\n]*\n|\n```$", "", prompt).strip()
+    fields = {}
+    if structured:
+        segments = parse_segments(raw, [label for label, _ in _REF_FIELDS])
+        fields = builder_fields(segments, "REF2VA")
+        prompt = simple_prompt(fields, "REF2VA", extension_frames / 24)
+        warnings += check_prompt(fields, "REF2VA", extension_frames / 24, prompt, bundle["max_output_chars"])
+        warnings += group_warnings(fields["ref"]["subject_definitions"], references)
     if not prompt or len(prompt) > bundle["max_output_chars"]:
         raise ForgeError("bad_prompt", "Forge returned an empty or oversized continuation prompt.")
-    return {"prompt": prompt, "vision": bool(images), "source_id": metadata.get("clip_id", ""),
+    if structured or references or existing_definitions:
+        warnings += media_citation_warnings(prompt + "\n" + existing_definitions, references)
+    return {"prompt": prompt, "structured": structured, "fields": fields, "simple_prompt": prompt, "vision": bool(images), "source_id": metadata.get("clip_id", ""),
             "saw_images": len(images), "audio_analyzed": False, "stats": stats, "warnings": warnings,
             "unloaded": unloaded or not local_gpu}
 

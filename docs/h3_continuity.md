@@ -98,7 +98,17 @@ flowchart LR
     H --> O["New AV sample"]
 ```
 
-This setting changes generation inputs, **not** Forge's visual evidence. Continuation Forge uses source-tail evidence and text; it does not additionally inspect the optional timeline images/videos. Review the continuation prompt and reference limits before queuing.
+You can also change the same switch directly in Forge using **Include timeline references**; there is no need to leave Forge and find Advanced. It explicitly enables or disables these media for both the draft and subsequent video generation. With references enabled, Forge shows their roles and saved instructions. A vision model sees timeline pictures alongside separately labeled source-tail frames; tail frames never become numbered `<Picture N>` conditioning references. Video/audio references and saved RefMods contribute their text descriptions, not audiovisual analysis.
+
+### Structured REF2VA continuation, without manual assembly
+
+With references enabled, Forge automatically selects **Structured REF2VA draft**. Generate, review, then **Apply to node**: the result contains all six normal REF2VA sections, including `subject_definitions`. Existing structured continuation text also selects this format on reopen. Turn it off to request plain next-action prose; ordinary reference-off continuations retain their previous default.
+
+Template creation belongs to the Director's active Continuity prompt: use its existing **Insert Prompt Structure** button, without opening Forge or selecting a model. It wraps the next-action text in `detailed_description` and carries definitions from the current continuation or original Director prompt into `subject_definitions`. Edit those definitions in the same prompt field; there is no separate identities editor in Forge. Only definitions are inherited, not the previous plot, timestamps or dialogue. Applied Forge drafts remember reference identities so image reordering can remap citations automatically. Unknown or removed media links are stripped from the inherited context with a notice rather than silently pointing to another picture. Older manually written prompts without a mapping preserve subject descriptions, but Forge must re-establish their relationships to the current media.
+
+For a new character, add their image, enable **Include timeline references**, leave its role at **subject**, and describe their entrance in **Next action**. Forge defines the character and writes the new continuous shot for review. Use **pose** or **custom** instructions when only a specific property should transfer. Introducing a new scene still needs a plausible continuous transition; the latent seam does not permit an automatic location cut.
+
+During REF2VA Continuity, the Director's **Insert Prompt Structure** works without a model. It preserves existing plain text inside `detailed_description` and leaves unknown sections empty. **Keep REF2VA timeline references** includes media, not automatic character/scene descriptions: add definitions for newly introduced subjects in `subject_definitions`. The existing **Prefill Labels & Summary** action can help with reference labels when Keep references is enabled; when disabled it refuses to introduce phantom references. The runtime recognizes the six headings automatically, preserves them through Director and Guide, and inserts overlap instructions inside `detailed_description`; you do not need a separate runtime-format setting. Template insertion and Apply edit only the active continuation prompt, never the original base prompt. Forge never queues video generation automatically.
 
 The selected source, next-action text and Duration are retained when you save the Director workflow. Saving the workflow does not migrate older API settings.
 

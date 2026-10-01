@@ -7,6 +7,7 @@
 // writing the result back.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { forgeReferences, refPromptFields, referenceSnapshot, referenceTags } from "./minimax_h3_forge_state.js";
 
 // Server addresses live in ComfyUI Settings, never in the workflow, so a
 // downloaded workflow cannot point this machine at a server of its choosing.
@@ -40,7 +41,7 @@ function forgeHistory(node) {
 function saveForgeResult(node, result, brief) {
   const entry = {
     mode: result.mode, model: result.model, simple_prompt: result.simple_prompt,
-    draftOptions: result.draftOptions, fields: result.fields, continuity: !!result.continuity, contextKey: result.contextKey, brief, createdAt: Date.now(),
+    draftOptions: result.draftOptions, fields: result.fields, continuity: !!result.continuity, contextKey: result.contextKey, forgeInputKey: result.forgeInputKey, structured: result.structured, existing_definitions: result.existing_definitions, reference_snapshot: result.reference_snapshot, brief, createdAt: Date.now(),
   };
   node.properties ||= {};
   node.properties[HISTORY_KEY] = [entry, ...forgeHistory(node)].slice(0, 3);
@@ -54,7 +55,7 @@ function clearForgeHistory(node) {
     delete node.properties[HISTORY_KEY];
     node.graph?.setDirtyCanvas(true, true);
   }
-  briefs.delete(node.id);
+  briefs.delete(`${node.id}:new`); briefs.delete(`${node.id}:continuity`);
 }
 
 function remembered() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch { return {}; } }
@@ -87,6 +88,10 @@ function installStyles() {
   .ds-forge .refs{display:flex;flex-direction:column;gap:6px}
   .ds-forge .ref{display:grid;grid-template-columns:48px 90px 130px 1fr;gap:8px;align-items:center}
   .ds-forge .ref.has-group{grid-template-columns:48px 76px 105px 145px minmax(90px,1fr)}
+  .ds-forge .ref-notes textarea{min-height:48px;font-size:12px}
+  .ds-forge .ref-notes details{font-size:11px;color:#9fb3c2}
+  .ds-forge .ref-notes details input{margin-top:4px}
+  .ds-forge .ref{align-items:start}
   .ds-forge .ref img{width:48px;height:36px;object-fit:cover;border-radius:3px;background:#090d11}
   .ds-forge pre{white-space:pre-wrap;background:#0b1015;border:1px solid #344452;border-radius:4px;padding:8px;margin:0;max-height:320px;overflow:auto;font:12px/1.45 ui-monospace,monospace}
   .ds-forge .history{display:flex;flex-direction:column;gap:5px;border-top:1px solid #344452;padding-top:9px}
@@ -104,28 +109,20 @@ const viewUrl = path => api.apiURL(`/view?filename=${encodeURIComponent(path)}&t
 const BASE_ROLE = { I2VA: "first frame", FL2VA: "first / last frame", L2VA: "last frame" };
 
 function referencesFor(hook, node) {
-  const mode = hook.mode();
-  const groups = node.properties?.[GROUPS_KEY] || {};
-  const laneOrder = { image: 0, video: 1, audio: 2 };
-  return hook.items()
-    .sort((a, b) => (laneOrder[a.lane] - laneOrder[b.lane]) || (a.slot - b.slot))
-    .map(item => {
-      if (item.lane === "image") return { item, kind: "image", path: item.value, role: mode === "REF2VA" ? (item.forge_role || "subject") : "keyframe", subject_group: mode === "REF2VA" ? (groups[item.id] || "") : "" };
-      if (item.lane === "audio" && item.type === "audio") return { item, kind: "audio", duration_seconds: item.duration };
-      return { item, kind: "video", role: "motion", stream: item.media_mode === "audio" ? "audio" : item.media_mode === "video_audio" ? "both" : "video", duration_seconds: item.duration };
-    });
+  return hook.references?.() || forgeReferences(hook.items(), hook.mode(), node.properties?.[GROUPS_KEY]);
 }
 
 async function open(node) {
   const hook = node.__dasiwaH3Forge;
   if (!hook) return;
+  try { await hook.prepareReferences?.(); } catch (error) { hook.setStatus(error.message, true); return; }
   openDialogs.get(node)?.();
   installStyles();
   const mode = hook.mode();
   const prefs = remembered();
   const continuity = hook.continuity?.();
-  const openedKey = hook.contextKey?.();
-  const compatible = entry => entry.mode === hook.mode() && !!entry.continuity === !!hook.continuity?.() && (!entry.contextKey || entry.contextKey === hook.contextKey?.());
+  let openedKey = hook.contextKey?.();
+  const compatible = entry => entry.mode === hook.mode() && !!entry.continuity === !!hook.continuity?.() && (!entry.contextKey || entry.contextKey === hook.contextKey?.()) && (!entry.forgeInputKey || entry.forgeInputKey === inputKey());
 
   const overlay = el("div", { className: "ds-forge-overlay" });
   const box = el("div", { className: "ds-forge" });
@@ -142,14 +139,31 @@ async function open(node) {
   const closeBtn = el("button", { textContent: "×", title: "Close (Esc)", onclick: close });
   box.append(el("h3", {}, el("span", { textContent: `H3 Forge — ${mode}${continuity ? " · Continuity Active" : ""}` }), closeBtn));
 
-  const brief = el("textarea", { placeholder: continuity ? "What happens next? Leave empty to continue naturally." : "What should the clip be? A sentence or two is enough.", value: continuity ? "" : briefs.get(node.id) || forgeHistory(node).find(e => !e.continuity)?.brief || "" });
+  const briefKey = `${node.id}:${continuity ? "continuity" : "new"}`;
+  const brief = el("textarea", { placeholder: continuity ? "What happens next? Leave empty to continue naturally." : "What should the clip be? A sentence or two is enough.", value: briefs.get(briefKey) || (!continuity ? forgeHistory(node).find(e => !e.continuity)?.brief : "") || "" });
+  brief.addEventListener("input", () => briefs.set(briefKey, brief.value));
   box.append(el("div", { className: "field" }, el("label", { textContent: continuity ? "Next action" : "Idea" }), brief));
 
   // References from the timeline. REF2VA pictures need a role; base-mode
   // pictures are frames by definition.
-  const refs = continuity ? [] : referencesFor(hook, node);
+  const refs = continuity && (mode !== "REF2VA" || !continuity.use_references) ? [] : referencesFor(hook, node);
+  const persistReference = (ref, patch) => {
+    if (hook.contextKey?.() !== openedKey) return;
+    if (ref.item && hook.updateReference?.(ref.item.id, patch) !== false) {
+      Object.assign(ref.item, patch);
+      openedKey = hook.contextKey?.();
+    }
+  };
   const groupControls = [];
+  let includeReferences = null;
   if (continuity) box.append(el("div", { className: "muted", textContent: "The source ending and Duration guide this draft. A vision model uses tail frames internally; audio is not analyzed. Review the result, then Apply to node." }));
+  if (continuity && mode === "REF2VA" && hook.setUseReferences) {
+    includeReferences = el("input", { type: "checkbox", checked: continuity.use_references, onchange: e => {
+      if (hook.contextKey?.() !== openedKey) { hook.setStatus("Director changed. Reopen Forge.", true); return; }
+      briefs.set(briefKey, brief.value); hook.setUseReferences(e.target.checked); void open(node);
+    } });
+    box.append(el("label", {}, includeReferences, " Include timeline references"));
+  }
   if (refs.length) {
     const list = el("div", { className: "refs" });
     const groupable = mode === "REF2VA" && refs.filter(r => r.kind === "image").length >= 2;
@@ -166,34 +180,32 @@ async function open(node) {
         ? `Group ${id}: Pictures ${numbers.join(", ")}`
         : `Group ${id}: choose another picture to group`).join(" · ") || "No subject groups. Pictures stay separate.";
     };
-    let counts = { image: 0, video: 0, audio: 0 };
-    for (const ref of refs) {
-      counts[ref.kind] += 1;
-      const name = `${ref.kind === "image" ? "Picture" : ref.kind === "video" ? "Video" : "Audio"} ${counts[ref.kind]}`;
-      const thumb = ref.kind === "image" ? el("img", { src: viewUrl(ref.path) }) : el("span", { className: "muted", textContent: ref.kind });
+    const tags = referenceTags(refs);
+    for (const [index, ref] of refs.entries()) {
+      const name = tags[index].map(tag => tag.slice(1, -1)).join(" + ");
+      const thumb = ref.kind === "image" && ref.path ? el("img", { src: viewUrl(ref.path) }) : el("span", { className: "muted", textContent: ref.saved_reference ? "saved" : ref.kind });
       let roleCell;
       let groupCell = null;
-      if (ref.kind === "image" && mode === "REF2VA") {
+      if (ref.kind === "image" && mode === "REF2VA" && ref.item) {
         roleCell = el("select", { onchange: e => {
           ref.role = e.target.value;
-          ref.item.forge_role = e.target.value;
+          persistReference(ref, { forge_role: e.target.value, forge_subject_group: e.target.value === "subject" ? ref.subject_group : "" });
           if (e.target.value !== "subject" && ref.subject_group) {
             ref.subject_group = "";
-            delete node.properties?.[GROUPS_KEY]?.[ref.item.id];
+            // Empty canonical group overrides legacy workflow properties.
             if (groupCell) groupCell.value = "";
           }
           if (groupCell) groupCell.disabled = e.target.value !== "subject";
+          instructions.placeholder = ref.role === "pose" ? "Pose only; identity, clothes and background stay unchanged. Add details if needed." : ref.role === "custom" ? "Describe what to use from this image (required)." : "What should this reference contribute? (optional)";
           node.graph?.setDirtyCanvas(true, true);
           updateGroupNote();
         } });
-        for (const r of ["subject", "style", "keyframe"]) roleCell.append(el("option", { value: r, textContent: r, selected: ref.role === r }));
+        roleCell.setAttribute("aria-label", `${name} role`);
+        for (const r of ["subject", "style", "keyframe", "pose", "custom"]) roleCell.append(el("option", { value: r, textContent: r, selected: ref.role === r }));
         if (groupable) {
           groupCell = el("select", { title: "Subject-aware grouping: give pictures of the SAME subject the same letter. Leave Separate for unrelated pictures.", disabled: ref.role !== "subject", onchange: e => {
             ref.subject_group = e.target.value;
-            node.properties ||= {};
-            node.properties[GROUPS_KEY] ||= {};
-            if (e.target.value) node.properties[GROUPS_KEY][ref.item.id] = e.target.value;
-            else delete node.properties[GROUPS_KEY][ref.item.id];
+            persistReference(ref, { forge_subject_group: e.target.value });
             node.graph?.setDirtyCanvas(true, true);
             updateGroupNote();
           } });
@@ -208,8 +220,21 @@ async function open(node) {
       } else {
         roleCell = el("span", { className: "muted", textContent: ref.kind === "image" ? BASE_ROLE[mode] || "frame" : ref.kind === "video" ? `motion · ${ref.stream}` : "voice" });
       }
-      const keep = el("input", { type: "text", placeholder: "keep (optional)", oninput: e => { ref.keep = e.target.value.trim(); } });
-      list.append(el("div", { className: groupable ? "ref has-group" : "ref" }, thumb, el("span", { textContent: name }), roleCell, ...(groupable ? [groupCell || el("span")] : []), ref.kind === "audio" ? el("span") : keep));
+      const notes = el("div", { className: "field ref-notes" });
+      const instructions = el("textarea", { value: ref.instructions || "", maxLength: 4000, rows: 2, placeholder: ref.role === "pose" ? "Pose only; identity, clothes and background stay unchanged. Add details if needed." : "What should this reference contribute? (optional)", oninput: e => { ref.instructions = e.target.value; persistReference(ref, { forge_instructions: ref.instructions }); } });
+      instructions.setAttribute("aria-label", `${name} reference instructions`);
+      if (ref.saved_reference) instructions.readOnly = true;
+      notes.append(instructions);
+      if (!ref.saved_reference) {
+        const extra = el("details", {}, el("summary", { textContent: "Keep / ignore (optional)" }));
+        for (const [key, label] of [["keep", "Keep"], ["drop", "Ignore"]]) {
+          const input = el("input", { type: "text", maxLength: 2000, value: ref[key] || "", placeholder: label, oninput: e => { ref[key] = e.target.value; persistReference(ref, { [`forge_${key}`]: ref[key] }); } });
+          input.setAttribute("aria-label", `${name} ${label.toLowerCase()}`);
+          extra.append(input);
+        }
+        notes.append(extra);
+      }
+      list.append(el("div", { className: groupable ? "ref has-group" : "ref" }, thumb, el("span", { textContent: name }), roleCell, ...(groupable ? [groupCell || el("span")] : []), notes));
     }
     box.append(el("div", { className: "field" }, el("label", { textContent: "References on the timeline" }), list));
     if (groupable) {
@@ -221,6 +246,14 @@ async function open(node) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
   }
 
+  const inherited = mode === "REF2VA" ? hook.existingDefinitions?.() || { text: "", warning: "" } : { text: "", warning: "" };
+  // Continuity identities belong to the Director prompt, not a second Forge editor.
+  const definitions = { value: inherited.text };
+  const structured = el("input", { type: "checkbox", checked: !!continuity && mode === "REF2VA" && (continuity.use_references || !!refPromptFields(hook.currentPrompt?.())) });
+  if (continuity && mode === "REF2VA") {
+    box.append(el("label", {}, structured, " Structured REF2VA draft"));
+    box.append(el("span", { className: "muted", textContent: continuity.use_references ? "Timeline references are included in both Forge and video generation. Existing identities are carried forward; new subjects are defined for review." : "Timeline references are off. Enable Include timeline references above to introduce a character or scene reference; this also enables them for video generation." }));
+  }
   const modelSel = el("select");
   const detail = el("input", { type: "range", min: 1, max: 10, step: 1 });
   const detailLabel = el("span", { className: "muted" });
@@ -238,10 +271,12 @@ async function open(node) {
   box.append(output);
   const historyBox = el("div", { className: "history" });
   box.append(historyBox);
-  const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select"));
-  const controls = [brief, modelSel, detail, creativity, ...referenceControls];
+  const inputKey = () => JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r)]);
+  const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
+  const controls = [brief, modelSel, detail, creativity, structured, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });
+    if (includeReferences) includeReferences.disabled = !!running;
     if (!disabled) groupControls.forEach(([control, ref]) => { control.disabled = ref.role !== "subject"; });
   };
   setControlsDisabled(true);
@@ -249,6 +284,8 @@ async function open(node) {
   const showResult = entry => {
     if (closed) return;
     brief.value = entry.brief || "";
+    if (typeof entry.structured === "boolean") structured.checked = entry.structured;
+    if (typeof entry.existing_definitions === "string") definitions.value = entry.existing_definitions;
     if (entry.draftOptions) {
       const { model, detail: level, creativity: preset } = entry.draftOptions;
       if (Array.from(modelSel.options).some(o => o.value === model)) modelSel.value = model;
@@ -335,6 +372,7 @@ async function open(node) {
   modelSel.addEventListener("change", clearDraft);
   creativity.addEventListener("change", clearDraft);
   detail.addEventListener("input", clearDraft);
+  structured.addEventListener("change", clearDraft);
   referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
   genBtn.onclick = async () => {
     if (closed) return;
@@ -342,14 +380,16 @@ async function open(node) {
     const text = brief.value.trim();
     if (openedKey !== hook.contextKey?.()) { setStatus("Director context changed. Close and reopen Forge.", true); return; }
     if (!text && !continuity) { setStatus("Write the idea first.", true); return; }
-    if (!continuity) briefs.set(node.id, text);
+    const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
+    if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
+    briefs.set(briefKey, text);
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
     result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
-    setControlsDisabled(true);
     const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value };
+    const requestKey = openedKey, forgeInputKey = inputKey();
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    running = requestId; renderHistory();
+    running = requestId; setControlsDisabled(true); renderHistory();
     genBtn.textContent = "Cancel";
     const started = Date.now();
     statusTimer = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (Cancel stops it; the model unloads either way)`), 500);
@@ -361,14 +401,16 @@ async function open(node) {
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           detail: Number(detail.value), creativity: creativity.value,
           references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity,
+          structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),
         }),
       });
       const data = await res.json();
       if (!res.ok) { output.hidden = !data.raw; output.textContent = data.raw || ""; throw new Error(data.message || res.statusText); }
       if (closed || running !== requestId) throw new Error("Draft cancelled; no prompt was changed.");
-      if (openedKey !== hook.contextKey?.()) throw new Error("Source, duration, model or prompt changed during drafting. Reopen Forge and generate again.");
+      if (requestKey !== hook.contextKey?.() || forgeInputKey !== inputKey()) throw new Error("Source, duration, model or prompt changed during drafting. Reopen Forge and generate again.");
       if (!!data.continuity !== !!continuity || (continuity && data.source_id !== continuity.clip_id)) throw new Error("Draft does not match the selected continuity source.");
-      data.contextKey = openedKey; data.draftOptions = draftOptions;
+      data.contextKey = requestKey; data.draftOptions = draftOptions;
+      data.forgeInputKey = forgeInputKey; data.existing_definitions = definitions.value; data.reference_snapshot = referenceSnapshot(refs);
       const saved = saveForgeResult(node, data, text);
       showResult(saved);
       const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";

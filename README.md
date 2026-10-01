@@ -8,8 +8,6 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 ## Included Nodes
 
-### ♾️ Seamless Loop
-
 ### 🎬 MiniMax H3 Director
 
 > 🎬 MiniMax H3 Director — The Ultimate One-Stop Video Creation Pipeline: Experience the most advanced, feature-complete MiniMax H3 Director node available for ComfyUI. Built as a comprehensive production hub, it seamlessly merges timeline-based multi-modal authoring, intelligent LLM/VLM Prompt Forge assistance, deep RefMod persona control, and high-precision continuity extensions into a single, unified workflow. Whether starting from text, images, or an existing H3 video, the Director serves as your central command deck for end-to-end synchronized video and audio generation.
@@ -24,7 +22,7 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 - ⏱️ **Reference trims:** draggable crop markers and preview range, ▶ Play crop; 2–15s per reference window and ≤15s combined visual / ≤15s combined audio, with input-path validation.
 - 📸 **RefMods:** image/video/audio files and upstream v5 bundles from `models/refmods/`; overlay selection, strength scaling, workflow-local descriptions, runtime `<RefMod N>` → native-label resolution.
 - ✍️ **Prompt editor:** one free-text field per mode; optional structure, shot/RefMod insertion and reference-label prefill; legacy prompts migrate into that field.
-- ✨ **Prompt Forge:** review/apply H3 drafts from `models/llm`, Ollama or an OpenAI-compatible server; vision models can see reference pictures. REF2VA can explicitly group multiple pictures of one subject (default: separate) and warn when a draft splits the group. [Model setup and limitations →](docs/minimax_h3_director.md#prompt-forge-optional).
+- ✨ **Prompt Forge:** review/apply H3 drafts from `models/llm`, Ollama or an OpenAI-compatible server; vision models can see reference pictures. REF2VA adds pose/custom reference instructions, saved subject grouping, and structured continuity drafts with inherited definitions. [Model setup and limitations →](docs/minimax_h3_director.md#prompt-forge-optional).
 - ♾️ **Continuity (opt-in):** extend a completed 24-fps H3 video/audio take from a pinned latent checkpoint; separate next-action prompt, explicit source advancement, optional Forge draft. [Wiring and limits →](docs/h3_continuity.md).
 - 📐 **Smart resolution:** Auto/custom aspect, resolution and megapixel presets; input scaling via Torch Resize (Off/Auto/Target/Fit/Fill/Fit+pad/Divisible crop).
 - 💾 **Save/Load packs:** reference files, prompt and RefMod selections; append/overwrite with mode-limit and missing-file checks.
@@ -66,6 +64,8 @@ Workflow-only labels for the classic canvas and Nodes 2.0. Add **Lable (DaSiWa)*
 
 ---
 
+### ♾️ Seamless Loop
+
 ![Seamless Loop](assets/DaSiWa-Seamless-Loop.png)
 
 One `IMAGE` batch in, one `IMAGE` batch out. A native RIFE/FILM safetensors combo selects a checkpoint from `models/frame_interpolation/`.
@@ -73,10 +73,10 @@ One `IMAGE` batch in, one `IMAGE` batch out. A native RIFE/FILM safetensors comb
 - Automatic trim/overlap selection using PSNR/MSE, local SSIM, edges, temporal differences and exposure analysis.
 - Bidirectional native interpolation, eased overlap morphing and bounded local color correction; original middle frames remain unchanged.
 - `exact_endpoint` is off by default for continuous cyclic playback; enable it only when identical first/last pixels are required.
-- No additional dependency, `.pth` loader, model download or video-encoding step. Output duration can change; audio must be aligned downstream.
-- Arbitrary footage cannot be guaranteed visually seamless. The node logs residual temporal discontinuities instead of claiming perfect motion from endpoint equality.
+- No additional dependency. Output duration can change; audio must be aligned downstream.
+- Visible seams may remain with incompatible motion or scene changes; residual temporal discontinuities are logged.
 
-[Usage, research, model compatibility and verification →](docs/seamless_loop.md)
+[Usage, model compatibility and references →](docs/seamless_loop.md)
 
 ---
 

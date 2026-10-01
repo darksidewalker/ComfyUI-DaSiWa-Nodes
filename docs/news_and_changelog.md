@@ -2,9 +2,13 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-09-30**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-01**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Seamless Loop documentation, 0.4.72:** Condensed usage and model guidance, retained relevant references, and corrected the documented `exact_endpoint` default to **off**. [Usage and references →](seamless_loop.md)
+
+- **H3 Forge reference intent and structured continuity, 0.4.71:** Pose/custom image roles with saved instructions and keep/ignore notes; reference metadata travels with workflows and reference-file packs. Continuity Forge can directly include timeline references, defaults to a six-section REF2VA draft when they are included, and carries existing definitions forward with safe media-link remapping. The Director's model-free Insert Prompt Structure supports the active Continuity prompt, retaining next-action text and existing definitions; Forge has no separate template/identity editor. Structured prompts retain definitions through native continuation assembly. [Director guide →](minimax_h3_director.md#prompt-forge-optional) · [Continuity guide →](h3_continuity.md#structured-ref2va-continuation-without-manual-assembly)
 
 - **Seamless Loop, 0.4.69:** New automatic `IMAGE`-batch loop node with native RIFE/FILM safetensors selection, multi-metric overlap/trim analysis, bidirectional morphing and bounded exposure matching. Optional exact endpoint copying guarantees first/last tensor equality, not artifact-free motion or lossless video encoding. [Usage and research →](seamless_loop.md)
 

@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { forgeReferences, refPromptFields, refTemplate, inheritedDefinitions, referenceSnapshot } from "./minimax_h3_forge_state.js";
 import { CONTINUITY_DEFAULTS as DEFAULT_CONTINUITY, continuityTiming, normalizeContinuity, newContinuitySession, sourceId as continuitySourceId } from "./minimax_h3_continuity.js";
 
 let h3VaeErrorPopupInstalled = false;
@@ -580,7 +581,7 @@ function install(node) {
   }
   const forgeContextKey = () => JSON.stringify([mode(), Number(node.widgets?.find(w => w.name === "duration")?.value), continuityContext(), activePrompt(),
     Number(widthWidget?.value), Number(heightWidget?.value), Number(node.widgets?.find(w => w.name === "frame_rate")?.value), hasExternalCanvas(),
-    state.items.map(({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt }) => ({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt })), state.refmods || []]);
+    state.items.map(({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group }) => ({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group })), state.refmods || [], node.properties?.dasiwaH3ForgeSubjectGroups || {}, builderState.ref]);
   async function refreshContinuity() {
     const session = state.continuity?.session;
     if (!session || continuityLoading || nodeRemoved) return;
@@ -759,8 +760,11 @@ function install(node) {
     area.oninput = () => setActivePrompt(area.value);
     allowNativeTextEditing(area);
     const structureBtn = document.createElement("button"); structureBtn.textContent = "Insert Prompt Structure";
-    structureBtn.title = "Insert the former structured-mode template at the cursor";
-    structureBtn.onclick = () => insertAtCursor(area, builderPromptForWidget(DEFAULT_BUILDER_STATE(mode()), mode()));
+    structureBtn.title = isContinuing() && mode() === "REF2VA" ? "Structure the continuation prompt, retaining next action and existing subject definitions. No LLM required." : "Insert the former structured-mode template at the cursor";
+    structureBtn.onclick = () => {
+      if (isContinuing() && mode() === "REF2VA") node.__dasiwaH3Continuity.insertTemplate();
+      else insertAtCursor(area, builderPromptForWidget(DEFAULT_BUILDER_STATE(mode()), mode()));
+    };
     helpers.append(structureBtn);
     const shotBtn = document.createElement("button"); shotBtn.textContent = "Insert [Shot N]";
     shotBtn.onclick = () => openPromptNumberPopover(shotBtn, "Shot number", n => insertAtCursor(area, `[Shot ${n}] `));
@@ -866,6 +870,9 @@ function install(node) {
       return !entry || !(Array.isArray(entry.kinds) && entry.kinds.length) && !["image", "video", "audio"].includes(entry.kind);
     })) { setStatus("Prefill stopped: a selected RefMod has missing or unknown media kinds.", true); return; }
     if (!area.isConnected) return;
+    if (isContinuing() && !continuityState().use_references) {
+      setStatus("Continuity timeline references are disabled. Enable Keep REF2VA timeline references in Continuity Advanced before prefilling media labels.", true); return;
+    }
     const fields = refPrefill(activeItems(), rows, refModLibrary.entries);
     if (!fields) { setStatus("Add enabled timeline or saved references before prefilling.", true); return; }
     area.value = applyRefPrefill(area.value, fields);
@@ -1202,7 +1209,7 @@ function install(node) {
   // --- Reference-pack save/load ---
   const REFERENCE_PACK_MARKER = "dasiwa_minimax_h3_reference_pack";
   const VALID_MODES = ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"];
-  const PORTABLE_ITEM_KEYS = ["type", "value", "media_mode", "audioSlot", "trim_start", "trim_end", "duration", "source_duration", "source_width", "source_height"];
+  const PORTABLE_ITEM_KEYS = ["type", "value", "media_mode", "audioSlot", "trim_start", "trim_end", "duration", "source_duration", "source_width", "source_height", "forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group"];
   const toPortableItem = item => { const out = {}; for (const key of PORTABLE_ITEM_KEYS) if (item[key] !== undefined) out[key] = item[key]; return out; };
   const countOf = (items, type) => items.filter(i => i.type === type).length;
   // Counts by which lane an item actually occupies (accounting for A-mode and
@@ -1246,8 +1253,46 @@ function install(node) {
     for (const type of ["image", "video", "audio"]) byType[type].forEach((item, rank) => out.push({ ...toPortableItem(item), _rank: rank }));
     return out;
   };
+  // Base-prompt packs must not inherit the continuation's use_references gate.
+  // Only verified ordinary media links are portable; unknown RefMod members
+  // remain unverified until Forge can inspect the destination's library.
+  const packReferences = () => forgeReferences(activeItems().filter(item => !item._audioEcho && !isLockedSlot(item)), mode());
+  const portableReference = (item, rank, kind) => ({ type: item.type, _rank: rank, value: item.value, trim_start: item.trim_start ?? 0, trim_end: item.trim_end ?? "", kind });
+  const portableReferenceKey = ref => ref && ["image", "video", "audio"].includes(ref.type) && Number.isInteger(ref._rank) && ref._rank >= 0 && ["Picture", "Video", "Audio"].includes(ref.kind)
+    ? JSON.stringify([ref.type, ref._rank, ref.value, ref.trim_start ?? 0, ref.trim_end ?? "", ref.kind]) : null;
+  const rewritePackTags = (text, replacements = {}) => String(text || "").replace(/<\s*(Picture|Video|Audio)\s+(\d+)\s*>/g, (_, kind, n) => replacements[`<${kind} ${Number(n)}>`] || "");
   function buildPortablePrompt() {
-    return { prompt_mode: "simple", simple_prompt: String(builderState.simple_prompt || "") };
+    const refs = packReferences(), current = referenceSnapshot(refs), mapping = {};
+    const ordered = activeItems().slice().sort((a, b) => (Number(a.slot) || 0) - (Number(b.slot) || 0));
+    for (const ref of refs) {
+      const rank = ordered.filter(item => item.type === ref.item.type).findIndex(item => item.id === ref.item.id);
+      for (const [localTag, identity] of Object.entries(referenceSnapshot([ref]))) {
+        const tag = Object.keys(current).find(key => current[key] === identity);
+        if (tag && builderState.forge_reference_snapshot?.[tag] === identity) mapping[tag] = portableReference(ref.item, rank, localTag.match(/Picture|Video|Audio/)[0]);
+      }
+    }
+    return { prompt_mode: "simple", simple_prompt: String(builderState.simple_prompt || ""), forge_reference_mapping: mapping };
+  }
+  function restorePackReferences(saved, rawIncoming, placed) {
+    const refs = packReferences(), current = referenceSnapshot(refs), replacements = {}, snapshot = {};
+    for (const [oldTag, descriptor] of Object.entries(saved?.forge_reference_mapping || {})) {
+      const key = portableReferenceKey(descriptor);
+      if (!key) continue;
+      const candidates = rawIncoming.filter(raw => portableReferenceKey(portableReference(raw, raw._rank, descriptor.kind)) === key);
+      if (candidates.length !== 1) continue; // Duplicate ranks/identities are not proof.
+      const item = placed.get(candidates[0]);
+      const ref = item && refs.find(ref => ref.item.id === item.id);
+      if (!ref) continue;
+      const identity = Object.entries(referenceSnapshot([ref])).find(([tag]) => tag.startsWith(`<${descriptor.kind} `))?.[1];
+      const tag = identity && Object.keys(current).find(tag => current[tag] === identity);
+      if (tag) { replacements[oldTag] = tag; snapshot[tag] = identity; }
+    }
+    const original = builderState.simple_prompt;
+    // Legacy/manual packs carry no proof. Preserve their authored prompt,
+    // but never label its media links as verified in Forge.
+    if (saved?.forge_reference_mapping && Object.keys(saved.forge_reference_mapping).length) builderState.simple_prompt = rewritePackTags(original, replacements);
+    builderState.forge_reference_snapshot = snapshot;
+    return builderState.simple_prompt !== original;
   }
   const joinText = (a, b) => { a = String(a || "").trim(); b = String(b || "").trim(); return a && b ? `${a}\n\n${b}` : (a || b); };
   // Old reference packs saved six separate fields. Assemble them into the
@@ -1272,7 +1317,7 @@ function install(node) {
   // actually reads, e.g. Picture 1 / L2VA's working slot), skipping anything
   // beyond what fits -- the failsafe in performLoad should already have
   // blocked that case, this is a defensive backstop only.
-  function placeIncomingItems(incoming) {
+  function placeIncomingItems(incoming, placed = new Map()) {
     const byType = { image: [], video: [], audio: [] };
     incoming.forEach(i => { if (byType[i.type]) byType[i.type].push(i); });
     for (const type of ["image", "video", "audio"]) byType[type].sort((a, b) => (Number(a._rank) || 0) - (Number(b._rank) || 0));
@@ -1284,15 +1329,15 @@ function install(node) {
           const occupied = occupiedSlotsForLane(s.items, lane);
           const slot = availableSlots(lane).find(index => !occupied.has(index));
           if (slot == null) continue;
-          const { _rank, audioSlot, ...clean } = raw;
-          const newItem = { id: idFor(type, s.items.length), enabled: true, order: s.items.length, slot, start: slot, duration: type === "image" ? 1 : 2, ...clean };
+          const clean = toPortableItem(raw); delete clean.audioSlot;
+          const newItem = { ...clean, id: idFor(type, s.items.length), type, enabled: true, order: s.items.length, slot, start: slot, duration: clean.duration ?? (type === "image" ? 1 : 2) };
           if (type === "video" && newItem.media_mode === "video_audio") {
             const echoOccupied = occupiedSlotsForLane(s.items, "audio");
             const echoSlot = availableSlots("audio").find(index => !echoOccupied.has(index));
             if (echoSlot != null) newItem.audioSlot = echoSlot;
             else newItem.media_mode = "video"; // no room for the audio echo -- fall back to video-only rather than a broken half-linked state
           }
-          s.items.push(newItem); added.push(newItem);
+          s.items.push(newItem); added.push(newItem); placed.set(raw, newItem);
         }
       }
     });
@@ -1329,6 +1374,22 @@ function install(node) {
     const targetMode = VALID_MODES.includes(pack.model_mode) ? pack.model_mode : mode();
     const wantsFiles = (dataType === "files" || dataType === "all") && Array.isArray(pack.items);
     const wantsPrompt = (dataType === "prompt" || dataType === "all") && pack.prompt;
+    // Match _load_refmod_rows: up to eight unique slots (1..8), active
+    // rows require a name, and strength must be finite and within 0..1.
+    const incomingRefMods = wantsFiles && Array.isArray(pack.refmods) ? pack.refmods.map(row => row && typeof row === "object" ? { ...row } : row) : [];
+    const nextRefMods = loadMode === "overwrite" ? incomingRefMods : [...(state.refmods || []), ...incomingRefMods];
+    if (wantsFiles) {
+      const slots = new Set();
+      const invalid = (pack.refmods != null && !Array.isArray(pack.refmods)) || nextRefMods.length > 8 || nextRefMods.some(row => {
+        if (!row || !Number.isInteger(Number(row.slot)) || Number(row.slot) < 1 || Number(row.slot) > 8 || slots.has(Number(row.slot))) return true;
+        slots.add(Number(row.slot));
+        if (row.enabled === false) return false;
+        const rawStrength = row.strength === undefined ? 1 : row.strength;
+        const strength = Number(rawStrength);
+        return typeof row.name !== "string" || !row.name || !["number", "string"].includes(typeof rawStrength) || String(rawStrength).trim() === "" || !Number.isFinite(strength) || strength < 0 || strength > 1;
+      });
+      if (invalid) { setStatus("Pack RefMods require up to 8 unique slots (1–8), names for enabled rows, and strength between 0 and 1. Resolve conflicting slots before appending.", true); return; }
+    }
     const rawIncomingItems = wantsFiles ? pack.items.filter(i => i && ["image", "video", "audio"].includes(i.type)) : [];
     const missingCounts = { image: 0, video: 0, audio: 0 };
     let incomingItems = rawIncomingItems;
@@ -1365,10 +1426,26 @@ function install(node) {
 
     if (wantsPrompt) { if (loadMode === "overwrite") overwritePortablePrompt(pack.prompt); else appendPortablePrompt(pack.prompt); }
     let added = [];
+    const placed = new Map();
     if (wantsFiles) {
-      if (loadMode === "overwrite") mutate(s => { s.items = s.items.filter(i => !["image", "video", "audio"].includes(i.type)); s.refmods = []; });
-      else if (Array.isArray(pack.refmods)) mutate(s => { s.refmods = [...(s.refmods || []), ...pack.refmods]; });
-      added = placeIncomingItems(incomingItems);
+      mutate(s => {
+        if (loadMode === "overwrite") s.items = s.items.filter(i => !["image", "video", "audio"].includes(i.type));
+        s.refmods = nextRefMods;
+      });
+      added = placeIncomingItems(incomingItems, placed);
+    }
+    let linksChanged = false;
+    if (wantsPrompt && wantsFiles && loadMode === "overwrite") {
+      linksChanged = restorePackReferences(pack.prompt, rawIncomingItems, placed);
+    } else if (wantsPrompt || (wantsFiles && loadMode === "overwrite")) {
+      // Prompt-only loads cannot prove file identity. Appending text may give
+      // the same tag two meanings, so do not bless either with an old snapshot.
+      if (loadMode === "append" || (wantsFiles && !wantsPrompt)) {
+        const original = builderState.simple_prompt;
+        builderState.simple_prompt = rewritePackTags(original);
+        linksChanged = builderState.simple_prompt !== original;
+      }
+      builderState.forge_reference_snapshot = {};
     }
     emit(); render();
 
@@ -1378,7 +1455,7 @@ function install(node) {
     }
     const missingParts = ["image", "video", "audio"].filter(type => missingCounts[type] > 0).map(type => { const label = mediaReferenceName(type).toLowerCase(); const count = missingCounts[type]; return `${count} ${label}${count === 1 ? "" : "s"} ${count === 1 ? "was" : "were"} missing and not loaded.`; });
     if (missingParts.length) window.alert(missingParts.join("\n"));
-    setStatus(`${loadMode === "overwrite" ? "Overwrote" : "Appended"} ${dataType === "all" ? "reference files and prompt" : dataType === "files" ? "reference files" : "prompt"} from pack (${targetMode}).`);
+    setStatus(`${loadMode === "overwrite" ? "Overwrote" : "Appended"} ${dataType === "all" ? "reference files and prompt" : dataType === "files" ? "reference files" : "prompt"} from pack (${targetMode}).${linksChanged ? " Media links were remapped or removed to avoid wrong references; review the prompt." : wantsPrompt && !Object.keys(builderState.forge_reference_snapshot || {}).length ? " Prompt retained; media links are unverified until reviewed in Forge." : ""}`);
   }
   function loadReferencePack(loadMode, dataType) {
     const input = document.createElement("input"); input.type = "file"; input.accept = "application/json,.json";
@@ -1773,15 +1850,75 @@ function install(node) {
   // H3 Forge (js/minimax_h3_forge.js) reads the timeline from here and writes
   // its result back through apply(), so the builder fields, the Simple box and
   // the hidden widgets all update the same way a typed edit does.
+  const forgeItems = () => activeItems().filter(item => !item._audioEcho && !isLockedSlot(item)).map(item => ({ ...item, lane: laneForItem(item) }));
+  const forgeRefs = () => {
+    const c = continuityContext();
+    if (c && (mode() !== "REF2VA" || !c.use_references)) return [];
+    const refs = forgeReferences(forgeItems(), mode(), node.properties?.dasiwaH3ForgeSubjectGroups);
+    for (const row of (mode() === "REF2VA" ? state.refmods || [] : []).filter(r => r.name && r.enabled !== false && Number(r.strength ?? 1) > 0).sort((a, b) => a.slot - b.slot)) {
+      const entry = refModLibrary.entries.find(e => e.name === row.name);
+      if (!entry) continue; // Missing files are also skipped by the Director backend.
+      const kinds = Array.isArray(entry.kinds) && entry.kinds.length ? entry.kinds : [entry.kind];
+      kinds.forEach((kind, member) => {
+        if (["image", "video", "audio"].includes(kind)) refs.push({ id: `refmod-${row.slot}-${row.name}-${member}-${kind}`, kind, role: kind === "video" ? "motion" : "subject", stream: kind === "video" ? "video" : undefined, instructions: String(row.description || entry.description || ""), saved_reference: true });
+      });
+    }
+    return refs;
+  };
+  node.__dasiwaH3Continuity = {
+    existingDefinitions: () => {
+      const c = continuityState(), current = refPromptFields(activePrompt());
+      const fromContinuation = isContinuing() && current;
+      const baseFields = typeof builderState.simple_prompt === "string" ? refPromptFields(builderState.simple_prompt) || {} : builderState.ref || {};
+      const fields = fromContinuation ? current : baseFields;
+      const text = String(fields.subject_definitions || "");
+      const refs = forgeRefs();
+      return inheritedDefinitions(text, fromContinuation ? c.forge_reference_snapshot || {} : builderState.forge_reference_snapshot || {}, referenceSnapshot(refs));
+    },
+    insertTemplate: () => {
+      if (!isContinuing() || mode() !== "REF2VA") return false;
+      const c = continuityState(), snapshot = referenceSnapshot(forgeRefs());
+      const text = activePrompt();
+      const inherited = node.__dasiwaH3Continuity.existingDefinitions();
+      const remapped = refPromptFields(text) ? inheritedDefinitions(text, c.forge_reference_snapshot || {}, snapshot).text : text;
+      setActivePrompt(refTemplate(remapped, inherited.text));
+      c.forge_reference_snapshot = snapshot;
+      emit(); render();
+      setStatus(`Continuity prompt structured; next action retained.${inherited.warning ? " " + inherited.warning : ""} Define any new subjects in subject_definitions; reference images supply media, not automatic feature descriptions.`);
+      return true;
+    },
+  };
   node.__dasiwaH3Forge = {
     mode, promptStyle, setStatus, continuity: continuityContext, contextKey: forgeContextKey,
+    currentPrompt: activePrompt,
+    setUseReferences: enabled => { continuityState().use_references = !!enabled; emit(); render(); },
+    references: forgeRefs,
+    prepareReferences: async () => {
+      if ((state.refmods || []).some(r => r.name && r.enabled !== false && Number(r.strength ?? 1) > 0) && !refModLibrary.loaded) {
+        const response = await api.fetchApi("/dasiwa/refmods");
+        if (!response.ok) throw new Error("Could not read saved reference metadata.");
+        refModLibrary.entries = await response.json(); refModLibrary.loaded = true;
+      }
+    },
+    updateReference: (id, patch) => {
+      const item = state.items.find(i => i.id === id);
+      if (!item) return false;
+      for (const key of ["forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group"]) if (typeof patch[key] === "string") item[key] = patch[key];
+      emit(); return true;
+    },
+    existingDefinitions: () => node.__dasiwaH3Continuity.existingDefinitions(),
     duration: () => Number(node.widgets?.find(w => w.name === "duration")?.value) || null,
     items: () => activeItems().filter(item => !item._audioEcho && !isLockedSlot(item)).map(item => ({ ...item, lane: laneForItem(item) })),
     apply: (result) => {
       if (result.mode !== mode() || Boolean(result.continuity) !== isContinuing() || (result.contextKey && result.contextKey !== forgeContextKey())) {
         setStatus("Draft is stale: source, duration, model or prompt changed. Generate again.", true); return false;
       }
-      if (isContinuing()) { continuityState().continuation_prompt = result.simple_prompt; continuityState().idea = ""; emit(); render(); return true; }
+      if (isContinuing()) {
+        continuityState().continuation_prompt = result.simple_prompt; continuityState().idea = "";
+        continuityState().forge_reference_snapshot = result.reference_snapshot || referenceSnapshot(forgeRefs());
+        emit(); render(); return true;
+      }
+      builderState.forge_reference_snapshot = result.reference_snapshot || referenceSnapshot(forgeRefs());
       if (result.mode === "REF2VA") builderState.ref = { ...(builderState.ref || {}), ...result.fields.ref };
       else Object.assign(builderState, result.fields);
       builderState.simple_prompt = result.simple_prompt;
