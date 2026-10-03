@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-10-03**. Older history lives in the 
 
 ## News
 
+- **H3 Continuity migration and Director controls (10-03, Git fix after 0.4.74):** Older active continuations keep their saved added length when converted to Duration. Legacy next-action ideas stay in the action section of structured REF2VA prompts, without changing definitions or music; uppercase section headers are accepted too. Native Director Duration/FPS callbacks work in the current frontend, and migration/save-reload are tested in classic canvas and Nodes 2.0. Capture remains opt-in. Package version unchanged; no new Registry release. [Workflow migration →](h3_continuity.md#loading-older-workflows)
+
 - **Workflow restoration and H3 audio-lock capture (10-03, 0.4.74):** The Wildcard & Preset Prompt Builder restores saved picker selections and weights after loading workflows or images, preserving them on the next interaction ([#62](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/62)). H3 Continuity accepts native latent-mask and AV split/concat nodes before the sampler, including externally encoded locked audio, while still requiring the video latent to originate from the matching Director Guide ([#58](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/58)). [Audio-lock wiring →](h3_continuity.md#wiring)
 
 - **Seamless Loop documentation, 0.4.72:** Condensed usage and model guidance, retained relevant references, and corrected the documented `exact_endpoint` default to **off**. [Usage and references →](seamless_loop.md)
@@ -148,6 +150,8 @@ Quick reference for the version bumps inside this window, newest first:
 ## Changelog
 
 ### MiniMax H3 Director (v1)
+
+- **10-03 (Git fix after 0.4.74):** Legacy Continuity settings migrate once: active saved +frames become Duration (`frames / 24`), inactive sources do not activate, and capture preferences survive. Structured REF2VA ideas are inserted into `detailed_description` rather than the final music field; section parsing accepts uppercase headers and existing soundscape/music aliases. Director widget wrappers preserve the native callback receiver and arguments for mode, external prompt, Duration and FPS. Added boundary/short-source timing parity, graph provenance and real browser save/reload coverage. Append-before-spatial-upscale ordering is checked with synthetic CPU latents; real H3 generation and neural-upscaler seam quality remain unverified. No runtime dependency or version change. [Migration and maintainer checks →](h3_continuity.md#loading-older-workflows)
 
 - **10-03 (0.4.74, #58):** Continuity capture traces video-latent provenance through native Set Latent Noise Mask, Separate AV Latent and Concat AV Latent nodes. External masked audio no longer triggers the direct Guide-to-sampler wiring error; wrong Guides, audio-only dependencies and cyclic paths remain rejected. [Wiring and overlap limits →](h3_continuity.md#wiring)
 

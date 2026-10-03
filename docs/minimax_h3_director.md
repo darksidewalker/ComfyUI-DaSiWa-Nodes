@@ -115,6 +115,8 @@ Put standalone or upstream v5 bundle `.safetensors` files in `ComfyUI/models/ref
 
 ## Continue an existing video (optional)
 
+Capture of new takes is **off by default**; enable **∞ Save new takes** before the initial generation if you want a checkpoint. Older active Continuity workflows migrate their saved added-frame count to Duration once, retaining next-action text and structured prompt definitions without moving action text into music. Later Duration edits remain authoritative. Save the workflow to retain migrated settings. [Older-workflow migration →](h3_continuity.md#loading-older-workflows)
+
 Choose a completed checkpoint or ordinary video using **Choose start video…**. **Continuity Active** appears automatically; Duration now means *new* seconds, not total length. The source stays pinned until you change or clear it. **∞ Save new takes** saves fresh generations as checkpoints; continuations are saved regardless. Add **H3 Continuity • Append & Stage** after sampling and **H3 Continuity • Publish Export** after your actual exporter to publish only successful exports.
 
 ```mermaid

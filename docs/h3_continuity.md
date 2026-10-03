@@ -2,6 +2,8 @@
 
 The Director owns the controls. Selecting a video or checkpoint automatically shows **Continuity Active**. The actual model mode stays selected; there is no Continue pseudo-mode. The existing **Duration** input controls newly added seconds. Checkpoint capture for new takes is opt-in; saved workflows retain their capture preference.
 
+## Loading older workflows
+
 When loading an older v1/v2 workflow, an active continuation's saved +frames is
 converted once to Duration (`frames / 24`). An inactive preselected source stays
 inactive. Custom next-action text and the old idea are retained; the former stock
