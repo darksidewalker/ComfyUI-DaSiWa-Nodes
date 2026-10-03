@@ -61,6 +61,10 @@ flowchart TD
 | Append & Stage.ticket | Publish Export.ticket | Identify this staged checkpoint |
 | Enhanced Video Combine.filename | Publish Export.filename | Wait for and validate this actual export |
 
+The sampler's latent path may include native **Set Latent Noise Mask**, **Separate AV Latent** and **Concat AV Latent** nodes. Capture follows the video-carrying latent inputs back to this Director Guide; an unrelated video latent or a connection only through audio, masks or conditioning does not qualify.
+
+For fixed input audio, split the Guide's AV latent, connect its video output to Concat AV Latent, and feed externally encoded H3 audio through Set Latent Noise Mask with a zero mask into Concat's audio input. Connect the combined latent to the sampler. This works with **∞ Save new takes** without adding an audio-lock mode to the Director. Keep video dimensions and temporal layout unchanged; for continuations, align replacement audio to the whole sample window, including the hidden overlap. Masking does not guarantee bit-exact original audio after VAE reconstruction.
+
 The supplied workflow exposes `continuity_ticket` from Settings and places Publish at the root. Do not feed the export filename back into Settings or substitute an unrelated Set/Get filename. The visible root graph contains model/CLIP paths through Settings in both directions; the expanded node dependencies are acyclic.
 
 ## User controls

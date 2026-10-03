@@ -18,8 +18,31 @@ def validate_capture_graph(prompt, guide_id):
     sampled = append.get("inputs", {}).get("sampled")
     if not isinstance(sampled, (list, tuple)) or len(sampled) != 2:
         raise ValueError("Wire the H3 sampler output to Append & Stage.sampled.")
+    def guide_video_latent(value, visited=None):
+        """Follow only known video-carrying latent edges, never mask/conditioning edges."""
+        if linked(value, guide_id, 1):
+            return True
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            return False
+        node_id, slot = str(value[0]), value[1]
+        visited = set() if visited is None else visited
+        edge = (node_id, slot)
+        if edge in visited:
+            return False
+        visited.add(edge)
+        node = nodes.get(node_id, {})
+        inputs = node.get("inputs", {})
+        latent_input = {
+            "SetLatentNoiseMask": "samples",
+            "LTXVSeparateAVLatent": "av_latent",
+            "LTXVConcatAVLatent": "video_latent",
+        }.get(node.get("class_type"))
+        if latent_input is not None and slot == 0:
+            return guide_video_latent(inputs.get(latent_input), visited)
+        return False
+
     sampler = nodes.get(str(sampled[0]), {})
-    if sampler.get("class_type") == "SamplerCustomAdvanced" and not linked(sampler.get("inputs", {}).get("latent_image"), guide_id, 1):
+    if sampler.get("class_type") == "SamplerCustomAdvanced" and not guide_video_latent(sampler.get("inputs", {}).get("latent_image")):
         raise ValueError("Append & Stage must use the sampler driven by this Director Guide.")
     publishes = [node for node in nodes.values()
                  if node.get("class_type") == "DaSiWaH3ContinuityPublish"

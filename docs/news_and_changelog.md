@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-01**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-03**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Workflow restoration and H3 audio-lock capture (10-03, 0.4.74):** The Wildcard & Preset Prompt Builder restores saved picker selections and weights after loading workflows or images, preserving them on the next interaction ([#62](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/62)). H3 Continuity accepts native latent-mask and AV split/concat nodes before the sampler, including externally encoded locked audio, while still requiring the video latent to originate from the matching Director Guide ([#58](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/58)). [Audio-lock wiring →](h3_continuity.md#wiring)
 
 - **Seamless Loop documentation, 0.4.72:** Condensed usage and model guidance, retained relevant references, and corrected the documented `exact_endpoint` default to **off**. [Usage and references →](seamless_loop.md)
 
@@ -90,6 +92,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.74 | 10-03 | Restore wildcard picker selections after workflow/image loading (#62); allow native audio-lock latent paths with H3 Continuity capture (#58) |
 | 0.4.66 | 09-30 | System Monitor optional Ultra compact mode, right-docked when selected, all enabled metrics visible |
 | 0.4.64 | 09-28 | System Monitor independent default row, remount on Properties toggle, horizontal wrapping resize, viewport-aware menu and opacity controls (#59) |
 | 0.4.63 | 09-28 | H3 Forge explicit subject-aware picture groups and split-definition warning |
@@ -145,6 +148,8 @@ Quick reference for the version bumps inside this window, newest first:
 ## Changelog
 
 ### MiniMax H3 Director (v1)
+
+- **10-03 (0.4.74, #58):** Continuity capture traces video-latent provenance through native Set Latent Noise Mask, Separate AV Latent and Concat AV Latent nodes. External masked audio no longer triggers the direct Guide-to-sampler wiring error; wrong Guides, audio-only dependencies and cyclic paths remain rejected. [Wiring and overlap limits →](h3_continuity.md#wiring)
 
 - **09-28 (0.4.63):** **H3 Forge subject-aware grouping:** REF2VA can group subject pictures explicitly in the Forge reference rows; default Separate leaves pictures independent. The grouping is stored with the workflow and groups are shown before generation. A Python check warns when the model explicitly splits one group across separate `<Subject N>` definitions, without claiming to judge unlabeled prose or image identity. [Forge guide →](minimax_h3_director.md#prompt-forge-optional)
 
@@ -237,6 +242,8 @@ Patch Comfy Kitchen Attention was retired in **0.4.68**; the entries below descr
 - **07-19:** node added (IMAGE batch → video with optional AUDIO muxing and in-node preview); frame exports published to ComfyUI Assets; re-encode on queued runs; audio settings preserved in saved workflows.
 
 ### Wildcard & Preset Prompt Builder
+
+- **10-03 (0.4.74, #62):** Reload saved selections and weights after node/graph configuration, including workflow and generated-image loading. The picker reflects serialized state and retains restored entries on the next interaction, including when the library loads before or after restoration.
 
 - **08-17:** library additions: Background, Intimate Backgrounds, Weapons & Items; duplicate entries merged.
 - **07-31:** segment picker interface; picker layout restored after workflow reload.
