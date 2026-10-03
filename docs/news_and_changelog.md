@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-10-03**. Older history lives in the 
 
 ## News
 
+- **H3 Continuity consecutive-run fix (10-03, 0.4.75):** Re-running capture or continuation with a cached Director Guide now creates a fresh checkpoint ID at Append & Stage. This prevents `FileExistsError` / Windows `WinError 183` on the second run without overwriting previous checkpoints or changing the selected source ([#64](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/64)).
+
 - **H3 Continuity migration and Director controls (10-03, Git fix after 0.4.74):** Older active continuations keep their saved added length when converted to Duration. Legacy next-action ideas stay in the action section of structured REF2VA prompts, without changing definitions or music; uppercase section headers are accepted too. Native Director Duration/FPS callbacks work in the current frontend, and migration/save-reload are tested in classic canvas and Nodes 2.0. Capture remains opt-in. Package version unchanged; no new Registry release. [Workflow migration →](h3_continuity.md#loading-older-workflows)
 
 - **Workflow restoration and H3 audio-lock capture (10-03, 0.4.74):** The Wildcard & Preset Prompt Builder restores saved picker selections and weights after loading workflows or images, preserving them on the next interaction ([#62](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/62)). H3 Continuity accepts native latent-mask and AV split/concat nodes before the sampler, including externally encoded locked audio, while still requiring the video latent to originate from the matching Director Guide ([#58](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/58)). [Audio-lock wiring →](h3_continuity.md#wiring)
@@ -94,6 +96,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.75 | 10-03 | Fix H3 Continuity checkpoint collisions on consecutive runs with cached Guide outputs (#64) |
 | 0.4.74 | 10-03 | Restore wildcard picker selections after workflow/image loading (#62); allow native audio-lock latent paths with H3 Continuity capture (#58) |
 | 0.4.66 | 09-30 | System Monitor optional Ultra compact mode, right-docked when selected, all enabled metrics visible |
 | 0.4.64 | 09-28 | System Monitor independent default row, remount on Properties toggle, horizontal wrapping resize, viewport-aware menu and opacity controls (#59) |
@@ -150,6 +153,8 @@ Quick reference for the version bumps inside this window, newest first:
 ## Changelog
 
 ### MiniMax H3 Director (v1)
+
+- **10-03 (0.4.75, #64):** Append & Stage allocates a fresh checkpoint ID per executed commit instead of reusing an ID from cached Director Guide outputs. Consecutive new takes and continuation rerolls keep separate immutable checkpoints, preserve the pinned parent and leave capture-off behavior unchanged. Added CPU regression coverage for reused contexts, legacy run IDs, publish/readback and existing checkpoint preservation.
 
 - **10-03 (Git fix after 0.4.74):** Legacy Continuity settings migrate once: active saved +frames become Duration (`frames / 24`), inactive sources do not activate, and capture preferences survive. Structured REF2VA ideas are inserted into `detailed_description` rather than the final music field; section parsing accepts uppercase headers and existing soundscape/music aliases. Director widget wrappers preserve the native callback receiver and arguments for mode, external prompt, Duration and FPS. Added boundary/short-source timing parity, graph provenance and real browser save/reload coverage. Append-before-spatial-upscale ordering is checked with synthetic CPU latents; real H3 generation and neural-upscaler seam quality remain unverified. No runtime dependency or version change. [Migration and maintainer checks →](h3_continuity.md#loading-older-workflows)
 

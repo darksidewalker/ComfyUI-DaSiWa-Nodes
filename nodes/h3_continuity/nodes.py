@@ -1,6 +1,7 @@
 """Technical post-sampler continuation nodes; Director owns all controls."""
 import logging
 import math
+import uuid
 from pathlib import Path
 from .core import ClipStore, append_tail
 log = logging.getLogger(__name__)
@@ -23,7 +24,8 @@ class DaSiWaH3ContinuityAppend:
             combined = append_tail(previous, sampled, context["layout"])
         else:
             combined = sampled
-        ticket = ClipStore().stage(combined, context)
+        # Guide outputs can be cached across sampler rerolls; each commit owns its ID.
+        ticket = ClipStore().stage(combined, {**context, "run_id": uuid.uuid4().hex})
         return combined, ticket
 
 

@@ -3,7 +3,6 @@
 from .helper_minimax_h3_director import normalize_guide
 from .helper_refmod_format import refmod_fingerprint
 from .helper_logging import log_dasiwa
-import uuid
 
 
 def _describe_output(value) -> str:
@@ -110,7 +109,7 @@ class MiniMaxH3DirectorGuide:
         from .h3_continuity.validation import validate_capture_graph
         validate_capture_graph(prompt, unique_id)
         _require_native_arbitrary_guides()
-        context = {**settings, "run_id": uuid.uuid4().hex, "mode": guide["mode"],
+        context = {**settings, "mode": guide["mode"],
                    "resolved_prompt": guide.get("resolved_prompt", guide.get("prompt", ""))}
         if not continuing:
             positive, latent = self._apply_native(clip, vae, guide, audio_vae)
