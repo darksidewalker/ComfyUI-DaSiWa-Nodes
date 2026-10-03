@@ -466,7 +466,7 @@ function install(node) {
   }
 
   function continuityState() {
-    state.continuity = normalizeContinuity(state.continuity);
+    state.continuity = normalizeContinuity(state.continuity, node.widgets?.find(w => w.name === "duration"));
     if (state.continuity.capture && !state.continuity.session) state.continuity.session = newContinuitySession();
     return state.continuity;
   }
@@ -1935,13 +1935,13 @@ function install(node) {
       return true;
     },
   };
-  if (modeWidget) { const old = modeWidget.callback; modeWidget.callback = value => { old?.(value); render(); }; }
+  if (modeWidget) { const old = modeWidget.callback; modeWidget.callback = function (...args) { old?.apply(this, args); render(); }; }
   const extWidget = externalPromptWidget();
-  if (extWidget) { const old = extWidget.callback; extWidget.callback = value => { old?.(value); render(); }; }
+  if (extWidget) { const old = extWidget.callback; extWidget.callback = function (...args) { old?.apply(this, args); render(); }; }
   const lengthWidget = node.widgets?.find(w => w.name === "duration");
-  if (lengthWidget) { const old = lengthWidget.callback; lengthWidget.callback = value => { old?.(value); emit(); render(); }; }
+  if (lengthWidget) { const old = lengthWidget.callback; lengthWidget.callback = function (...args) { old?.apply(this, args); emit(); render(); }; }
   const fpsWidget = node.widgets?.find(w => w.name === "frame_rate");
-  if (fpsWidget) { const old = fpsWidget.callback; fpsWidget.callback = value => { old?.(value); emit(); render(); }; }
+  if (fpsWidget) { const old = fpsWidget.callback; fpsWidget.callback = function (...args) { old?.apply(this, args); emit(); render(); }; }
   const oldDrawForeground = node.onDrawForeground;
   node.onDrawForeground = function (...args) { oldDrawForeground?.apply(this, args); const seconds = Math.max(1, Number(lengthWidget?.value) || 5); if (seconds !== lastTimelineLength) render(); };
   node.__dasiwaH3LengthPoll = window.setInterval(() => { const seconds = Math.max(1, Number(lengthWidget?.value) || 5); if (seconds !== lastTimelineLength) render(); }, 200);

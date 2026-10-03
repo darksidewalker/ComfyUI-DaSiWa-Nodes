@@ -4,9 +4,10 @@ const IMAGE_ROLES = ["subject", "style", "keyframe", "pose", "custom"];
 
 export function refPromptFields(text) {
   const value = String(text || "").trim();
-  const matches = [...value.matchAll(/^[ \t]*(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music|soundscape|music):[ \t]*/gm)];
-  if (matches.length !== REF_KEYS.length || matches[0].index !== 0 || new Set(matches.map(m => m[1] === "soundscape" ? "overall_soundscape" : m[1] === "music" ? "non_diegetic_music" : m[1])).size !== REF_KEYS.length) return null;
-  return Object.fromEntries(matches.map((m, i) => [m[1] === "overall_soundscape" ? "soundscape" : m[1] === "non_diegetic_music" ? "music" : m[1], value.slice(m.index + m[0].length, matches[i + 1]?.index ?? value.length).trim()]));
+  const matches = [...value.matchAll(/^[ \t]*(subject_definitions|summary|retention_analysis|detailed_description|overall_soundscape|non_diegetic_music|soundscape|music):[ \t]*/gmi)];
+  const keys = matches.map(m => m[1].toLowerCase()).map(key => key === "overall_soundscape" ? "soundscape" : key === "non_diegetic_music" ? "music" : key);
+  if (matches.length !== REF_KEYS.length || matches[0].index !== 0 || new Set(keys).size !== REF_KEYS.length) return null;
+  return Object.fromEntries(matches.map((m, i) => [keys[i], value.slice(m.index + m[0].length, matches[i + 1]?.index ?? value.length).trim()]));
 }
 
 export function refTemplate(text = "", definitions) {

@@ -1,20 +1,33 @@
 """Lightweight continuity-policy regression checks; no ComfyUI or torch required."""
 import ast
+import importlib
+import json
 from pathlib import Path
-import re
+from typing import Any
 import subprocess
+import sys
+from types import ModuleType
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[2]
+# Load the real pure helpers without importing the ComfyUI node-pack entrypoint.
+PACKAGE = "_dasiwa_policy_nodes"
+package = ModuleType(PACKAGE)
+package.__path__ = [str(ROOT / "nodes")]
+sys.modules[PACKAGE] = package
+builder = importlib.import_module(f"{PACKAGE}.helper_minimax_h3_prompt_builder")
+forge = importlib.import_module(f"{PACKAGE}.h3_forge")
 
 
 def policy_namespace():
     source = ast.parse((ROOT / "nodes/h3_continuity/core.py").read_text())
     chosen = [node for node in source.body if isinstance(node, ast.Assign) and any(
         isinstance(target, ast.Name) and target.id == "DEFAULT_PROMPT" for target in node.targets
-    ) or isinstance(node, ast.FunctionDef) and node.name == "compose_prompt"]
-    namespace = {}
+    ) or isinstance(node, ast.FunctionDef) and node.name in {
+        "_window_context", "compose_ref_fields", "compose_prompt"}]
+    namespace: dict[str, Any] = {"__name__": f"{PACKAGE}.h3_continuity.core",
+                                 "__package__": f"{PACKAGE}.h3_continuity"}
     exec(compile(ast.Module(body=chosen, type_ignores=[]), "core.py", "exec"), namespace)
     return namespace
 
@@ -49,10 +62,65 @@ class ContinuityPolicyTests(unittest.TestCase):
         self.assertIn("Next action: Accelerate after the seam.", prompt)
         self.assertNotIn("With no next action", prompt)
 
+    def test_structured_prompt_preserves_definitions_and_empty_music(self):
+        fields = {"subject_definitions": "<Subject 1> is the rider.",
+                  "summary": "The rider turns.", "retention_analysis": "Keep the same coat.",
+                  "detailed_description": "The rider turns toward the camera.",
+                  "soundscape": "Hooves and wind.", "music": ""}
+        authored = builder.build_ref_prompt({"ref": fields}, preserve_empty=True)
+        settings = {**self.settings, "continuation_prompt": authored}
+        parsed = builder.parse_ref_prompt(self.compose(settings))
+        self.assertEqual(parsed["subject_definitions"], fields["subject_definitions"])
+        self.assertEqual(parsed["retention_analysis"], fields["retention_analysis"])
+        self.assertEqual(parsed["music"], "")
+        self.assertEqual(parsed["detailed_description"].count("This is a continuation window."), 1)
+        self.assertIn(fields["detailed_description"], parsed["detailed_description"])
+        self.assertEqual(settings["continuation_prompt"], authored)
+
+    def test_legacy_structured_migration_keeps_idea_out_of_music(self):
+        script = """import {pathToFileURL} from 'node:url';
+const {normalizeContinuity} = await import(pathToFileURL(process.argv[1]).href);
+let input = ''; for await (const chunk of process.stdin) input += chunk;
+const c = JSON.parse(input), duration = {value: 5};
+normalizeContinuity(c, duration);
+const first = JSON.stringify(c);
+normalizeContinuity(c, duration);
+if (JSON.stringify(c) !== first) throw Error('Migration is not idempotent');
+console.log(JSON.stringify(c));
+"""
+        for music, uppercase, aliases in (("", False, False), ("Quiet strings.", False, False),
+                                           ("", True, False), ("Quiet strings.", True, True)):
+            with self.subTest(music=music, uppercase=uppercase, aliases=aliases):
+                fields = {"subject_definitions": "<Subject 1> is the rider.",
+                          "summary": "The rider turns.", "retention_analysis": "Keep the coat.",
+                          "detailed_description": "The rider turns toward the camera.",
+                          "soundscape": "Hooves and wind.", "music": music}
+                authored = builder.build_ref_prompt({"ref": fields}, preserve_empty=True)
+                if aliases:
+                    authored = authored.replace("overall_soundscape:", "soundscape:").replace("non_diegetic_music:", "music:")
+                if uppercase:
+                    authored = "\n".join(line.upper() if line.endswith(":") else line for line in authored.split("\n"))
+                raw = {"version": 2, "operation": "continue", "source_id": "parent",
+                       "extension_frames": 119, "continuation_prompt": authored,
+                       "idea": "Speed up after the seam."}
+                result = subprocess.run(
+                    ["node", "--input-type=module", "-e", script,
+                     str(ROOT / "js/minimax_h3_continuity.js")],
+                    input=json.dumps(raw), text=True, capture_output=True, check=True)
+                migrated = json.loads(result.stdout)
+                self.assertEqual(migrated["version"], 3)
+                parsed = builder.parse_ref_prompt(migrated["continuation_prompt"])
+                self.assertIsNotNone(parsed)
+                for key in fields.keys() - {"detailed_description"}:
+                    self.assertEqual(parsed[key], fields[key])
+                self.assertIn("Speed up after the seam.", parsed["detailed_description"])
+                composed = builder.parse_ref_prompt(self.compose({**self.settings, **migrated}))
+                self.assertEqual(composed["music"], music)
+                self.assertEqual(composed["detailed_description"].count("Speed up after the seam."), 1)
+
     def test_v3_normalization_preserves_auto_and_custom_prompts(self):
-        script = """import {readFileSync} from 'node:fs';
-const text = readFileSync(process.argv[1], 'utf8');
-const m = await import('data:text/javascript,' + encodeURIComponent(text));
+        script = """import {pathToFileURL} from 'node:url';
+const m = await import(pathToFileURL(process.argv[1]).href);
 if ('CONTINUITY_LEGACY_PROMPT' in m) process.exit(1);
 const auto = m.normalizeContinuity({version:3, continuation_prompt:'', source_id:'', operation:'continue'});
 if (auto.continuation_prompt !== '' || auto.operation !== 'new') process.exit(2);
@@ -71,28 +139,15 @@ if (custom.continuation_prompt !== 'Pan after the seam.' || custom.operation !==
         self.assertIn("camera", system)
         self.assertIn("next action", system)
     def test_forge_without_new_idea_respects_existing_next_action(self):
-        source = ast.parse((ROOT / "nodes/h3_forge.py").read_text())
-        func = next(node for node in source.body if isinstance(node, ast.FunctionDef)
-                    and node.name == "generate_continuity_draft")
-        func.decorator_list = []
-        namespace = {"__import__": __import__, "re": re, "os": __import__("os"),
-                     "_THINK": re.compile(r"<think>.*?</think>", re.S),
-                     "CONTINUATION_SYSTEM": "test-system", "urlerror": __import__("urllib.error", fromlist=["HTTPError"]),
-                     "load_bundle": lambda: {"default_creativity": "normal", "default_detail": 5,
-                                             "creativity_presets": {"normal": {"rule": "natural"}},
-                                             "detail_levels": {"5": {"rule": "100-200 words"}},
-                                             "context_length": 4096, "max_output_chars": 7000},
-                     "scale_detail_rule": lambda rule, duration: rule,
-                     "_is_this_machine": lambda base: False, "_FORGE_LOADED": set()}
         backend = Mock(base="http://remote.invalid")
         backend.models.return_value = [{"id": "ollama:test"}]
         backend.can_see.return_value = False
         backend.chat.return_value = ("She sprints while the camera pans.", {})
         backend.unload.return_value = True
-        namespace["backends"] = lambda settings: {"ollama": backend}
-        exec(compile(ast.Module(body=[func], type_ignores=[]), "h3_forge.py", "exec"), namespace)
-        namespace["generate_continuity_draft"]({"prompt": "old clip"}, "", "/unused", "ollama:test", {},
-                                                current_prompt="She sprints; camera pans after the seam.")
+        with patch.object(forge, "backends", return_value={"ollama": backend}), \
+             patch.object(forge, "_is_this_machine", return_value=False):
+            forge.generate_continuity_draft({"prompt": "old clip"}, "", "/unused", "ollama:test", {},
+                                            current_prompt="She sprints; camera pans after the seam.")
         user = backend.chat.call_args.args[2]
         self.assertIn("She sprints; camera pans after the seam.", user)
         self.assertIn("Follow the current next-action draft", user)

@@ -1,6 +1,15 @@
 # H3 Director Continuity
 
-The Director owns the controls. Selecting a video or checkpoint automatically shows **Continuity Active**. The actual model mode stays selected; there is no Continue pseudo-mode. The existing **Duration** input controls newly added seconds. The supplied wired workflow captures new takes by default; older capture-off workflows retain their preference.
+The Director owns the controls. Selecting a video or checkpoint automatically shows **Continuity Active**. The actual model mode stays selected; there is no Continue pseudo-mode. The existing **Duration** input controls newly added seconds. Checkpoint capture for new takes is opt-in; saved workflows retain their capture preference.
+
+When loading an older v1/v2 workflow, an active continuation's saved +frames is
+converted once to Duration (`frames / 24`). An inactive preselected source stays
+inactive. Custom next-action text and the old idea are retained; the former stock
+prefill becomes the current automatic policy. Subsequent Duration edits remain
+authoritative. In a structured REF2VA prompt, the old idea is inserted into
+`detailed_description`, not appended to the final music section. Definitions,
+soundscape and empty music remain unchanged. This migration changes workflow
+settings, not saved checkpoints.
 
 ## Before you start
 
@@ -63,7 +72,18 @@ flowchart TD
 
 The sampler's latent path may include native **Set Latent Noise Mask**, **Separate AV Latent** and **Concat AV Latent** nodes. Capture follows the video-carrying latent inputs back to this Director Guide; an unrelated video latent or a connection only through audio, masks or conditioning does not qualify.
 
+Keep **Append & Stage before spatial latent upscaling**. It joins and stores the
+timeline at the Director's source canvas. Upscale its cumulative output for
+decoding/export. Upscaling only the new sample before Append can give it a
+different spatial shape from the pinned source and prevent continuation. The
+same ordering also keeps captured checkpoints at the Director's canvas.
+
 For fixed input audio, split the Guide's AV latent, connect its video output to Concat AV Latent, and feed externally encoded H3 audio through Set Latent Noise Mask with a zero mask into Concat's audio input. Connect the combined latent to the sampler. This works with **∞ Save new takes** without adding an audio-lock mode to the Director. Keep video dimensions and temporal layout unchanged; for continuations, align replacement audio to the whole sample window, including the hidden overlap. Masking does not guarantee bit-exact original audio after VAE reconstruction.
+
+The companion V26 ContinuityFix workflow starts with capture **off** and no
+source selected. Enable **∞ Save new takes** before the initial generation if
+you want it to become a checkpoint; then select that checkpoint for continuation.
+Loading the workflow does not enable capture automatically.
 
 The supplied workflow exposes `continuity_ticket` from Settings and places Publish at the root. Do not feed the export filename back into Settings or substitute an unrelated Set/Get filename. The visible root graph contains model/CLIP paths through Settings in both directions; the expanded node dependencies are acyclic.
 
@@ -128,4 +148,37 @@ Local media is bounded to 3,600 seconds and 33,554,432 pixels per source/canvas 
 
 No model monkeypatch is installed. Native tail/window/append code remains the MIT-licensed [ttulttul continuation implementation](https://github.com/ttulttul/ComfyUI-Minimax-H3-Continuation), with its license retained in `nodes/h3_continuity/vendor/LICENSE`. Native ComfyUI arbitrary-frame guides are required. The source prefix is exact at the latent level; re-decoding or postprocessing may change prior pixels/audio.
 
-CPU, media and browser harness tests do not establish visual/acoustic seam quality. Perform the GPU acceptance runs described in the package's maintainer notes before treating this as production-validated.
+## Maintainer validation
+
+Run the model-free policy, capture wiring and Python/JavaScript timing checks:
+
+```sh
+python -m pytest -q .github/scripts
+node --test .github/scripts/test_h3_continuity_migration.mjs
+node .github/scripts/test_h3_forge_groups_ui.mjs
+```
+
+The CPU latent smoke test uses the real ComfyUI core and this node pack, without
+loading models. Use the ComfyUI interpreter and pass its source directory:
+
+```sh
+/path/to/ComfyUI/venv/bin/python .github/scripts/h3_continuity_latent_smoke.py --repo . --comfy /path/to/ComfyUI
+```
+
+For graph restoration, run `h3_continuity_browser_smoke.py` against an isolated
+ComfyUI instance loading this checkout. Its test-only dependency is Playwright
+with Chromium installed; it is not part of the node-pack requirements. The test
+checks the actual served assets, `nodeCreated` / `loadedGraphNode`, native widget
+callbacks and graph save/reload in classic and Nodes 2.0 modes. It never queues
+inference. If the test pack uses another directory name, set `--asset-prefix`.
+
+```sh
+python .github/scripts/h3_continuity_browser_smoke.py http://127.0.0.1:8199
+```
+
+Before release, perform a real H3 capture and continuation with latent upscale
+bypassed, then repeat with it enabled. Check Source + Added = Total, 24 fps and
+AV duration, audible/visible seam quality, pinned source identity and checkpoint
+canvas. Append must remain before the spatial upscaler in both paths. Model-free
+and CPU tests do not establish visual/acoustic seam quality or neural upscaler
+correctness.
