@@ -7,7 +7,7 @@
 // writing the result back.
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { forgeReferences, refPromptFields, referenceSnapshot, referenceTags } from "./minimax_h3_forge_state.js";
+import { forgeReferences, labelRole, refPromptFields, referenceSnapshot, referenceTags } from "./minimax_h3_forge_state.js";
 
 // Server addresses live in ComfyUI Settings, never in the workflow, so a
 // downloaded workflow cannot point this machine at a server of its choosing.
@@ -34,6 +34,21 @@ const openDialogs = new WeakMap();
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
 const HISTORY_KEY = "dasiwaH3ForgeHistory";
 const GROUPS_KEY = "dasiwaH3ForgeSubjectGroups";
+// A REF2VA picture's label is picked in two steps: what it is, then - for
+// characters only - which one, or which ones left to right. The saved value
+// is one string ("character-2", "group-21", "place"), which is what the
+// server reads.
+const PICTURE_KINDS = [["character", "Character"], ["group", "Several characters"], ["place", "Place"], ["style", "Style"], ["first-frame", "First frame"], ["last-frame", "Last frame"], ["pose", "Pose"], ["custom", "Custom"]];
+const PICTURE_WHO = {
+  character: [["character-1", "Character 1"], ["character-2", "Character 2"], ["character-3", "Character 3"], ["character-4", "Character 4"]],
+  group: [["group-12", "1 + 2 (1 on the left)"], ["group-21", "2 + 1 (2 on the left)"], ["group-13", "1 + 3 (1 on the left)"], ["group-31", "3 + 1 (3 on the left)"],
+    ["group-23", "2 + 3 (2 on the left)"], ["group-32", "3 + 2 (3 on the left)"], ["group-123", "1 + 2 + 3 (left to right)"]],
+};
+const pictureKind = label => label.startsWith("character-") ? "character" : label.startsWith("group-") ? "group" : label;
+const INSTRUCTIONS_HINT = {
+  pose: "Pose only; identity, clothes and background stay unchanged. Add details if needed.",
+  custom: "Describe what to use from this image (required).",
+};
 function forgeHistory(node) {
   const saved = node.properties?.[HISTORY_KEY];
   return Array.isArray(saved) ? saved.filter(entry => entry && typeof entry.simple_prompt === "string" && entry.simple_prompt.trim() && typeof entry.mode === "string" && entry.fields && typeof entry.fields === "object").slice(0, 3) : [];
@@ -73,6 +88,7 @@ function installStyles() {
   .ds-forge h3{margin:0;font-size:15px;display:flex;justify-content:space-between;align-items:center}
   .ds-forge label{color:#9fb3c2;font-weight:600;font-size:12px}
   .ds-forge textarea,.ds-forge select,.ds-forge input[type=text]{width:100%;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;font:inherit}
+  .ds-forge option,.ds-forge optgroup{background:#0d1217;color:#e5eef4}
   .ds-forge textarea{min-height:90px;resize:vertical}
   .ds-forge .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .ds-forge .field{display:flex;flex-direction:column;gap:4px}
@@ -86,8 +102,8 @@ function installStyles() {
   .ds-forge .status.error{color:#ff8a8a}
   .ds-forge .muted{color:#8fa3b2;font-size:12px}
   .ds-forge .refs{display:flex;flex-direction:column;gap:6px}
-  .ds-forge .ref{display:grid;grid-template-columns:48px 90px 130px 1fr;gap:8px;align-items:center}
-  .ds-forge .ref.has-group{grid-template-columns:48px 76px 105px 145px minmax(90px,1fr)}
+  .ds-forge .ref{display:grid;grid-template-columns:48px 80px minmax(130px,auto) 1fr;gap:8px;align-items:center}
+  .ds-forge .pick{display:flex;flex-direction:column;gap:4px}
   .ds-forge .ref-notes textarea{min-height:48px;font-size:12px}
   .ds-forge .ref-notes details{font-size:11px;color:#9fb3c2}
   .ds-forge .ref-notes details input{margin-top:4px}
@@ -154,7 +170,6 @@ async function open(node) {
       openedKey = hook.contextKey?.();
     }
   };
-  const groupControls = [];
   let includeReferences = null;
   if (continuity) box.append(el("div", { className: "muted", textContent: "The source ending and Duration guide this draft. A vision model uses tail frames internally; audio is not analyzed. Review the result, then Apply to node." }));
   if (continuity && mode === "REF2VA" && hook.setUseReferences) {
@@ -164,64 +179,59 @@ async function open(node) {
     } });
     box.append(el("label", {}, includeReferences, " Include timeline references"));
   }
+  // REF2VA pictures: one label each - Character 1-4, several characters in
+    // one picture, Place, Style, First or Last frame, Pose, Custom. Pictures
+    // with the same Character number are one subject (what subject groups
+    // did), and the idea names the labels. For a new draft the node writes
+    // who is who and no picture goes to the model; H3 sees them itself.
+  // Base-mode pictures are frames by definition and need no label.
+  const labelled = mode === "REF2VA" && refs.some(r => r.kind === "image" && r.easy_role);
   if (refs.length) {
+    if (!continuity && labelled) brief.placeholder = 'Name the labels: "Character 1 sits on the bed in the place. Character 2 walks in and waves."';
     const list = el("div", { className: "refs" });
-    const groupable = mode === "REF2VA" && refs.filter(r => r.kind === "image").length >= 2;
-    const groupNote = el("div", { className: "muted" });
-    const updateGroupNote = () => {
-      const groups = new Map();
-      let number = 0;
-      for (const ref of refs) {
-        if (ref.kind !== "image") continue;
-        number++;
-        if (ref.role === "subject" && ref.subject_group) groups.set(ref.subject_group, [...(groups.get(ref.subject_group) || []), number]);
-      }
-      groupNote.textContent = [...groups].map(([id, numbers]) => numbers.length > 1
-        ? `Group ${id}: Pictures ${numbers.join(", ")}`
-        : `Group ${id}: choose another picture to group`).join(" · ") || "No subject groups. Pictures stay separate.";
-    };
     const tags = referenceTags(refs);
     for (const [index, ref] of refs.entries()) {
       const name = tags[index].map(tag => tag.slice(1, -1)).join(" + ");
       const thumb = ref.kind === "image" && ref.path ? el("img", { src: viewUrl(ref.path) }) : el("span", { className: "muted", textContent: ref.saved_reference ? "saved" : ref.kind });
       let roleCell;
-      let groupCell = null;
-      if (ref.kind === "image" && mode === "REF2VA" && ref.item) {
-        roleCell = el("select", { onchange: e => {
-          ref.role = e.target.value;
-          persistReference(ref, { forge_role: e.target.value, forge_subject_group: e.target.value === "subject" ? ref.subject_group : "" });
-          if (e.target.value !== "subject" && ref.subject_group) {
-            ref.subject_group = "";
-            // Empty canonical group overrides legacy workflow properties.
-            if (groupCell) groupCell.value = "";
-          }
-          if (groupCell) groupCell.disabled = e.target.value !== "subject";
-          instructions.placeholder = ref.role === "pose" ? "Pose only; identity, clothes and background stay unchanged. Add details if needed." : ref.role === "custom" ? "Describe what to use from this image (required)." : "What should this reference contribute? (optional)";
+      let instructions = null;
+      if (ref.kind === "image" && mode === "REF2VA" && ref.item && ref.easy_role) {
+        const save = value => {
+          ref.easy_role = value;
+          const role = labelRole(value);
+          ref.role = role.forge_role; ref.subject_group = role.forge_subject_group;
+          persistReference(ref, { forge_label: value, ...role });
+          if (instructions) instructions.placeholder = INSTRUCTIONS_HINT[value] || "What should this reference contribute? (optional)";
           node.graph?.setDirtyCanvas(true, true);
-          updateGroupNote();
-        } });
-        roleCell.setAttribute("aria-label", `${name} role`);
-        for (const r of ["subject", "style", "keyframe", "pose", "custom"]) roleCell.append(el("option", { value: r, textContent: r, selected: ref.role === r }));
-        if (groupable) {
-          groupCell = el("select", { title: "Subject-aware grouping: give pictures of the SAME subject the same letter. Leave Separate for unrelated pictures.", disabled: ref.role !== "subject", onchange: e => {
-            ref.subject_group = e.target.value;
-            persistReference(ref, { forge_subject_group: e.target.value });
-            node.graph?.setDirtyCanvas(true, true);
-            updateGroupNote();
-          } });
-          groupCell.append(el("option", { value: "", textContent: "Separate" }));
-          for (let i = 0; i < Math.min(26, refs.filter(r => r.kind === "image").length); i++) {
-            const id = String.fromCharCode(65 + i);
-            groupCell.append(el("option", { value: id, textContent: `Group ${id}` }));
-          }
-          groupCell.value = ref.subject_group || "";
-          groupControls.push([groupCell, ref]);
-        }
+        };
+        const kindSel = el("select", { title: "What this picture is." });
+        kindSel.setAttribute("aria-label", `${name} label`);
+        for (const [value, label] of PICTURE_KINDS) kindSel.append(el("option", { value, textContent: label, selected: pictureKind(ref.easy_role) === value }));
+        const whoSel = el("select", { title: "Which character. Pictures with the same Character number are one character." });
+        whoSel.setAttribute("aria-label", `${name} character`);
+        const fillWho = () => {
+          const choices = PICTURE_WHO[pictureKind(ref.easy_role)];
+          whoSel.replaceChildren(...(choices || []).map(([value, label]) => el("option", { value, textContent: label, selected: value === ref.easy_role })));
+          whoSel.hidden = !choices;
+        };
+        // Switching to Character picks a number no other picture uses.
+        const freeCharacter = () => {
+          const used = new Set(refs.filter(r => r !== ref && r.easy_role?.startsWith("character-")).map(r => r.easy_role));
+          return PICTURE_WHO.character.find(([value]) => !used.has(value))?.[0] || "character-1";
+        };
+        kindSel.onchange = e => {
+          const kind = e.target.value;
+          save(kind === "character" ? freeCharacter() : PICTURE_WHO[kind]?.[0][0] || kind);
+          fillWho();
+        };
+        whoSel.onchange = e => save(e.target.value);
+        fillWho();
+        roleCell = el("span", { className: "pick" }, kindSel, whoSel);
       } else {
-        roleCell = el("span", { className: "muted", textContent: ref.kind === "image" ? BASE_ROLE[mode] || "frame" : ref.kind === "video" ? `motion · ${ref.stream}` : "voice" });
+        roleCell = el("span", { className: "muted", textContent: ref.saved_reference ? "saved reference" : ref.kind === "image" ? BASE_ROLE[mode] || "frame" : ref.kind === "video" ? `motion · ${ref.stream}` : "voice" });
       }
       const notes = el("div", { className: "field ref-notes" });
-      const instructions = el("textarea", { value: ref.instructions || "", maxLength: 4000, rows: 2, placeholder: ref.role === "pose" ? "Pose only; identity, clothes and background stay unchanged. Add details if needed." : "What should this reference contribute? (optional)", oninput: e => { ref.instructions = e.target.value; persistReference(ref, { forge_instructions: ref.instructions }); } });
+      instructions = el("textarea", { value: ref.instructions || "", maxLength: 4000, rows: 2, placeholder: INSTRUCTIONS_HINT[ref.easy_role] || (ref.role === "pose" ? INSTRUCTIONS_HINT.pose : "What should this reference contribute? (optional)"), oninput: e => { ref.instructions = e.target.value; persistReference(ref, { forge_instructions: ref.instructions }); } });
       instructions.setAttribute("aria-label", `${name} reference instructions`);
       if (ref.saved_reference) instructions.readOnly = true;
       notes.append(instructions);
@@ -234,13 +244,13 @@ async function open(node) {
         }
         notes.append(extra);
       }
-      list.append(el("div", { className: groupable ? "ref has-group" : "ref" }, thumb, el("span", { textContent: name }), roleCell, ...(groupable ? [groupCell || el("span")] : []), notes));
+      list.append(el("div", { className: "ref" }, thumb, el("span", { textContent: name }), roleCell, notes));
     }
     box.append(el("div", { className: "field" }, el("label", { textContent: "References on the timeline" }), list));
-    if (groupable) {
-      updateGroupNote();
-      box.append(el("div", { className: "field" }, el("label", { textContent: "Subject-aware grouping (optional)" }),
-        el("span", { className: "muted", textContent: "Assign the same Subject letter to pictures of the same person or object. Separate leaves each picture independent; two pictures are needed for a group." }), groupNote));
+    if (labelled) {
+      box.append(el("span", { className: "muted", textContent: continuity
+        ? "Pictures with the same Character number are one character."
+        : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". The pictures are not sent to the model: H3 sees them itself.' }));
     }
   } else if (mode !== "T2VA" && !continuity) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
@@ -258,9 +268,13 @@ async function open(node) {
   const detail = el("input", { type: "range", min: 1, max: 10, step: 1 });
   const detailLabel = el("span", { className: "muted" });
   const creativity = el("select");
+  // Auto lets the model choose; a number is an instruction the server checks.
+  const shots = el("select", { title: "How many shots. Auto lets the model choose." });
   box.append(el("div", { className: "row" },
     el("div", { className: "field" }, el("label", { textContent: "Model" }), modelSel),
-    el("div", { className: "field" }, el("label", { textContent: "Creativity" }), creativity)));
+    el("div", { className: "field" }, el("label", { textContent: "Creativity" }), creativity),
+    // A continuation is one uninterrupted shot, so it has no Shots choice.
+    el("div", { className: "field", hidden: !!continuity }, el("label", { textContent: "Shots" }), shots)));
   box.append(el("div", { className: "field" }, el("label", {}, "Detail ", detailLabel), detail));
   const status = el("span", { className: "status" });
   const setStatus = (msg, err = false) => { status.textContent = msg; status.classList.toggle("error", err); };
@@ -273,11 +287,10 @@ async function open(node) {
   box.append(historyBox);
   const inputKey = () => JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r)]);
   const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
-  const controls = [brief, modelSel, detail, creativity, structured, ...referenceControls];
+  const controls = [brief, modelSel, detail, creativity, shots, structured, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });
     if (includeReferences) includeReferences.disabled = !!running;
-    if (!disabled) groupControls.forEach(([control, ref]) => { control.disabled = ref.role !== "subject"; });
   };
   setControlsDisabled(true);
   let result = null;
@@ -287,9 +300,12 @@ async function open(node) {
     if (typeof entry.structured === "boolean") structured.checked = entry.structured;
     // Saved drafts are previews, not a source of identities for the next request.
     if (entry.draftOptions) {
-      const { model, detail: level, creativity: preset } = entry.draftOptions;
+      const { model, detail: level, creativity: preset, shots: count } = entry.draftOptions;
       if (Array.from(modelSel.options).some(o => o.value === model)) modelSel.value = model;
       detail.value = level; creativity.value = preset;
+      // Drafts saved before the Shots control have none: they were Auto.
+      const shotsValue = String(count ?? "Auto");
+      if (Array.from(shots.options).some(o => o.value === shotsValue)) shots.value = shotsValue;
       if (detail.oninput) detail.oninput();
     }
     result = entry;
@@ -349,6 +365,9 @@ async function open(node) {
     creativity.value = prefs.creativity && data.creativity.includes(prefs.creativity) ? prefs.creativity : data.default_creativity;
     levels = data.detail_levels;
     detail.value = prefs.detail || data.default_detail;
+    const counts = (data.shot_counts || ["Auto"]).map(String);
+    for (const c of counts) shots.append(el("option", { value: c, textContent: c }));
+    shots.value = prefs.shots && counts.includes(String(prefs.shots)) ? String(prefs.shots) : String(data.default_shots || "Auto");
     genBtn.disabled = false;
     setStatus("Ready. Generate a draft, then review and Apply.");
   } catch (err) {
@@ -371,6 +390,7 @@ async function open(node) {
   brief.addEventListener("input", clearDraft);
   modelSel.addEventListener("change", clearDraft);
   creativity.addEventListener("change", clearDraft);
+  shots.addEventListener("change", clearDraft);
   detail.addEventListener("input", clearDraft);
   structured.addEventListener("change", clearDraft);
   referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
@@ -383,10 +403,10 @@ async function open(node) {
     const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
     if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
     briefs.set(briefKey, text);
-    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value) });
+    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value });
     result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
-    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value };
+    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value };
     const requestKey = openedKey, forgeInputKey = inputKey();
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     running = requestId; setControlsDisabled(true); renderHistory();
@@ -400,8 +420,8 @@ async function open(node) {
         body: JSON.stringify({
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           output_canvas: hook.outputCanvas?.() ?? null,
-          detail: Number(detail.value), creativity: creativity.value,
-          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity,
+          detail: Number(detail.value), creativity: creativity.value, shots: shots.value,
+          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy: !continuity && labelled,
           structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),
         }),
       });
