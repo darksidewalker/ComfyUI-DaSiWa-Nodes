@@ -725,6 +725,18 @@ def shot_count(shots):
     return n if n > 0 else None
 
 
+def fold_shot_briefs(brief, shots, rows):
+    """The idea with one "Shot N: ..." line per filled shot box. Port of
+    foldShotBriefs in PromptForge's server/shots.mjs: empty boxes are skipped
+    and keep their number, boxes past the picked count are dropped, and Auto
+    folds nothing. Runs before anything reads the idea."""
+    text = str(brief or "").strip()
+    n = shot_count(shots)
+    rows = rows[:n] if n and isinstance(rows, list) else []
+    lines = [f"Shot {i}: {str(row).strip()}" for i, row in enumerate(rows, 1) if str(row or "").strip()]
+    return "\n".join([text, *lines]).strip()
+
+
 def shots_line(shots):
     """The instruction for the user message, or None when nothing was picked."""
     n = shot_count(shots)
@@ -1351,7 +1363,7 @@ def _generate(body, input_directory, release_memory, stop):
     mode = body.get("mode")
     if mode not in bundle["modes"]:
         raise ForgeError("bad_mode", f"Forge does not write {mode or 'this mode'} prompts.")
-    brief = str(body.get("brief") or "").strip()
+    brief = fold_shot_briefs(body.get("brief"), body.get("shots"), body.get("shot_briefs"))
     if not brief:
         raise ForgeError("no_brief", "Write what the clip should be first.")
     kind, _, name = str(body.get("model") or "").partition(":")

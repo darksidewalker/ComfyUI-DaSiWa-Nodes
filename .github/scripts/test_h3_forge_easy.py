@@ -98,6 +98,15 @@ def test_shots_line_and_cut_repair():
     assert forge.shot_count_warning("2", segments) and forge.shot_count_warning("3", segments) is None
 
 
+def test_shot_boxes_join_the_idea():
+    assert forge.fold_shot_briefs("Rain.", "2", ["She runs.", " He turns. "]) == "Rain.\nShot 1: She runs.\nShot 2: He turns."
+    assert forge.fold_shot_briefs("x", "3", ["a", "", "c"]) == "x\nShot 1: a\nShot 3: c"
+    assert forge.fold_shot_briefs("x", "1", ["a", "b"]) == "x\nShot 1: a"
+    assert forge.fold_shot_briefs("x", "Auto", ["a"]) == "x"
+    assert forge.fold_shot_briefs("", "2", ["a", "b"]) == "Shot 1: a\nShot 2: b"
+    assert forge.fold_shot_briefs(" x ", None, None) == "x"
+
+
 def test_segments_written_in_code():
     cast = forge.easy_cast(REFS)
     segments = {

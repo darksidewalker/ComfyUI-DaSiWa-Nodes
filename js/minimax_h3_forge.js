@@ -32,6 +32,7 @@ const NO_MODELS = "No models found. Easiest fix: put a vision model folder (for 
 const STORE_KEY = "dasiwa.h3forge";
 const openDialogs = new WeakMap();
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
+const shotTexts = new Map(); // node id -> what was typed in each shot box
 const HISTORY_KEY = "dasiwaH3ForgeHistory";
 const GROUPS_KEY = "dasiwaH3ForgeSubjectGroups";
 // A REF2VA picture's label is picked in two steps: what it is, then - for
@@ -275,6 +276,25 @@ async function open(node) {
     el("div", { className: "field" }, el("label", { textContent: "Creativity" }), creativity),
     // A continuation is one uninterrupted shot, so it has no Shots choice.
     el("div", { className: "field", hidden: !!continuity }, el("label", { textContent: "Shots" }), shots)));
+  // One box per picked shot, as in PromptForge: what is typed joins the idea
+  // as "Shot N: ..." lines on the server. None on Auto or in a continuation.
+  const shotBox = el("div", { className: "field", hidden: true });
+  box.append(shotBox);
+  const typedShots = () => { if (!shotTexts.has(node.id)) shotTexts.set(node.id, []); return shotTexts.get(node.id); };
+  const shotRows = () => (shotBox.hidden ? [] : Array.from(shotBox.querySelectorAll("textarea"), t => t.value));
+  const renderShots = () => {
+    const n = Number(shots.value);
+    const count = !continuity && Number.isInteger(n) && n > 0 ? n : 0;
+    const typed = typedShots();
+    shotBox.replaceChildren(...Array.from({ length: count }, (_, i) => {
+      const input = el("textarea", { rows: 2, value: typed[i] || "", disabled: loadingModels || !!running,
+        placeholder: count === 1 ? "What happens in the shot (optional)" : `What happens in shot ${i + 1} (optional)` });
+      input.setAttribute("aria-label", `Shot ${i + 1}`);
+      input.addEventListener("input", () => { typed[i] = input.value; clearDraft(); });
+      return el("div", { className: "field" }, el("label", { textContent: `Shot ${i + 1}` }), input);
+    }));
+    shotBox.hidden = !count;
+  };
   box.append(el("div", { className: "field" }, el("label", {}, "Detail ", detailLabel), detail));
   const status = el("span", { className: "status" });
   const setStatus = (msg, err = false) => { status.textContent = msg; status.classList.toggle("error", err); };
@@ -285,11 +305,17 @@ async function open(node) {
   box.append(output);
   const historyBox = el("div", { className: "history" });
   box.append(historyBox);
-  const inputKey = () => JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r)]);
+  // Shot boxes join the key only when something is typed, so drafts saved
+  // before they existed still match.
+  const inputKey = () => {
+    const rows = shotRows().map(r => r.trim());
+    return JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r), ...(rows.some(Boolean) ? [rows] : [])]);
+  };
   const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
   const controls = [brief, modelSel, detail, creativity, shots, structured, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });
+    shotBox.querySelectorAll("textarea").forEach(c => { c.disabled = disabled; });
     if (includeReferences) includeReferences.disabled = !!running;
   };
   setControlsDisabled(true);
@@ -306,6 +332,8 @@ async function open(node) {
       // Drafts saved before the Shots control have none: they were Auto.
       const shotsValue = String(count ?? "Auto");
       if (Array.from(shots.options).some(o => o.value === shotsValue)) shots.value = shotsValue;
+      if (Array.isArray(entry.draftOptions.shot_briefs)) shotTexts.set(node.id, [...entry.draftOptions.shot_briefs]);
+      renderShots();
       if (detail.oninput) detail.oninput();
     }
     result = entry;
@@ -368,6 +396,7 @@ async function open(node) {
     const counts = (data.shot_counts || ["Auto"]).map(String);
     for (const c of counts) shots.append(el("option", { value: c, textContent: c }));
     shots.value = prefs.shots && counts.includes(String(prefs.shots)) ? String(prefs.shots) : String(data.default_shots || "Auto");
+    renderShots();
     genBtn.disabled = false;
     setStatus("Ready. Generate a draft, then review and Apply.");
   } catch (err) {
@@ -390,7 +419,7 @@ async function open(node) {
   brief.addEventListener("input", clearDraft);
   modelSel.addEventListener("change", clearDraft);
   creativity.addEventListener("change", clearDraft);
-  shots.addEventListener("change", clearDraft);
+  shots.addEventListener("change", () => { renderShots(); clearDraft(); });
   detail.addEventListener("input", clearDraft);
   structured.addEventListener("change", clearDraft);
   referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
@@ -399,14 +428,15 @@ async function open(node) {
     if (running) { cancelRun(); genBtn.disabled = true; setStatus("Cancelling… the model stops at its next token, then unloads."); return; }
     const text = brief.value.trim();
     if (openedKey !== hook.contextKey?.()) { setStatus("Director context changed. Close and reopen Forge.", true); return; }
-    if (!text && !continuity) { setStatus("Write the idea first.", true); return; }
+    const rows = shotRows();
+    if (!text && !continuity && !rows.some(r => r.trim())) { setStatus("Write the idea first.", true); return; }
     const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
     if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
     briefs.set(briefKey, text);
     remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value });
     result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
-    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value };
+    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows };
     const requestKey = openedKey, forgeInputKey = inputKey();
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     running = requestId; setControlsDisabled(true); renderHistory();
@@ -420,7 +450,7 @@ async function open(node) {
         body: JSON.stringify({
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           output_canvas: hook.outputCanvas?.() ?? null,
-          detail: Number(detail.value), creativity: creativity.value, shots: shots.value,
+          detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows,
           references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy: !continuity && labelled,
           structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),
         }),
