@@ -421,6 +421,14 @@ app.registerExtension({
                 this.setDirtyCanvas?.(true, true);
             };
 
+            // Installation can precede restoration of saved widget values.
+            // Reload without syncing: the serialized widget remains canonical.
+            this.dasiwaWildcardReloadState = () => {
+                for (const key of Object.keys(state)) delete state[key];
+                Object.assign(state, parseState(stateWidget?.value || this.properties?.wildcard_selection_state));
+                render();
+            };
+
             for (const name of ["style", "seed", "token_budget"]) {
                 const control = widget(this, name);
                 if (!control) continue;
@@ -456,6 +464,14 @@ app.registerExtension({
             return result;
         };
 
+        // LiteGraph restores widgets_values before invoking onConfigure().
+        const originalOnConfigure = nodeType.prototype.onConfigure;
+        nodeType.prototype.onConfigure = function () {
+            const result = originalOnConfigure?.apply(this, arguments);
+            this.dasiwaWildcardReloadState?.();
+            return result;
+        };
+
         return undefined;
     },
 
@@ -466,6 +482,7 @@ app.registerExtension({
         // will run after this extension has registered. Rebuild the transient,
         // non-serialized DOM widget in that lifecycle path as well.
         installWildcardPicker?.call(node);
+        node.dasiwaWildcardReloadState?.();
     },
 
     afterConfigureGraph() {
@@ -473,7 +490,9 @@ app.registerExtension({
         // widget layer has mounted. Revisit every restored instance after graph
         // configuration so the picker is always registered with that layer.
         for (const node of app.graph?._nodes || []) {
-            if (isWildcardNode(node)) installWildcardPicker?.call(node);
+            if (!isWildcardNode(node)) continue;
+            installWildcardPicker?.call(node);
+            node.dasiwaWildcardReloadState?.();
         }
     },
 });
