@@ -452,6 +452,7 @@ async function open(node) {
     statusTimer = setInterval(() => setStatus(`Writing with ${modelSel.selectedOptions[0]?.textContent || modelSel.value}… ${Math.round((Date.now() - started) / 1000)}s (Cancel stops it; the model unloads either way)`), 500);
     try {
       const res = await api.fetchApi("/dasiwa/h3/forge", {
+        timeoutMs: null,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
