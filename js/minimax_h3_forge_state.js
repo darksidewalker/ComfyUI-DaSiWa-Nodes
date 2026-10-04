@@ -50,15 +50,49 @@ export function referenceSnapshot(references) {
   return result;
 }
 
+// REF2VA picture labels (item.forge_label): what each picture is, picked in
+// Forge. "character-2" is Character 2, "group-21" a picture with Characters
+// 2 and 1 in it (2 on the left), and the rest name themselves. Pictures with
+// the same Character number are one subject, which is what a subject group
+// was, so a label also sets the role and group the other paths read.
+export const PICTURE_LABELS = ["character-1", "character-2", "character-3", "character-4", "group-12", "group-21", "group-13", "group-31",
+  "group-23", "group-32", "group-123", "place", "style", "first-frame", "last-frame", "pose", "custom"];
+
+export function labelRole(label) {
+  if (label.startsWith("character-")) return { forge_role: "subject", forge_subject_group: "ABCD"[Number(label.slice(10)) - 1] };
+  const role = { style: "style", "first-frame": "keyframe", "last-frame": "keyframe", pose: "pose", custom: "custom" }[label] || "subject";
+  return { forge_role: role, forge_subject_group: "" };
+}
+
+// A picture never labelled gets one from its role and group: a group becomes
+// one Character number, and an ungrouped subject the next free one, which is
+// what "Separate" meant.
+function pictureLabels(images) {
+  const saved = new Map(images.filter(i => PICTURE_LABELS.includes(i.forge_label)).map(i => [i.id, i.forge_label]));
+  const used = new Set([...saved.values()].flatMap(v => v.startsWith("character-") ? [Number(v.slice(10))] : v.startsWith("group-") ? [...v.slice(6)].map(Number) : []));
+  const take = () => { let n = 1; while (used.has(n) && n < 4) n += 1; used.add(n); return n; };
+  const byGroup = new Map();
+  return Object.fromEntries(images.map(item => {
+    if (saved.has(item.id)) return [item.id, saved.get(item.id)];
+    const role = IMAGE_ROLES.includes(item.forge_role) ? item.forge_role : "subject";
+    if (role !== "subject") return [item.id, { style: "style", keyframe: "first-frame", pose: "pose", custom: "custom" }[role]];
+    const group = item.group;
+    if (group && !byGroup.has(group)) byGroup.set(group, take());
+    return [item.id, `character-${group ? byGroup.get(group) : take()}`];
+  }));
+}
+
 export function forgeReferences(items, mode, legacyGroups = {}) {
   const order = { image: 0, video: 1, audio: 2 };
-  return items.filter(item => item.enabled !== false && item.value != null && order[item.type] !== undefined)
-    .slice().sort((a, b) => order[a.type] - order[b.type] || Number(a.slot ?? 0) - Number(b.slot ?? 0) || Number(a.order ?? 0) - Number(b.order ?? 0))
+  const sorted = items.filter(item => item.enabled !== false && item.value != null && order[item.type] !== undefined)
+    .slice().sort((a, b) => order[a.type] - order[b.type] || Number(a.slot ?? 0) - Number(b.slot ?? 0) || Number(a.order ?? 0) - Number(b.order ?? 0));
+  const labels = mode === "REF2VA" ? pictureLabels(sorted.filter(item => item.type === "image").map(item => ({ ...item, group: String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") }))) : {};
+  return sorted
     .map(item => {
       const common = { item, instructions: String(item.forge_instructions || ""), keep: String(item.forge_keep || ""), drop: String(item.forge_drop || "") };
       if (item.type === "image") {
         const role = mode === "REF2VA" && IMAGE_ROLES.includes(item.forge_role) ? item.forge_role : mode === "REF2VA" ? "subject" : "keyframe";
-        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "" };
+        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "", ...(labels[item.id] ? { easy_role: labels[item.id] } : {}) };
       }
       if (item.type === "audio") return { ...common, kind: "audio", duration_seconds: item.duration };
       return { ...common, kind: "video", role: "motion", stream: item.media_mode === "audio" ? "audio" : item.media_mode === "video_audio" || item.audio != null ? "both" : "video", duration_seconds: item.duration };

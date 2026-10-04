@@ -460,6 +460,16 @@ def validate_builder_state(state: dict) -> list[dict]:
 
     if mode == "REF2VA":
         ref = state.get("ref", {})
+        if _prompt_mode(state) == "simple":
+            # A typed or pasted prompt lives in simple_prompt, not the ref fields
+            # (only Forge's Apply fills those). Check its sections when it is the
+            # six-part template; plain prose is a valid REF2VA prompt as it is.
+            try:
+                ref = parse_ref_prompt(_ensure_str(state.get("simple_prompt")))
+            except ValueError:
+                ref = None
+            if ref is None:
+                return issues
         # Check both v2 and legacy v1 keys.
         has_summary = bool(_ensure_str(ref.get("summary")) or _ensure_str(ref.get("summary_text")))
         if not has_summary:
