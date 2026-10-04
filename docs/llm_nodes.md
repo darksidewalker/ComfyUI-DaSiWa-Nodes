@@ -4,7 +4,21 @@ Run local Transformers, llama.cpp GGUF, loopback Ollama, or operator-configured 
 
 ## Nodes
 
-### DaSiWa LLM Model Selector
+### DaSiWa LLM Prompt Writer
+
+The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
+
+- `model`: a GGUF file or Hugging Face model folder from `ComfyUI/models/llm`. A `.gguf` runs through llama.cpp, a folder through Transformers.
+- `write_for`: Anima, Illustrious, Krea2, Wan 2.2 or LTX 2.3.
+- `idea`: what you want, in your own words or as tags.
+- `seed`: change it, or let it randomize, for a different take on the same idea.
+- `keep_loaded`: off frees the memory after every prompt so the image model has it; on is faster when writing several in a row.
+- `picture` (optional): a reference picture for a vision model. With an empty idea, the prompt is written from the picture.
+- `server_model` (optional): a model name on Ollama, used instead of a local model. If the operator has set `DASIWA_LLM_OPENAI_URL`, that server is used instead.
+
+Everything else uses the advanced nodes' defaults, with a 2048-token budget so long prompts are not cut short. For any other setting, use the two advanced nodes below. Both run the same code.
+
+### DaSiWa LLM Model Selector (Advanced)
 
 Creates a lightweight `DASIWA_LLM_CONFIG` bundle. It does not output a live model object, which helps the analyze node unload memory reliably after generation.
 
@@ -32,7 +46,7 @@ Important controls:
 - `llama_n_ctx`, `llama_n_gpu_layers`, `llama_n_threads`, and `llama_chat_format`: llama.cpp GGUF controls. `-1` GPU layers requests full offload; `0` uses CPU only.
 - `ollama_model` and `ollama_timeout`: local Ollama API controls. The endpoint is fixed to loopback.
 
-### DaSiWa LLM Analyze
+### DaSiWa LLM Analyze (Advanced)
 
 Runs the selected model and returns:
 
@@ -109,7 +123,9 @@ The legacy Wan/LTX and caption preset IDs and instructions are unchanged. `custo
 
 For H3, choose `h3_mode` and `h3_duration`. T2VA requires no sampled pictures, I2VA/L2VA one, and FL2VA two in endpoint order. Set `max_frames` accordingly. These are reference endpoints, not arbitrary video analysis frames; do not infer output aspect ratio from them. REF2VA, labelled casts and continuation drafting remain in the Director. The existing 256-token output default is preserved for older workflows; select a larger budget such as 3500 for a full H3 result and sufficient context for its long system instructions.
 
-Non-H3 instructions are exported from PromptForge's actual registry/prompt store into `data/llm_prompt_presets.json`. H3 uses the existing `data/h3_forge.json`, shared with the Director. PromptForge is not needed at runtime. To refresh the checked-in non-H3 bundle after source instruction/registry changes:
+The image presets, Krea2, Anima and Illustrious, are short prompting guides in `data/llm_skills/`, one markdown file per model. Each one says what the job is, how that model's prompts are written, and gives one worked example. The frontmatter names the output segment and, for the tag models, `tag_style: space`, which respells any `best_quality` the model writes out of habit as `best quality` (score tags such as `score_7` and emoticons such as `o_o` keep their underscores). Edit a guide to change how that model is written for; no code change is needed. They are written for small local models, so they stay short and avoid example phrasing a small model would copy.
+
+The Wan and LTX instructions are exported from PromptForge's actual registry/prompt store into `data/llm_prompt_presets.json`. H3 uses the existing `data/h3_forge.json`, shared with the Director. PromptForge is not needed at runtime. To refresh the checked-in Wan/LTX bundle after source instruction/registry changes:
 
 ```sh
 node tools/export_llm_prompt_presets.mjs /path/to/PromptForge data/llm_prompt_presets.json
