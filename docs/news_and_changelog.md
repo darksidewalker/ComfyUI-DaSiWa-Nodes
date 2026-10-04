@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-03**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-04**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **H3 Forge picture labels and shot planning (10-04, 0.4.76):** PR #65 adds labelled REF2VA casts, Auto/1–5 shots with per-shot descriptions, cut-time repair, and typed REF2VA validation without false empty-field warnings. Separate legacy pictures remain separate beyond four characters and partially labelled groups keep their identity. Drafts retain shot descriptions; older drafts clear unrelated shot text. New image-only labelled REF2VA drafts send instructions rather than pixels to the writer; mixed/saved references keep the full definitions and vision path. Cut repair retains millisecond precision, quoted dialogue is accepted, and music heuristics warn without erasing requested accompaniment. Shots is correctly hidden during continuity. Presence penalty is explicitly zero for remote writers, llama-swap unload accepts plain-text success, and repetitive drafts are rejected before Apply. [Director guide →](minimax_h3_director.md#prompt-forge-optional)
 
 - **H3 Continuity consecutive-run fix (10-03, 0.4.75):** Re-running capture or continuation with a cached Director Guide now creates a fresh checkpoint ID at Append & Stage. This prevents `FileExistsError` / Windows `WinError 183` on the second run without overwriting previous checkpoints or changing the selected source ([#64](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/64)).
 
@@ -96,6 +98,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.4.76 | 10-04 | H3 Forge picture labels, per-shot descriptions and typed REF2VA validation; reviewed compatibility and prompt-repair fixes (#65) |
 | 0.4.75 | 10-03 | Fix H3 Continuity checkpoint collisions on consecutive runs with cached Guide outputs (#64) |
 | 0.4.74 | 10-03 | Restore wildcard picker selections after workflow/image loading (#62); allow native audio-lock latent paths with H3 Continuity capture (#58) |
 | 0.4.66 | 09-30 | System Monitor optional Ultra compact mode, right-docked when selected, all enabled metrics visible |
@@ -206,6 +209,8 @@ Patch Comfy Kitchen Attention was retired in **0.4.68**; the entries below descr
 - **08-16:** both nodes added: an approximate, model-scoped whole-block-stack residual cache (relative-L1 threshold sampling, 15–90% sampling window, bounded cache hits, auto/CUDA/CPU storage) and a one-input INT8-attention model patch; both are model-clone patches and chain in either order.
 
 ### H3 Prompt Forge
+
+- **10-04 (0.4.76, #65):** Added picture-label casts, Auto/1–5 shots and saved per-shot descriptions. Typed REF2VA prompts are validated from their actual text. Review fixes preserve separate legacy subjects and partially labelled groups, retain full definitions for mixed/saved references, repair cuts at millisecond precision, accept quoted dialogue, and warn about uncertain music intent without deleting it. Shot fields survive draft reload without leaking between same-ID nodes; continuity hides the control. Regression coverage includes backend/helper tests, Chromium DOM history/visibility checks and isolated ComfyUI registration/routes/assets.
 
 - **09-26 (0.4.60):** Vision-capable GGUF models (model + mmproj projector in the same folder) are detected and paired automatically for continuity tail-image drafting; Forge lists them as "sees pictures". OpenAI-compatible servers that require an API key are supported via the new **Settings → DaSiWa → H3 Forge → OpenAI-compatible API key** setting (sent as Bearer token to that address only). Embedding models are filtered out of the Ollama picker.
 - **09-25 (0.4.58):** Fixed compatibility with newer Transformers versions that changed the GQA helper signature (#55), restoring Forge operation on recent ComfyUI builds.

@@ -19,6 +19,7 @@ import asyncio
 import base64
 import io
 import json
+import math
 import os
 import re
 import threading
@@ -120,7 +121,7 @@ def validate_references(references):
         if not isinstance(ref, dict) or ref.get("kind") not in _KIND_LABEL:
             raise ForgeError("bad_references", "Each reference must name an image, video or audio kind.")
         for key, limit in (("instructions", 4000), ("keep", 2000), ("drop", 2000),
-                           ("path", 4096), ("subject_group", 256), ("role", 64), ("stream", 16)):
+                           ("path", 4096), ("subject_group", 256), ("role", 64), ("stream", 16), ("easy_role", 32)):
             if key in ref:
                 value = ref[key]
                 if not isinstance(value, str) or len(value) > limit:
@@ -272,18 +273,26 @@ def output_canvas_context(canvas):
             "Use this aspect ratio only; reference-image dimensions and example formats are not the output canvas.")
 
 
-def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image, attached_labels=None, output_canvas=None):
+def build_user_message(bundle, brief, mode, duration, detail, creativity, references, carries_image, attached_labels=None, output_canvas=None, cast=None, shots=None):
+    """`cast` is easy mode's (easy_cast): the brief's names become tags and the
+    cast block replaces the labelled picture lines; video, audio and saved
+    references keep theirs. `shots` is the Shots control: "Auto" or None sends
+    nothing."""
+    if cast is not None:
+        brief = easy_brief(brief, cast)
     lines = [f'Brief: "{str(brief).strip()}"']
     settings = [f"Creativity: {title_case(creativity)}", f"Mode: {mode}"]
     if duration:
         settings.append(f"Duration: {duration} sec")
     lines.append(f"Settings (context for how to write, never text to include): {' · '.join(settings)}")
     lines.append(output_canvas_context(output_canvas))
+    if shots_line(shots):
+        lines.append(shots_line(shots))
 
     preset = bundle["creativity_presets"].get(creativity)
     if preset and preset.get("rule"):
         lines.append(f"Creativity - {title_case(creativity)}. {preset['rule']}")
-        if carries_image and any(r.get("kind") == "image" for r in references):
+        if cast is None and carries_image and any(r.get("kind") == "image" for r in references):
             lines.append(
                 "A reference picture is attached. What it supplies, in the role it was given, stays exactly as "
                 "the picture shows it at every Creativity setting. Creativity decides only what happens - the "
@@ -296,7 +305,16 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
         level = detail if str(detail) in table else bundle["default_detail"]
         lines.append(f"Detail level {level} of {len(table)} - {entry.get('label', level)}. {scale_detail_rule(entry['rule'], duration)}")
 
-    if references:
+    if references and cast is not None:
+        # Labelled pictures are in the cast block; everything else keeps its
+        # reference line (videos, audio, saved references without a label).
+        ref_lines, pictures = format_references(references, mode)
+        labelled = [tag for ref, tag in pictures if ref.get("easy_role")]
+        others = [line for line in ref_lines if not any(line.startswith(f"- {tag}") for tag in labelled)]
+        if others:
+            lines += ["", "References:", *others]
+        lines += easy_lines(cast)
+    elif references:
         ref_lines, pictures = format_references(references, mode)
         lines += ["", "References:", *ref_lines]
         if any(r.get("instructions") for r in references):
@@ -345,8 +363,30 @@ def parse_segments(text, expected):
         raise ForgeError("refused", f"The model refused: {segments['Refused']}", raw)
     missing = [label for label in expected if label not in segments]
     if missing:
+        # A collapse usually eats the last sections; say what really happened.
+        lost = runaway(segments)
+        if lost:
+            raise ForgeError("runaway", f"The model lost the thread in {lost[0]} (one sentence ran {lost[1]:,} characters) "
+                             f"and never wrote {', '.join(missing)}. Regenerate, or pick a different model.", raw)
         raise ForgeError("missing_segments", f"The model left out: {', '.join(missing)}.", raw)
     return segments
+
+
+# A model that loses the thread writes one endless sentence or a list of
+# synonyms with no full stop. Real prompt sentences measured 80-300
+# characters; collapsed drafts ran 550 to 4,600 (1 Oct 2026).
+RUNAWAY_SENTENCE = 500
+
+
+def runaway(segments):
+    """The first segment holding a sentence too long to be prose, or None."""
+    for label, body in segments.items():
+        if label == "Subject definitions":
+            continue  # written by code in easy mode, and one line per subject otherwise
+        longest = max((len(s) for s in re.split(r"(?<=[.!?])(?:[\"'”’»]|</d>)*\s+", str(body or ""))), default=0)
+        if longest > RUNAWAY_SENTENCE:
+            return label, longest
+    return None
 
 
 def _bare(body, names):
@@ -413,6 +453,357 @@ def media_citation_warnings(text, references):
     citations = {(kind.title(), int(n)) for kind, n in re.findall(pattern, str(text or ""), re.I)}
     return [f"<{kind} {n}> is undefined in the current references. Review or remap this citation; source-tail frames are not numbered references."
             for kind, n in sorted(citations) if (kind.lower(), n) not in available]
+# ── Easy mode: a port of PromptForge's server/easy-mode.mjs ───────────────
+#
+# REF2VA where the person labels each picture - Character 1-4, Place, Style,
+# First frame, Last frame, Pose, Custom - and code does the bookkeeping small models get
+# wrong: numbering the subjects, writing Subject definitions from the labels,
+# and Retention analysis from the shots the model wrote. The model writes one
+# acting line per character, Summary, the shots, Soundscape and Music.
+#
+# No picture goes to the writer: H3 sees them in the Director, so the prompt
+# only has to say who is in which picture. Measured in PromptForge, 1 Oct
+# 2026, on two characters (one in two pictures) and a place: a 9B went 0/5
+# without easy mode and 5/5 with it, and a 4B 5/5 in 4-5 s a run.
+
+# "group-21" is a picture with Characters 2 and 1 in it, 2 on the left: the
+# digits are the characters, left to right. The model never sees the picture,
+# so position is what tells them apart; H3 sees it and is told who is where.
+GROUP_ROLES = ("group-12", "group-21", "group-13", "group-31", "group-23", "group-32", "group-123")
+EASY_ROLES = tuple(f"character-{n}" for n in range(1, 33)) + ("place", "style", "first-frame", "last-frame",
+              "pose", "custom") + GROUP_ROLES
+EASY_MODE = "REF2VA easy"
+_POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right")}
+
+
+def _easy_role(ref):
+    role = ref.get("easy_role")
+    return role if role in EASY_ROLES else "character-1"
+
+
+def easy_cast(references):
+    """Subjects numbered characters first, then the place, then the style.
+
+    Returns {"subjects": [{tag, kind, name, number, pictures, placements, refs}],
+    "frames": [{picture, which, ref}], "uses": [{picture, which, ref}]};
+    picture numbers count images only. A character's `pictures` are its own;
+    `placements` are group pictures it shares, as [{picture, position}].
+    `uses` are Pose and Custom pictures: no subject, only what they lend.
+    A picture with no label at all (a saved reference) keeps its own
+    reference line.
+    """
+    chars, place, style, frames, uses = {}, {"pictures": [], "refs": []}, {"pictures": [], "refs": []}, [], []
+
+    def char(num):
+        return chars.setdefault(num, {"pictures": [], "placements": [], "refs": []})
+
+    for n, ref in enumerate(_images(references), 1):
+        if not ref.get("easy_role"):
+            continue
+        role = _easy_role(ref)
+        if role in ("pose", "custom"):
+            uses.append({"picture": n, "which": role, "ref": ref})
+            continue
+        if role.startswith("group-"):
+            nums = [int(d) for d in role.split("-", 1)[1]]
+            for num, position in zip(nums, _POSITIONS[len(nums)]):
+                char(num)["placements"].append({"picture": n, "position": position})
+                char(num)["refs"].append(ref)
+            continue
+        if role.startswith("character-"):
+            entry = char(int(role.rsplit("-", 1)[1]))
+        elif role in ("place", "style"):
+            entry = place if role == "place" else style
+        else:
+            frames.append({"picture": n, "which": "first" if role == "first-frame" else "last", "ref": ref})
+            continue
+        entry["pictures"].append(n)
+        entry["refs"].append(ref)
+    subjects = [{"kind": "character", "name": f"Character {num}", "number": num, **chars[num]} for num in sorted(chars)]
+    if place["pictures"]:
+        subjects.append({"kind": "place", "name": "the place", **place})
+    if style["pictures"]:
+        subjects.append({"kind": "style", "name": "the style", **style})
+    for i, s in enumerate(subjects, 1):
+        s["tag"] = f"<Subject {i}>"
+    return {"subjects": subjects, "frames": frames, "uses": uses}
+
+
+def _join_and(items):
+    return " and ".join(items) if len(items) <= 2 else f"{', '.join(items[:-1])} and {items[-1]}"
+
+
+def _picture_list(pictures):
+    return _join_and([f"<Picture {p}>" for p in pictures])
+
+
+def _shown_in(s):
+    """Where a subject is shown: "in <Picture 1>, and on the left in <Picture 3>"."""
+    own = f"in {_picture_list(s['pictures'])}" if s["pictures"] else ""
+    shared = _join_and([f"{'in' if p['position'] == 'middle' else 'on'} the {p['position']} in <Picture {p['picture']}>"
+                        for p in s.get("placements", [])])
+    return f"{own}, and {shared}" if own and shared else own or shared
+
+
+def easy_brief(brief, cast):
+    """"Character 2" -> <Subject 2>, "the place" -> the place's tag, "picture 3"
+    -> <Picture 3>. Only what the cast has; a bare "place" ("takes place") stays."""
+    by_number = {s["number"]: s["tag"] for s in cast["subjects"] if s["kind"] == "character"}
+    place = next((s["tag"] for s in cast["subjects"] if s["kind"] == "place"), None)
+    last = max([p for s in cast["subjects"] for p in s["pictures"]]
+               + [p["picture"] for s in cast["subjects"] for p in s.get("placements", [])]
+               + [f["picture"] for f in cast["frames"] + cast["uses"]] + [0])
+    text = re.sub(r"\b(?:character|char)\s*#?\s*(\d+)\b",
+                  lambda m: by_number.get(int(m.group(1)), m.group(0)), str(brief), flags=re.I)
+    if place:
+        text = re.sub(r"\bthe (?:place|scenery|location)\b", place, text, flags=re.I)
+    return re.sub(r"(?<!<)\b(?:picture|pic|image)\s*#?\s*(\d+)\b(?!>)",
+                  lambda m: f"<Picture {int(m.group(1))}>" if 1 <= int(m.group(1)) <= last else m.group(0), text, flags=re.I)
+
+
+def _notes(refs):
+    def joined(key):
+        seen = []
+        for r in refs:
+            value = str(r.get(key) or "").strip()
+            if value and value not in seen:
+                seen.append(value)
+        return "; ".join(seen)
+    return joined("instructions"), joined("keep"), joined("drop")
+
+
+def _tail(refs):
+    """The person's own notes on these pictures, for the end of a cast line."""
+    instructions, keep, drop = _notes(refs)
+    extra = " · ".join(x for x in (instructions and f"instructions: {instructions}", keep and f"keep: {keep}",
+                                    drop and f"leave out: {drop}") if x)
+    return f" · {extra}" if extra else ""
+
+
+def easy_lines(cast):
+    """The cast block, in place of the per-picture reference lines."""
+    lines = ["", "Cast (fixed). The person labelled every picture, and Subject definitions are already written from those labels. "
+             "Use exactly these subjects: add none, merge none, split none. The video model sees the pictures itself, "
+             "so never describe how anyone or anything looks."]
+    for s in cast["subjects"]:
+        tail = _tail(s["refs"])
+        pics = _picture_list(s["pictures"])
+        if s["kind"] == "character":
+            lines.append(f'- {s["tag"]} is "{s["name"]}" in the brief, a character, shown {_shown_in(s)}{tail}')
+        elif s["kind"] == "place":
+            lines.append(f"- {s['tag']} is the place, shown in {pics}. The shots happen here; anyone else in it is part of the place, not a subject{tail}")
+        else:
+            lines.append(f"- {s['tag']} is the rendering style, from {pics}: how the video looks, not what is in it{tail}")
+    for f in cast["frames"]:
+        lines.append((f"- <Picture {f['picture']}> is the first frame: [Shot 1] opens on it exactly" if f["which"] == "first"
+                      else f"- <Picture {f['picture']}> is the last frame: the final shot ends on it exactly") + _tail([f["ref"]]))
+    for u in cast["uses"]:
+        lines.append((f"- <Picture {u['picture']}> gives a pose only: stance, limb position and gesture; not who anyone is, "
+                      "their clothes or the background" if u["which"] == "pose"
+                      else f"- <Picture {u['picture']}> is used only as its instructions say") + _tail([u["ref"]]))
+    return lines
+
+
+def _shots(description):
+    parts = re.split(r"\[Shot (\d+)\]", str(description or ""))
+    shots = {}
+    for i in range(1, len(parts), 2):
+        shots[int(parts[i])] = shots.get(int(parts[i]), "") + (parts[i + 1] if i + 1 < len(parts) else "")
+    return shots
+
+
+def _acting(body):
+    """The model's acting lines by tag: "<Subject 1>: ...", "- <Subject 1> — ..."."""
+    out = {}
+    for raw in str(body or "").splitlines():
+        m = re.match(r"^\s*(?:[-*•]\s*)?(<Subject \d+>)\s*(?:[:—–-]\s*)?(.*)$", raw)
+        if m and m.group(2).strip():
+            out[m.group(1)] = f"{out[m.group(1)]} {m.group(2).strip()}" if m.group(1) in out else m.group(2).strip()
+    return out
+
+
+def _span(nums):
+    if not nums:
+        return None
+    lo, hi = min(nums), max(nums)
+    return f"[Shot {lo}]" if lo == hi else f"[Shot {lo}]-[Shot {hi}]"
+
+
+def _sentence(text):
+    t = str(text or "").strip()
+    return t if not t or t[-1] in ".!?" else f"{t}."
+
+
+# Words that name how a video is made. In easy mode the writer has not seen the
+# pictures, so it cannot know any of these; a 4B wrote "Live-action, cinematic"
+# for anime pictures despite being told not to.
+_MEDIUM = re.compile(r"\b(live[- ]action|photo-?real\w*|realistic|anime|cartoon|animated|animation|2d|3d|cgi|pixel art|"
+                     r"watercolou?r|oil painting|claymation|stop[- ]motion|cel[- ]shad\w*|film grain|cinematic)\b", re.I)
+
+
+def keep_reference_look(description, brief):
+    """The style line names no medium the idea did not: it says the pictures' look."""
+    text = str(description or "")
+    head, sep, rest = text.partition("[Shot")
+    found = {m.lower() for m in _MEDIUM.findall(head)}
+    asked = {m.lower() for m in _MEDIUM.findall(str(brief or ""))}
+    if not sep or not head.strip() or not (found - asked):
+        return text
+    return "Keeps the look of the reference pictures.\n\n" + sep + rest
+
+
+def easy_segments(cast, segments):
+    """Subject definitions and Retention analysis written in code, into the
+    parsed segments. Returns the warnings (a character no shot names)."""
+    acting = _acting(segments.get("Subject definitions"))
+    shots = _shots(_bare(segments.get("Detailed description"), ["Detailed description", "integrated_multimodal_description"]))
+    every = sorted(shots)
+    last = every[-1] if every else None
+    definitions, retention, warnings = [], [], []
+    for s in cast["subjects"]:
+        pics = _picture_list(s["pictures"])
+        cited = [n for n in every if s["tag"] in shots[n]]
+        if s["kind"] == "character":
+            act = _sentence(acting.get(s["tag"]))
+            definitions.append(f"{s['tag']} is the character {_shown_in(s)}; keep their appearance exactly as the pictures show."
+                               + (f" In this scene: {act}" if act else ""))
+            if every and not cited:
+                warnings.append(f"{s['name']} ({s['tag']}) is never named in a shot. Check detailed_description, or say in the idea what {s['name']} does.")
+            where = _span(cited) or (_span(every) if every else "every shot")
+            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot.")
+        elif s["kind"] == "place":
+            definitions.append(f"{s['tag']} is the place in {pics}, where the video happens; keep it as the picture shows.")
+            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day.")
+        else:
+            definitions.append(f"{s['tag']} is the rendering style of {pics}, applied to the whole video and not its content.")
+            retention.append(f"{s['tag']} (applies to every shot): fully_preserved — hold the same rendering throughout.")
+    for f in cast["frames"]:
+        shot = "[Shot 1]" if f["which"] == "first" else (f"[Shot {last}]" if last else "the final shot")
+        definitions.append(f"<Picture {f['picture']}> is the {f['which']} frame of {shot}.")
+        retention.append(f"<Picture {f['picture']}> ({shot} {f['which']} frame): fully_preserved — the "
+                         f"{'opening' if f['which'] == 'first' else 'closing'} composition, lighting and subject positions.")
+    for u in cast["uses"]:
+        said = _sentence(str(u["ref"].get("instructions") or "").strip())
+        said = said[:1].upper() + said[1:]
+        definitions.append((f"<Picture {u['picture']}> gives the pose only: stance, limb position and gesture, "
+                            "not identity, clothing or background." + (f" {said}" if said else ""))
+                           if u["which"] == "pose" else f"<Picture {u['picture']}>: {said}")
+    segments["Subject definitions"] = "\n\n".join(definitions)
+    segments["Retention analysis"] = "\n".join(retention)
+    return warnings
+
+
+def music_request_warning(bundle, brief, segments):
+    """Flag possibly unsolicited music without deleting multilingual requests."""
+    pattern = bundle.get("music_words")
+    if not pattern or "Music" not in segments or re.search(pattern, str(brief or ""), re.I):
+        return False
+    if re.match(r"^\s*(?:non_diegetic_music:\s*)?N/A\s*$", segments["Music"] or "", re.I):
+        return False
+    return "The draft includes music; check that it matches your request, or set Music to N/A."
+
+
+# ── Shots: a picked count, cut times that can play, and the count checked ──
+# A port of PromptForge's server/shots.mjs. Measured there on eight models:
+# "single shot" in the idea still came back as two or three shots on the small
+# ones, and with a count picked every model wrote exactly that many. The small
+# ones also put the last cut ON the final second ("At 00:10.000" in a 10 s
+# clip), a shot that never plays; code moves those, since arithmetic about its
+# own output is not something a small model does reliably.
+
+def shot_count(shots):
+    """The picked count as an int, or None for Auto / nothing picked."""
+    try:
+        n = int(shots)
+    except (TypeError, ValueError):
+        return None
+    return n if n > 0 else None
+
+
+def fold_shot_briefs(brief, shots, rows):
+    """The idea with one "Shot N: ..." line per filled shot box. Port of
+    foldShotBriefs in PromptForge's server/shots.mjs: empty boxes are skipped
+    and keep their number, boxes past the picked count are dropped, and Auto
+    folds nothing. Runs before anything reads the idea."""
+    text = str(brief or "").strip()
+    n = shot_count(shots)
+    rows = rows[:n] if n and isinstance(rows, list) else []
+    lines = [f"Shot {i}: {str(row).strip()}" for i, row in enumerate(rows, 1) if str(row or "").strip()]
+    return "\n".join([text, *lines]).strip()
+
+
+def shots_line(shots):
+    """The instruction for the user message, or None when nothing was picked."""
+    n = shot_count(shots)
+    if not n:
+        return None
+    override = "This overrides any shot count in the detail level, the idea or the guide's examples."
+    if n == 1:
+        return f"Shots: 1 — one continuous shot. Write only [Shot 1]: no cuts and no later timestamps. {override}"
+    return f"Shots: {n} — exactly {n} shots, [Shot 1] to [Shot {n}], no more and no fewer. {override}"
+
+
+_CUT = re.compile(r"(\[Shot\s+\d+\]\s*At\s+)(\d+):(\d+(?:\.\d+)?)", re.I)
+
+
+def _stamp(seconds):
+    t = math.floor(seconds * 1000 + 0.5) / 1000
+    return f"{int(t // 60):02d}:{t % 60:06.3f}"
+
+
+def repair_cut_times(duration, segments):
+    """Move cuts at or past the end of the clip, or not after the cut before
+    them, evenly into the gap they belong in: [1.8, 4.2, 7.6, 10] in 10 s
+    becomes [..., 7.6, 8.8]. Only the timestamp changes. Edits `segments` in
+    place and returns the (from, to) pairs it moved."""
+    try:
+        end = float(duration)
+    except (TypeError, ValueError):
+        return []
+    body = segments.get("Detailed description")
+    if not body or end <= 0:
+        return []
+    cuts = [int(m.group(2)) * 60 + float(m.group(3)) for m in _CUT.finditer(body)]
+    fixed = list(cuts)
+    prev, i = 0.0, 0
+    while i < len(cuts):
+        if prev < cuts[i] < end:
+            prev, i = cuts[i], i + 1
+            continue
+        # A run of bad cuts, up to the next one that is good where it stands.
+        j = i
+        while j < len(cuts) and not (prev < cuts[j] < end):
+            j += 1
+        upper = cuts[j] if j < len(cuts) else end
+        for k in range(i, j):
+            fixed[k] = prev + (upper - prev) * (k - i + 1) / (j - i + 1)
+        prev, i = fixed[j - 1], j
+    moved = [(_stamp(a), _stamp(b)) for a, b in zip(cuts, fixed) if _stamp(a) != _stamp(b)]
+    if not moved:
+        return []
+    remaining = iter(fixed)
+
+    def put(m):
+        now = next(remaining)
+        was = int(m.group(2)) * 60 + float(m.group(3))
+        return m.group(0) if _stamp(was) == _stamp(now) else f"{m.group(1)}{_stamp(now)}"
+
+    segments["Detailed description"] = _CUT.sub(put, body)
+    return moved
+
+
+def shot_count_warning(shots, segments):
+    """A warning when the model wrote a different number of shots than was
+    picked, or None."""
+    n = shot_count(shots)
+    body = segments.get("Detailed description")
+    if not n or body is None:
+        return None
+    got = len(set(re.findall(r"\[Shot\s+(\d+)\]", body, re.I)))
+    if got == n:
+        return None
+    return (f"You asked for {n} shot{'' if n == 1 else 's'} and the model wrote {got}. "
+            "Regenerate, or edit the description before you apply it.")
 
 
 # ── Simple prompt mode: a port of PromptForge's server/h3-simple.mjs ──────
@@ -433,6 +824,9 @@ def check_prompt(fields, mode, duration, prompt_text, limit):
                   for m, s, frac in _TIMESTAMP.findall(description)]
         if stamps and max(stamps) >= clip:
             warnings.append(f"Shots run to {max(stamps):g}s but the clip is {clip:g}s. Regenerate, or fix the timestamps.")
+        cuts = [int(m.group(2)) * 60 + float(m.group(3)) for m in _CUT.finditer(description)]
+        if any(b <= a for a, b in zip([0.0, *cuts], cuts)):
+            warnings.append("Cut timestamps must increase strictly. Edit the description before applying.")
     if len(prompt_text) > limit:
         warnings.append(f"{len(prompt_text):,} characters; H3 takes {limit:,}. Lower Detail and regenerate.")
     return warnings
@@ -592,7 +986,14 @@ class Ollama:
             _http(self.base + "/api/generate", {"model": name, "keep_alive": 0}, timeout=30)
         except Exception as exc:
             log_dasiwa("H3 Forge", f"unload of {name} failed: {exc}")
-        return name not in self.loaded()
+        # Ollama unloads in the background; checking at once reported a model
+        # "still loaded" that was gone a second later.
+        import time
+        for _ in range(10):
+            if name not in self.loaded():
+                return True
+            time.sleep(0.5)
+        return False
 
     def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
         message = {"role": "user", "content": user}
@@ -603,7 +1004,13 @@ class Ollama:
             "model": name, "stream": True, "think": False, "keep_alive": 0,
             "messages": [{"role": "system", "content": system}, message],
             "options": {"num_ctx": num_ctx, "num_predict": NUM_PREDICT,
-                        "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8)},
+                        "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
+                        # Always sent, to override a Modelfile's chat default.
+                        # Ollama's qwen3.5:9b ships presence_penalty 1.5, which
+                        # on a prompt this long runs out of "allowed" words and
+                        # writes synonym lists until the token cap: 1 of 4
+                        # drafts usable at 1.5, 4 of 4 at 0 (1 Oct 2026).
+                        "presence_penalty": 0},
         }, timeout, cancel):
             chunk = json.loads(line)
             if chunk.get("error"):
@@ -639,9 +1046,13 @@ class OpenAICompatible:
     def unload(self, name):
         # llama-swap has a per-model unload; a plain llama.cpp server or LM
         # Studio holds its model for the life of the process.
+        # llama-swap answers "OK" as plain text, so the status is the answer:
+        # parsing it as JSON failed and reported every unload as refused.
         try:
-            _http(f"{self.root}/api/models/unload/{urlparse.quote(name, safe='')}", {}, timeout=30, headers=self.headers)
-            return True
+            req = urlrequest.Request(f"{self.root}/api/models/unload/{urlparse.quote(name, safe='')}", data=b"{}",
+                                     headers={"Content-Type": "application/json", **self.headers})
+            with urlrequest.urlopen(req, timeout=30) as resp:
+                return 200 <= resp.status < 300
         except Exception:
             return False
 
@@ -654,6 +1065,9 @@ class OpenAICompatible:
         for line in _stream_lines(self.api + "/chat/completions", {
             "model": name, "stream": True, "stream_options": {"include_usage": True}, "max_tokens": NUM_PREDICT,
             "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
+            # Same reason as the Ollama call: a server-side default penalty
+            # turns a long structured answer into word lists.
+            "presence_penalty": 0,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             # llama.cpp server honours this; others ignore unknown fields.
             "chat_template_kwargs": {"enable_thinking": False},
@@ -947,7 +1361,7 @@ def _generate(body, input_directory, release_memory, stop):
     mode = body.get("mode")
     if mode not in bundle["modes"]:
         raise ForgeError("bad_mode", f"Forge does not write {mode or 'this mode'} prompts.")
-    brief = str(body.get("brief") or "").strip()
+    brief = fold_shot_briefs(body.get("brief"), body.get("shots"), body.get("shot_briefs"))
     if not brief:
         raise ForgeError("no_brief", "Write what the clip should be first.")
     kind, _, name = str(body.get("model") or "").partition(":")
@@ -960,14 +1374,24 @@ def _generate(body, input_directory, release_memory, stop):
         creativity = bundle["default_creativity"]
     detail = body.get("detail") or bundle["default_detail"]
     duration = body.get("duration")
+    shots = body.get("shots")
     references = validate_references(body.get("references"))
     existing_definitions = body.get("existing_definitions", "")
     if not isinstance(existing_definitions, str) or len(existing_definitions) > 12000:
         raise ForgeError("bad_prompt", "Existing definitions must be text of at most 12,000 characters.")
+    # Easy mode is REF2VA with labelled pictures; the base modes have nothing
+    # for it to do. A bundle exported before it existed cannot write it.
+    easy = bool(body.get("easy")) and mode == "REF2VA" and bool(references) and all(
+        ref.get("kind") == "image" and ref.get("easy_role") in EASY_ROLES for ref in references
+    )
+    if easy and EASY_MODE not in bundle["modes"]:
+        raise ForgeError("bad_mode", "This copy of data/h3_forge.json predates picture labels. Update the node pack.")
+    cast = easy_cast(references) if easy else None
 
     sees = backend.can_see(name)
     images = []
-    if sees is not False and input_directory:
+    # Easy mode sends no picture to the writer: the labels say who is who.
+    if sees is not False and input_directory and not easy:
         from .helper_minimax_h3_director import resolve_input_path
         for ref in references:
             if ref.get("kind") == "image" and ref.get("path"):
@@ -976,7 +1400,7 @@ def _generate(body, input_directory, release_memory, stop):
                 except (ValueError, OSError) as exc:
                     raise ForgeError("bad_references", f"Invalid reference image: {exc}") from exc
 
-    spec = bundle["modes"][mode]
+    spec = bundle["modes"][EASY_MODE if easy else mode]
     sampling = bundle["creativity_presets"][creativity]
     num_ctx = int(body.get("num_ctx") or bundle["context_length"])
     timeout = int(body.get("timeout") or 600)
@@ -990,7 +1414,8 @@ def _generate(body, input_directory, release_memory, stop):
     def run(with_images):
         _, pictures = format_references(references, mode)
         attached_labels = [tag for ref, tag in pictures if ref.get("path")] if with_images else []
-        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels, output_canvas=body.get("output_canvas"))
+        user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels,
+                                  output_canvas=body.get("output_canvas"), cast=cast, shots=shots)
         if mode == "REF2VA" and existing_definitions.strip():
             user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
                      "after existing ones; verify current media citations:\n" + existing_definitions)
@@ -1025,16 +1450,33 @@ def _generate(body, input_directory, release_memory, stop):
 
     stats["seconds"] = round(__import__("time").time() - started, 1)
     segments = parse_segments(raw, spec["segments"])
+    lost = runaway(segments)
+    if lost:
+        raise ForgeError("runaway", f"The model lost the thread in {lost[0]} (one sentence ran {lost[1]:,} characters), "
+                         "so nothing was applied. Regenerate, or pick a different model.", raw)
+    easy_warnings = easy_segments(cast, segments) if easy else []
+    if easy and "Detailed description" in segments:
+        segments["Detailed description"] = keep_reference_look(segments["Detailed description"], brief)
+    music_warning = music_request_warning(bundle, brief, segments)
+    moved = repair_cut_times(duration, segments)
+    if moved:
+        log_dasiwa("H3 Forge", "moved cut " + ", ".join(f"{a} -> {b}" for a, b in moved))
     fields = builder_fields(segments, mode)
     simple = simple_prompt(fields, mode, duration)
-    warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"])
-    if mode == "REF2VA":
+    warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"]) + easy_warnings
+    if music_warning:
+        warnings.append(music_warning)
+    if shot_count_warning(shots, segments):
+        warnings.append(shot_count_warning(shots, segments))
+    if mode == "REF2VA" and not easy:
         warnings += group_warnings(fields["ref"]["subject_definitions"], references)
+    if mode == "REF2VA":
         warnings += media_citation_warnings(simple + "\n" + existing_definitions, references)
     if not unloaded and local_gpu:
         warnings.append("This server cannot unload its model; it is still holding VRAM on this machine.")
     return {
         "mode": mode,
+        "easy": easy,
         "fields": fields,
         "simple_prompt": simple,
         "warnings": warnings,
@@ -1270,6 +1712,9 @@ def register_routes():
             "creativity": list(bundle["creativity_presets"].keys()),
             "default_detail": bundle["default_detail"],
             "default_creativity": bundle["default_creativity"],
+            # A bundle exported before the Shots control has none: Auto only.
+            "shot_counts": bundle.get("shot_counts") or ["Auto"],
+            "default_shots": bundle.get("default_shots") or "Auto",
         })
 
     @server.routes.post("/dasiwa/h3/forge/cancel")

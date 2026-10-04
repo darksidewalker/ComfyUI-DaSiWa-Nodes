@@ -346,6 +346,7 @@ class MiniMaxH3Director:
                 merged["ref"].update(continuation_fields)
                 merged["prompt_mode"] = "structured"
             else:
+                merged["prompt_mode"] = "simple"
                 merged["simple_prompt"] = prompt
             normalize_ref_schema(merged["ref"])
             merged["mode"] = mode
