@@ -1,26 +1,17 @@
 """Prompt specifications and text composition (no inference ownership)."""
 
-import json
 import re
 from pathlib import Path
 
 from . import h3_prompting
 
-_BUNDLE_PATH = Path(__file__).resolve().parents[1] / "data" / "llm_prompt_presets.json"
-
-
-def load_exported_presets():
-    with _BUNDLE_PATH.open(encoding="utf-8") as handle:
-        bundle = json.load(handle)
-    if bundle.get("schema_version") != 1:
-        raise ValueError("Unsupported LLM prompt preset bundle version")
-    return bundle["presets"]
-
-
-# Image-model presets are hand-written skill guides, not PromptForge exports:
-# short, purpose-first and editable as plain markdown in data/llm_skills/.
+# The model presets are short hand-written guides, not copies of PromptForge's
+# prompts: purpose-first and editable as plain markdown in data/llm_skills/.
+# H3 is the exception and stays on the Director's data/h3_forge.json.
 _SKILLS_DIR = Path(__file__).resolve().parents[1] / "data" / "llm_skills"
 _SKILL_PRESETS = {
+    "promptforge_wan22": "wan",
+    "promptforge_ltx": "ltx",
     "promptforge_krea2": "krea2",
     "promptforge_anima": "anima",
     "promptforge_illustrious": "illustrious",
@@ -48,9 +39,7 @@ def load_skill(name):
 
 
 def preset_spec(preset):
-    if preset in _SKILL_PRESETS:
-        return load_skill(_SKILL_PRESETS[preset])
-    return load_exported_presets()[preset]
+    return load_skill(_SKILL_PRESETS[preset])
 
 
 def exported_system(preset):
@@ -190,10 +179,7 @@ for _media in ("image", "video"):
         for _style in ("mixed", "tag", "natural"):
             _SYSTEM_PROMPT_PRESETS[f"caption_{_media}_{_detail}_{_style}"] = _caption_preset(_media, _detail, _style)
 
-_EXPORTED_PRESET_IDS = (
-    "promptforge_wan22", "promptforge_ltx", "promptforge_krea2",
-    "promptforge_anima", "promptforge_illustrious",
-)
+_EXPORTED_PRESET_IDS = tuple(_SKILL_PRESETS)
 _SYSTEM_PROMPT_PRESET_LABELS = list(_SYSTEM_PROMPT_PRESETS.keys()) + list(_EXPORTED_PRESET_IDS) + ["promptforge_h3"]
 
 

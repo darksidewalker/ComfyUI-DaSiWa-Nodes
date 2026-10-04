@@ -64,30 +64,26 @@ def test_h3_response_projects_shared_description_sound_and_music(mode):
     assert response == expected
 
 
-def test_exported_systems_are_loaded_verbatim_with_no_h3_copy():
-    path = Path(__file__).resolve().parents[1] / "data" / "llm_prompt_presets.json"
-    bundle = json.loads(path.read_text(encoding="utf-8"))
-    specs = prompts.load_exported_presets()
-    assert specs == bundle["presets"]
-    assert list(specs) == ["promptforge_wan22", "promptforge_ltx"]
-    assert "promptforge_h3" not in specs
-    for preset, spec in specs.items():
-        assert prompts.exported_system(preset) == spec["system"]
-
-
 @pytest.mark.parametrize("preset,name,output,tag_style", [
+    ("promptforge_wan22", "wan", "Positive prompt", None),
+    ("promptforge_ltx", "ltx", "Enhanced paragraph", None),
     ("promptforge_krea2", "krea2", "Enhanced prompt", None),
     ("promptforge_anima", "anima", "Positive prompt", "space"),
     ("promptforge_illustrious", "illustrious", "Positive prompt", "space"),
 ])
-def test_image_presets_are_skill_guides(preset, name, output, tag_style):
+def test_model_presets_are_skill_guides(preset, name, output, tag_style):
     spec = prompts.preset_spec(preset)
+    assert spec["model"] == name
     assert spec["output"] == output and spec["segments"] == [output]
     assert spec.get("tag_style") == tag_style
     assert not spec["system"].startswith("---")
     assert f"===SEGMENT: {output}===" in spec["system"]
     assert prompts.exported_system(preset) == spec["system"]
-    assert preset not in prompts.load_exported_presets()
+
+
+def test_h3_has_no_guide_copy():
+    assert "promptforge_h3" not in prompts._SKILL_PRESETS
+    assert not (prompts._SKILLS_DIR / "h3.md").exists()
 
 
 def test_skill_frontmatter_survives_crlf(tmp_path, monkeypatch):
@@ -97,12 +93,11 @@ def test_skill_frontmatter_survives_crlf(tmp_path, monkeypatch):
     assert spec["output"] == "Positive prompt" and spec["system"] == "# Guide"
 
 
-def test_exported_bundle_rejects_unknown_version(tmp_path, monkeypatch):
-    path = tmp_path / "unsupported.json"
-    path.write_text(json.dumps({"schema_version": 2, "presets": {}}), encoding="utf-8")
-    monkeypatch.setattr(prompts, "_BUNDLE_PATH", path, raising=False)
-    with pytest.raises(ValueError, match="Unsupported"):
-        prompts.load_exported_presets()
+def test_skill_without_output_is_rejected(tmp_path, monkeypatch):
+    (tmp_path / "x.md").write_text("---\nname: x\n---\n# Guide\n", encoding="utf-8")
+    monkeypatch.setattr(prompts, "_SKILLS_DIR", tmp_path)
+    with pytest.raises(ValueError, match="output segment"):
+        prompts.load_skill("x")
 
 
 @pytest.mark.parametrize("preset", ["promptforge_wan22", "promptforge_ltx", "promptforge_krea2",
@@ -154,10 +149,10 @@ def test_h3_composition_can_defer_resolution_until_images_are_prepared(monkeypat
                                       resolve_system=False) == ("", "idea\n\nlinked")
 
 
-def test_legacy_composition_and_unknown_fallback_do_not_load_exported_bundle(monkeypatch):
-    def unnecessary_export_load():
-        pytest.fail("Legacy and custom prompts must not depend on the exported artifact")
-    monkeypatch.setattr(prompts, "load_exported_presets", unnecessary_export_load)
+def test_legacy_composition_and_unknown_fallback_do_not_load_guides(monkeypatch):
+    def unnecessary_guide_load(name):
+        pytest.fail("Legacy and custom prompts must not depend on the guide files")
+    monkeypatch.setattr(prompts, "load_skill", unnecessary_guide_load)
     assert prompts._compose_user_text("custom", " sys ", " idea ", " linked ") == (
         "sys", "idea\n\nlinked")
     for preset, system in prompts._SYSTEM_PROMPT_PRESETS.items():
