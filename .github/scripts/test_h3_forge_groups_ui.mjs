@@ -31,4 +31,11 @@ assert.deepEqual(labelRole("character-2"), { forge_role: "subject", forge_subjec
 assert.deepEqual(labelRole("group-21"), { forge_role: "subject", forge_subject_group: "" });
 assert.deepEqual(labelRole("last-frame"), { forge_role: "keyframe", forge_subject_group: "" });
 assert.deepEqual(labelRole("custom"), { forge_role: "custom", forge_subject_group: "" });
+// Separate legacy references must not silently merge after Character 4.
+const many = forgeReferences(Array.from({ length: 9 }, (_, i) => image(`many-${i}`, i)), "REF2VA");
+assert.equal(new Set(many.map(r => r.easy_role)).size, 9);
+assert.equal(many[8].easy_role, "character-9");
+const partial = forgeReferences([image("p1", 0, { forge_label: "character-1", forge_subject_group: "A" }), image("p2", 1, { forge_subject_group: "A" })], "REF2VA");
+assert.deepEqual(partial.map(r => r.easy_role), ["character-1", "character-1"]);
+assert.deepEqual(labelRole("character-9"), { forge_role: "subject", forge_subject_group: "I" });
 console.log("Forge reference mapping: PASS");

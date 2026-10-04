@@ -32,7 +32,7 @@ const NO_MODELS = "No models found. Easiest fix: put a vision model folder (for 
 const STORE_KEY = "dasiwa.h3forge";
 const openDialogs = new WeakMap();
 const briefs = new Map(); // node id -> last brief, for a reroll after closing
-const shotTexts = new Map(); // node id -> what was typed in each shot box
+const shotTexts = new WeakMap(); // node -> what was typed in each shot box
 const HISTORY_KEY = "dasiwaH3ForgeHistory";
 const GROUPS_KEY = "dasiwaH3ForgeSubjectGroups";
 // A REF2VA picture's label is picked in two steps: what it is, then - for
@@ -41,7 +41,7 @@ const GROUPS_KEY = "dasiwaH3ForgeSubjectGroups";
 // server reads.
 const PICTURE_KINDS = [["character", "Character"], ["group", "Several characters"], ["place", "Place"], ["style", "Style"], ["first-frame", "First frame"], ["last-frame", "Last frame"], ["pose", "Pose"], ["custom", "Custom"]];
 const PICTURE_WHO = {
-  character: [["character-1", "Character 1"], ["character-2", "Character 2"], ["character-3", "Character 3"], ["character-4", "Character 4"]],
+  character: Array.from({ length: 32 }, (_, i) => [`character-${i + 1}`, `Character ${i + 1}`]),
   group: [["group-12", "1 + 2 (1 on the left)"], ["group-21", "2 + 1 (2 on the left)"], ["group-13", "1 + 3 (1 on the left)"], ["group-31", "3 + 1 (3 on the left)"],
     ["group-23", "2 + 3 (2 on the left)"], ["group-32", "3 + 2 (3 on the left)"], ["group-123", "1 + 2 + 3 (left to right)"]],
 };
@@ -72,6 +72,7 @@ function clearForgeHistory(node) {
     node.graph?.setDirtyCanvas(true, true);
   }
   briefs.delete(`${node.id}:new`); briefs.delete(`${node.id}:continuity`);
+  shotTexts.delete(node);
 }
 
 function remembered() { try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}"); } catch { return {}; } }
@@ -89,6 +90,7 @@ function installStyles() {
   .ds-forge h3{margin:0;font-size:15px;display:flex;justify-content:space-between;align-items:center}
   .ds-forge label{color:#9fb3c2;font-weight:600;font-size:12px}
   .ds-forge textarea,.ds-forge select,.ds-forge input[type=text]{width:100%;box-sizing:border-box;background:#0d1217;color:#e5eef4;border:1px solid #40515e;border-radius:4px;padding:7px;font:inherit}
+  .ds-forge [hidden]{display:none!important}
   .ds-forge option,.ds-forge optgroup{background:#0d1217;color:#e5eef4}
   .ds-forge textarea{min-height:90px;resize:vertical}
   .ds-forge .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -211,7 +213,9 @@ async function open(node) {
         const whoSel = el("select", { title: "Which character. Pictures with the same Character number are one character." });
         whoSel.setAttribute("aria-label", `${name} character`);
         const fillWho = () => {
-          const choices = PICTURE_WHO[pictureKind(ref.easy_role)];
+          const kind = pictureKind(ref.easy_role);
+          const maxCharacter = Math.max(4, refs.filter(r => r.kind === "image").length, ...refs.map(r => Number(r.easy_role?.match(/^character-(\d+)$/)?.[1]) || 0));
+          const choices = kind === "character" ? PICTURE_WHO.character.slice(0, maxCharacter) : PICTURE_WHO[kind];
           whoSel.replaceChildren(...(choices || []).map(([value, label]) => el("option", { value, textContent: label, selected: value === ref.easy_role })));
           whoSel.hidden = !choices;
         };
@@ -251,7 +255,7 @@ async function open(node) {
     if (labelled) {
       box.append(el("span", { className: "muted", textContent: continuity
         ? "Pictures with the same Character number are one character."
-        : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". The pictures are not sent to the model: H3 sees them itself.' }));
+        : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". Image-only labelled drafts need no writer vision; mixed media and saved references use the full REF2VA path.' }));
     }
   } else if (mode !== "T2VA" && !continuity) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
@@ -280,7 +284,7 @@ async function open(node) {
   // as "Shot N: ..." lines on the server. None on Auto or in a continuation.
   const shotBox = el("div", { className: "field", hidden: true });
   box.append(shotBox);
-  const typedShots = () => { if (!shotTexts.has(node.id)) shotTexts.set(node.id, []); return shotTexts.get(node.id); };
+  const typedShots = () => { if (!shotTexts.has(node)) shotTexts.set(node, []); return shotTexts.get(node); };
   const shotRows = () => (shotBox.hidden ? [] : Array.from(shotBox.querySelectorAll("textarea"), t => t.value));
   const renderShots = () => {
     const n = Number(shots.value);
@@ -332,7 +336,7 @@ async function open(node) {
       // Drafts saved before the Shots control have none: they were Auto.
       const shotsValue = String(count ?? "Auto");
       if (Array.from(shots.options).some(o => o.value === shotsValue)) shots.value = shotsValue;
-      if (Array.isArray(entry.draftOptions.shot_briefs)) shotTexts.set(node.id, [...entry.draftOptions.shot_briefs]);
+      shotTexts.set(node, Array.isArray(entry.draftOptions.shot_briefs) ? [...entry.draftOptions.shot_briefs] : []);
       renderShots();
       if (detail.oninput) detail.oninput();
     }
@@ -363,7 +367,8 @@ async function open(node) {
       historyBox.append(button);
     });
   };
-  const latest = forgeHistory(node).find(compatible);
+  const savedShots = !shotTexts.has(node) && forgeHistory(node).find(entry => entry.mode === mode && !!entry.continuity === !!continuity && (!entry.contextKey || entry.contextKey === openedKey) && entry.brief === brief.value.trim());
+  if (savedShots?.draftOptions?.shot_briefs) shotTexts.set(node, [...savedShots.draftOptions.shot_briefs]);
   renderHistory();
   document.body.append(overlay);
   brief.focus();
@@ -395,7 +400,8 @@ async function open(node) {
     detail.value = prefs.detail || data.default_detail;
     const counts = (data.shot_counts || ["Auto"]).map(String);
     for (const c of counts) shots.append(el("option", { value: c, textContent: c }));
-    shots.value = prefs.shots && counts.includes(String(prefs.shots)) ? String(prefs.shots) : String(data.default_shots || "Auto");
+    const preferredShots = savedShots?.draftOptions?.shots ?? prefs.shots;
+    shots.value = preferredShots && counts.includes(String(preferredShots)) ? String(preferredShots) : String(data.default_shots || "Auto");
     renderShots();
     genBtn.disabled = false;
     setStatus("Ready. Generate a draft, then review and Apply.");
@@ -409,6 +415,7 @@ async function open(node) {
   brief.focus();
   const syncDetail = () => { detailLabel.textContent = `${detail.value} of 10 — ${levels[detail.value] || ""}`; };
   detail.oninput = syncDetail; syncDetail();
+  const latest = forgeHistory(node).find(compatible);
   if (latest) showResult(latest); else renderHistory();
   const clearDraft = () => {
     if (running || closed) return;
@@ -464,7 +471,7 @@ async function open(node) {
       data.forgeInputKey = forgeInputKey; data.existing_definitions = definitions.value; data.reference_snapshot = referenceSnapshot(refs);
       const saved = saveForgeResult(node, data, text);
       showResult(saved);
-      const seen = data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
+      const seen = data.easy ? " · picture labels used (no images sent to the writer)" : data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
       setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
     } catch (err) {

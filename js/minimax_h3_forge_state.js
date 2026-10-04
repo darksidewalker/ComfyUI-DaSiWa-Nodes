@@ -55,11 +55,11 @@ export function referenceSnapshot(references) {
 // 2 and 1 in it (2 on the left), and the rest name themselves. Pictures with
 // the same Character number are one subject, which is what a subject group
 // was, so a label also sets the role and group the other paths read.
-export const PICTURE_LABELS = ["character-1", "character-2", "character-3", "character-4", "group-12", "group-21", "group-13", "group-31",
+export const PICTURE_LABELS = [...Array.from({ length: 32 }, (_, i) => `character-${i + 1}`), "group-12", "group-21", "group-13", "group-31",
   "group-23", "group-32", "group-123", "place", "style", "first-frame", "last-frame", "pose", "custom"];
 
 export function labelRole(label) {
-  if (label.startsWith("character-")) return { forge_role: "subject", forge_subject_group: "ABCD"[Number(label.slice(10)) - 1] };
+  if (label.startsWith("character-")) return { forge_role: "subject", forge_subject_group: "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[Number(label.slice(10)) - 1] || label };
   const role = { style: "style", "first-frame": "keyframe", "last-frame": "keyframe", pose: "pose", custom: "custom" }[label] || "subject";
   return { forge_role: role, forge_subject_group: "" };
 }
@@ -70,8 +70,8 @@ export function labelRole(label) {
 function pictureLabels(images) {
   const saved = new Map(images.filter(i => PICTURE_LABELS.includes(i.forge_label)).map(i => [i.id, i.forge_label]));
   const used = new Set([...saved.values()].flatMap(v => v.startsWith("character-") ? [Number(v.slice(10))] : v.startsWith("group-") ? [...v.slice(6)].map(Number) : []));
-  const take = () => { let n = 1; while (used.has(n) && n < 4) n += 1; used.add(n); return n; };
-  const byGroup = new Map();
+  const take = () => { let n = 1; while (used.has(n)) n += 1; used.add(n); return n; };
+  const byGroup = new Map(images.filter(i => i.group && saved.get(i.id)?.startsWith("character-")).map(i => [i.group, Number(saved.get(i.id).slice(10))]));
   return Object.fromEntries(images.map(item => {
     if (saved.has(item.id)) return [item.id, saved.get(item.id)];
     const role = IMAGE_ROLES.includes(item.forge_role) ? item.forge_role : "subject";

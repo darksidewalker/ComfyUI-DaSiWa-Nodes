@@ -383,7 +383,7 @@ def runaway(segments):
     for label, body in segments.items():
         if label == "Subject definitions":
             continue  # written by code in easy mode, and one line per subject otherwise
-        longest = max((len(s) for s in re.split(r"(?<=[.!?])\s+", str(body or ""))), default=0)
+        longest = max((len(s) for s in re.split(r"(?<=[.!?])(?:[\"'”’»]|</d>)*\s+", str(body or ""))), default=0)
         if longest > RUNAWAY_SENTENCE:
             return label, longest
     return None
@@ -470,7 +470,7 @@ def media_citation_warnings(text, references):
 # digits are the characters, left to right. The model never sees the picture,
 # so position is what tells them apart; H3 sees it and is told who is where.
 GROUP_ROLES = ("group-12", "group-21", "group-13", "group-31", "group-23", "group-32", "group-123")
-EASY_ROLES = ("character-1", "character-2", "character-3", "character-4", "place", "style", "first-frame", "last-frame",
+EASY_ROLES = tuple(f"character-{n}" for n in range(1, 33)) + ("place", "style", "first-frame", "last-frame",
               "pose", "custom") + GROUP_ROLES
 EASY_MODE = "REF2VA easy"
 _POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right")}
@@ -553,7 +553,7 @@ def easy_brief(brief, cast):
     last = max([p for s in cast["subjects"] for p in s["pictures"]]
                + [p["picture"] for s in cast["subjects"] for p in s.get("placements", [])]
                + [f["picture"] for f in cast["frames"] + cast["uses"]] + [0])
-    text = re.sub(r"\b(?:character|char)\s*#?\s*([1-4])\b",
+    text = re.sub(r"\b(?:character|char)\s*#?\s*(\d+)\b",
                   lambda m: by_number.get(int(m.group(1)), m.group(0)), str(brief), flags=re.I)
     if place:
         text = re.sub(r"\bthe (?:place|scenery|location)\b", place, text, flags=re.I)
@@ -693,19 +693,14 @@ def easy_segments(cast, segments):
     return warnings
 
 
-def music_only_when_asked(bundle, brief, segments):
-    """A score only when the idea asks for music (PromptForge's server/music.mjs).
-
-    The bundle carries the word list; no list, no rule. True when it replaced
-    something.
-    """
+def music_request_warning(bundle, brief, segments):
+    """Flag possibly unsolicited music without deleting multilingual requests."""
     pattern = bundle.get("music_words")
     if not pattern or "Music" not in segments or re.search(pattern, str(brief or ""), re.I):
         return False
     if re.match(r"^\s*(?:non_diegetic_music:\s*)?N/A\s*$", segments["Music"] or "", re.I):
         return False
-    segments["Music"] = "N/A"
-    return True
+    return "The draft includes music; check that it matches your request, or set Music to N/A."
 
 
 # ── Shots: a picked count, cut times that can play, and the count checked ──
@@ -752,7 +747,7 @@ _CUT = re.compile(r"(\[Shot\s+\d+\]\s*At\s+)(\d+):(\d+(?:\.\d+)?)", re.I)
 
 
 def _stamp(seconds):
-    t = math.floor(seconds * 10 + 0.5) / 10
+    t = math.floor(seconds * 1000 + 0.5) / 1000
     return f"{int(t // 60):02d}:{t % 60:06.3f}"
 
 
@@ -829,6 +824,9 @@ def check_prompt(fields, mode, duration, prompt_text, limit):
                   for m, s, frac in _TIMESTAMP.findall(description)]
         if stamps and max(stamps) >= clip:
             warnings.append(f"Shots run to {max(stamps):g}s but the clip is {clip:g}s. Regenerate, or fix the timestamps.")
+        cuts = [int(m.group(2)) * 60 + float(m.group(3)) for m in _CUT.finditer(description)]
+        if any(b <= a for a, b in zip([0.0, *cuts], cuts)):
+            warnings.append("Cut timestamps must increase strictly. Edit the description before applying.")
     if len(prompt_text) > limit:
         warnings.append(f"{len(prompt_text):,} characters; H3 takes {limit:,}. Lower Detail and regenerate.")
     return warnings
@@ -1383,7 +1381,9 @@ def _generate(body, input_directory, release_memory, stop):
         raise ForgeError("bad_prompt", "Existing definitions must be text of at most 12,000 characters.")
     # Easy mode is REF2VA with labelled pictures; the base modes have nothing
     # for it to do. A bundle exported before it existed cannot write it.
-    easy = bool(body.get("easy")) and mode == "REF2VA"
+    easy = bool(body.get("easy")) and mode == "REF2VA" and bool(references) and all(
+        ref.get("kind") == "image" and ref.get("easy_role") in EASY_ROLES for ref in references
+    )
     if easy and EASY_MODE not in bundle["modes"]:
         raise ForgeError("bad_mode", "This copy of data/h3_forge.json predates picture labels. Update the node pack.")
     cast = easy_cast(references) if easy else None
@@ -1457,13 +1457,15 @@ def _generate(body, input_directory, release_memory, stop):
     easy_warnings = easy_segments(cast, segments) if easy else []
     if easy and "Detailed description" in segments:
         segments["Detailed description"] = keep_reference_look(segments["Detailed description"], brief)
-    music_only_when_asked(bundle, brief, segments)
+    music_warning = music_request_warning(bundle, brief, segments)
     moved = repair_cut_times(duration, segments)
     if moved:
         log_dasiwa("H3 Forge", "moved cut " + ", ".join(f"{a} -> {b}" for a, b in moved))
     fields = builder_fields(segments, mode)
     simple = simple_prompt(fields, mode, duration)
     warnings = check_prompt(fields, mode, duration, simple, bundle["max_output_chars"]) + easy_warnings
+    if music_warning:
+        warnings.append(music_warning)
     if shot_count_warning(shots, segments):
         warnings.append(shot_count_warning(shots, segments))
     if mode == "REF2VA" and not easy:

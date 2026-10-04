@@ -41,6 +41,13 @@ def test_group_picture_places_each_character():
     assert forge.easy_brief("Character 2 waves", cast) == "<Subject 2> waves"
 
 
+def test_separate_characters_beyond_four_stay_separate():
+    cast = forge.easy_cast([pic(f"character-{n}") for n in range(1, 10)])
+    assert len(cast["subjects"]) == 9
+    assert cast["subjects"][-1]["name"] == "Character 9"
+    assert forge.easy_brief("Character 9 waves", cast) == "<Subject 9> waves"
+
+
 def test_unknown_label_is_character_1():
     assert forge.easy_cast([pic("dragon")])["subjects"][0]["name"] == "Character 1"
 
@@ -158,12 +165,69 @@ def test_runaway_is_refused_not_applied():
         assert exc.code == "runaway" and "Soundscape, Music" in exc.message
 
 
-def test_music_only_when_asked():
+def test_music_warning_preserves_explicit_and_multilingual_requests():
     bundle = forge.load_bundle()
-    segments = {"Music": "Soft piano notes."}
-    assert forge.music_only_when_asked(bundle, "She reads on the bed.", segments) and segments["Music"] == "N/A"
-    segments = {"Music": "Soft piano notes."}
-    assert not forge.music_only_when_asked(bundle, "Soft piano music plays.", segments) and segments["Music"].startswith("Soft")
-    segments = {"Music": "Soft piano notes."}
-    assert not forge.music_only_when_asked({"music_words": None}, "She reads.", segments)
-    assert not forge.music_only_when_asked(bundle, "It takes place at night.", {"Music": "N/A"})
+    for brief in ("She reads on the bed.", "She reads with a flute accompaniment.", "Eine Frau liest, mit Hintergrundmusik."):
+        segments = {"Music": "A soft flute accompaniment."}
+        assert forge.music_request_warning(bundle, brief, segments)
+        assert segments["Music"] == "A soft flute accompaniment."
+    assert not forge.music_request_warning(bundle, "Soft piano music plays.", {"Music": "Soft piano notes."})
+    assert not forge.music_request_warning({"music_words": None}, "She reads.", {"Music": "Soft piano notes."})
+    assert not forge.music_request_warning(bundle, "It takes place at night.", {"Music": "N/A"})
+
+
+def test_runaway_allows_quoted_sentences_and_dialogue_tags():
+    sentence = 'A placard reads "Please use the main entrance while repairs to this side doorway are in progress."'
+    for body in ("[Shot 1] " + " ".join([sentence] * 6), "[Shot 1] " + " ".join(['<d>"Please use the main entrance while repairs to this side doorway are in progress."</d>'] * 6)):
+        assert len(body) > 500
+        assert forge.runaway({"Detailed description": body}) is None
+
+
+def test_cut_repair_keeps_millisecond_order_near_clip_end():
+    for stamps in (("09.800", "10.000", "10.000"), ("09.950", "10.000")):
+        segments = {"Detailed description": "[Shot 1] A. " + " ".join(f"[Shot {n}] At 00:{stamp}, B." for n, stamp in enumerate(stamps, 2))}
+        assert forge.repair_cut_times(10, segments)
+        fields = forge.builder_fields(segments, "REF2VA")
+        assert forge.check_prompt(fields, "REF2VA", 10, "", 7000) == []
+        cuts = [int(m.group(2)) * 60 + float(m.group(3)) for m in forge._CUT.finditer(segments["Detailed description"])]
+        assert all(a < b < 10 for a, b in zip([0, *cuts], cuts))
+    segments = {"Detailed description": "[Shot 1] A. [Shot 2] At 00:09.999, B. [Shot 3] At 00:10.000, C. [Shot 4] At 00:10.000, D."}
+    forge.repair_cut_times(10, segments)
+    assert forge.check_prompt(forge.builder_fields(segments, "REF2VA"), "REF2VA", 10, "", 7000)
+
+
+def test_typed_ref2va_validation_uses_the_typed_sections():
+    from helper_minimax_h3_prompt_builder import validate_builder_state
+    state = {"mode": "REF2VA", "prompt_mode": "simple", "ref": {}, "simple_prompt": "A woman waves."}
+    assert validate_builder_state(state) == []
+    state["simple_prompt"] = "subject_definitions:\n<Subject 1> is a woman.\nsummary:\nA short scene.\nretention_analysis:\nN/A\ndetailed_description:\n[Shot 1] She waves.\noverall_soundscape:\nRoom tone.\nnon_diegetic_music:\nN/A"
+    assert validate_builder_state(state) == []
+    state["simple_prompt"] = state["simple_prompt"].replace("A short scene.", "")
+    assert validate_builder_state(state) == [{"level": "warn", "msg": "REF2VA summary is empty."}]
+    state["prompt_mode"] = "structured"
+    assert len(validate_builder_state(state)) == 2
+
+
+def test_mixed_and_saved_references_keep_full_definitions(monkeypatch):
+    class Backend:
+        base = "https://fixture.invalid"
+        def can_see(self, name):
+            return False
+        def chat(self, *args):
+            segments = {
+                "Subject definitions": "<Subject 1> from <Picture 1>. <Subject 2> from <Picture 2>. <Audio 1> supplies the voice. <Video 1> supplies motion.",
+                "Summary": "A ten-second scene.",
+                "Retention analysis": "<Audio 1>: fully_copy. <Video 1>: reference. <Subject 2>: fully_preserved.",
+                "Detailed description": "[Shot 1] <Subject 1> waves, following <Video 1>, while <Audio 1> speaks.",
+                "Soundscape": "Room tone.", "Music": "N/A",
+            }
+            return "\n".join(f"===SEGMENT: {label}===\n{body}" for label, body in segments.items()), {}
+        def unload(self, name):
+            return True
+    monkeypatch.setattr(forge, "backends", lambda settings: {"openai": Backend()})
+    for extra in ([{"kind": "audio"}, {"kind": "video"}], [{"kind": "image", "saved_reference": True}]):
+        result = forge._generate({"mode": "REF2VA", "model": "openai:fixture", "brief": "She waves.", "duration": 10, "easy": True, "references": [pic("character-1"), *extra]}, None, None, None)
+        assert result["easy"] is False
+        assert "<Audio 1> supplies the voice" in result["fields"]["ref"]["subject_definitions"]
+        assert "<Video 1>: reference" in result["fields"]["ref"]["retention_analysis"]
+        assert "<Subject 2> from <Picture 2>" in result["fields"]["ref"]["subject_definitions"]
