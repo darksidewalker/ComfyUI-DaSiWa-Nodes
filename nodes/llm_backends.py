@@ -33,6 +33,33 @@ def _base_url(value, default=""):
     return url
 
 
+def _workflow_url(value, default=""):
+    """Validate new workflow endpoints without echoing credential-bearing input."""
+    value = str(value or default).strip().rstrip("/")
+    if not value:
+        return ""
+    try:
+        parsed = urlparse.urlsplit(value)
+        if (parsed.scheme not in ("http", "https") or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or parsed.query or parsed.fragment
+                or any(c.isspace() or ord(c) < 32 for c in value)):
+            raise ValueError
+        parsed.port  # Validate port syntax/range, including IPv6 endpoints.
+    except ValueError:
+        raise ForgeError("bad_url", "Workflow server address must be HTTP(S), without credentials, query or fragment.") from None
+    return value
+
+
+def workflow_server_settings():
+    """Read server-operator configuration at execution time, never from graphs."""
+    return {
+        "ollama_url": _workflow_url(os.environ.get("DASIWA_LLM_OLLAMA_URL"), DEFAULT_OLLAMA),
+        "openai_url": _workflow_url(os.environ.get("DASIWA_LLM_OPENAI_URL")),
+        "openai_api_key": os.environ.get("DASIWA_LLM_OPENAI_API_KEY", "").strip(),
+    }
+
+
 def _is_this_machine(url):
     host = re.sub(r"^https?://", "", url).split("/")[0].rsplit(":", 1)[0].strip("[]").lower()
     return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")
@@ -121,22 +148,23 @@ class Ollama:
             time.sleep(0.5)
         return False
 
-    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None,
+             *, max_tokens=NUM_PREDICT, keep_alive=0, seed=-1, repetition_penalty=1.0):
+        options = {"num_ctx": num_ctx, "num_predict": max_tokens,
+                   "temperature": sampling.get("temperature", 0.7),
+                   "top_p": sampling.get("top_p", 0.8), "presence_penalty": 0}
+        if seed >= 0:
+            options["seed"] = seed
+        if repetition_penalty != 1.0:
+            options["repeat_penalty"] = repetition_penalty
         message = {"role": "user", "content": user}
         if images_b64:
             message["images"] = images_b64
         parts, stats = [], {}
         for line in _stream_lines(self.base + "/api/chat", {
-            "model": name, "stream": True, "think": False, "keep_alive": 0,
+            "model": name, "stream": True, "think": False, "keep_alive": keep_alive,
             "messages": [{"role": "system", "content": system}, message],
-            "options": {"num_ctx": num_ctx, "num_predict": NUM_PREDICT,
-                        "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
-                        # Always sent, to override a Modelfile's chat default.
-                        # Ollama's qwen3.5:9b ships presence_penalty 1.5, which
-                        # on a prompt this long runs out of "allowed" words and
-                        # writes synonym lists until the token cap: 1 of 4
-                        # drafts usable at 1.5, 4 of 4 at 0 (1 Oct 2026).
-                        "presence_penalty": 0},
+            "options": options,
         }, timeout, cancel):
             chunk = json.loads(line)
             if chunk.get("error"):
@@ -182,14 +210,15 @@ class OpenAICompatible:
         except Exception:
             return False
 
-    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None):
+    def chat(self, name, system, user, images_b64, sampling, num_ctx, timeout, cancel=None,
+             *, max_tokens=NUM_PREDICT, keep_alive=0, seed=-1, repetition_penalty=1.0):
         content = user
         if images_b64:
             content = [{"type": "text", "text": user}] + [
                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images_b64]
         parts, usage = [], {}
-        for line in _stream_lines(self.api + "/chat/completions", {
-            "model": name, "stream": True, "stream_options": {"include_usage": True}, "max_tokens": NUM_PREDICT,
+        payload = {
+            "model": name, "stream": True, "stream_options": {"include_usage": True}, "max_tokens": max_tokens,
             "temperature": sampling.get("temperature", 0.7), "top_p": sampling.get("top_p", 0.8),
             # Same reason as the Ollama call: a server-side default penalty
             # turns a long structured answer into word lists.
@@ -197,7 +226,10 @@ class OpenAICompatible:
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": content}],
             # llama.cpp server honours this; others ignore unknown fields.
             "chat_template_kwargs": {"enable_thinking": False},
-        }, timeout, cancel, self.headers):
+        }
+        if seed >= 0:
+            payload["seed"] = seed
+        for line in _stream_lines(self.api + "/chat/completions", payload, timeout, cancel, self.headers):
             if not line.startswith("data:"):
                 continue
             data = line[5:].strip()
