@@ -22,3 +22,15 @@ def test_forge_uses_shared_backend_classes():
     assert h3_forge.Local is backends.Local
     assert h3_forge.ForgeError is backends.ForgeError
     assert backends.Local()._llm().__name__ == "nodes.llm_runtime"
+
+
+def test_h3_prompt_builder_is_not_owned_by_director():
+    from nodes import h3_forge
+    prompts = importlib.import_module("nodes.h3_prompting")
+    assert h3_forge.build_user_message is prompts.build_user_message
+    assert h3_forge.parse_segments is prompts.parse_segments
+    assert h3_forge.simple_prompt is prompts.simple_prompt
+    assert h3_forge.load_bundle is prompts.load_bundle
+    assert h3_forge._REF_FIELDS is prompts._REF_FIELDS
+    assert h3_forge.EASY_MODE == prompts.EASY_MODE
+    assert h3_forge.BASE_MODES == prompts.BASE_MODES
