@@ -69,11 +69,32 @@ def test_exported_systems_are_loaded_verbatim_with_no_h3_copy():
     bundle = json.loads(path.read_text(encoding="utf-8"))
     specs = prompts.load_exported_presets()
     assert specs == bundle["presets"]
-    assert list(specs) == ["promptforge_wan22", "promptforge_ltx", "promptforge_krea2",
-                           "promptforge_anima", "promptforge_illustrious"]
+    assert list(specs) == ["promptforge_wan22", "promptforge_ltx"]
     assert "promptforge_h3" not in specs
     for preset, spec in specs.items():
         assert prompts.exported_system(preset) == spec["system"]
+
+
+@pytest.mark.parametrize("preset,name,output,tag_style", [
+    ("promptforge_krea2", "krea2", "Enhanced prompt", None),
+    ("promptforge_anima", "anima", "Positive prompt", "space"),
+    ("promptforge_illustrious", "illustrious", "Positive prompt", "space"),
+])
+def test_image_presets_are_skill_guides(preset, name, output, tag_style):
+    spec = prompts.preset_spec(preset)
+    assert spec["output"] == output and spec["segments"] == [output]
+    assert spec.get("tag_style") == tag_style
+    assert not spec["system"].startswith("---")
+    assert f"===SEGMENT: {output}===" in spec["system"]
+    assert prompts.exported_system(preset) == spec["system"]
+    assert preset not in prompts.load_exported_presets()
+
+
+def test_skill_frontmatter_survives_crlf(tmp_path, monkeypatch):
+    (tmp_path / "x.md").write_bytes(b"---\r\nname: x\r\noutput: Positive prompt\r\n---\r\n\r\n# Guide\r\n")
+    monkeypatch.setattr(prompts, "_SKILLS_DIR", tmp_path)
+    spec = prompts.load_skill("x")
+    assert spec["output"] == "Positive prompt" and spec["system"] == "# Guide"
 
 
 def test_exported_bundle_rejects_unknown_version(tmp_path, monkeypatch):
@@ -87,7 +108,7 @@ def test_exported_bundle_rejects_unknown_version(tmp_path, monkeypatch):
 @pytest.mark.parametrize("preset", ["promptforge_wan22", "promptforge_ltx", "promptforge_krea2",
                                     "promptforge_anima", "promptforge_illustrious"])
 def test_prompt_projection_removes_scaffolding(preset):
-    label = prompts.load_exported_presets()[preset]["output"]
+    label = prompts.preset_spec(preset)["output"]
     raw = f"<think>hidden</think>\n===SEGMENT: {label}===\n A brass workshop. \n===SEGMENT: Extra===\nIgnore this."
     assert prompts.prompt_response(preset, raw) == "A brass workshop."
 
@@ -143,3 +164,30 @@ def test_legacy_composition_and_unknown_fallback_do_not_load_exported_bundle(mon
         if preset != "custom":
             assert prompts._compose_user_text(preset, "ignore", "idea", "") == (system, "idea")
     assert prompts._compose_user_text("missing", "ignore", "idea", "linked") == ("", "idea\n\nlinked")
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("masterpiece, best_quality, cat_ears, tank_top", "masterpiece, best quality, cat ears, tank top"),
+    ("sousou no_frieren, 1girl", "sousou no frieren, 1girl"),
+    (r"crane_\(machine\)", r"crane \(machine\)"),
+    ("(cat_ears:1.2)", "(cat ears:1.2)"),
+    ("o_o, x_x, ^_^, >_<", "o_o, x_x, ^_^, >_<"),
+    ("score_9, score_8_up, 1girl", "score_9, score_8_up, 1girl"),
+    ("A woman stands, smiling.", "A woman stands, smiling."),
+])
+def test_space_underscores_matches_promptforge(raw, expected):
+    assert prompts.space_underscores(raw) == expected
+
+
+def test_space_style_presets_respell_and_prose_presets_do_not():
+    raw = "===SEGMENT: {}===\nbest_quality, plate_armor, score_7"
+    for preset in ("promptforge_illustrious", "promptforge_anima"):
+        out = prompts.prompt_response(preset, raw.format(prompts.preset_spec(preset)["output"]))
+        assert out == "best quality, plate armor, score_7"
+    out = prompts.prompt_response("promptforge_krea2", raw.format("Enhanced prompt"))
+    assert out == "best_quality, plate_armor, score_7"
+
+
+def test_prompt_projection_drops_a_copied_code_fence():
+    raw = "===SEGMENT: Enhanced prompt===\n```\nA brass workshop.\n```"
+    assert prompts.prompt_response("promptforge_krea2", raw) == "A brass workshop."

@@ -10,9 +10,6 @@ const artifact = path.join(repo, 'data/llm_prompt_presets.json');
 const selections = [
   ['promptforge_wan22', 'wan', 'Positive prompt'],
   ['promptforge_ltx', 'ltx', 'Enhanced paragraph'],
-  ['promptforge_krea2', 'krea2', 'Enhanced prompt'],
-  ['promptforge_anima', 'anima', 'Positive prompt'],
-  ['promptforge_illustrious', 'illustrious', 'Positive prompt'],
 ];
 
 test('offline presets have provenance and only non-H3 primary outputs', () => {

@@ -1,6 +1,7 @@
 """Prompt specifications and text composition (no inference ownership)."""
 
 import json
+import re
 from pathlib import Path
 
 from . import h3_prompting
@@ -16,16 +17,77 @@ def load_exported_presets():
     return bundle["presets"]
 
 
+# Image-model presets are hand-written skill guides, not PromptForge exports:
+# short, purpose-first and editable as plain markdown in data/llm_skills/.
+_SKILLS_DIR = Path(__file__).resolve().parents[1] / "data" / "llm_skills"
+_SKILL_PRESETS = {
+    "promptforge_krea2": "krea2",
+    "promptforge_anima": "anima",
+    "promptforge_illustrious": "illustrious",
+}
+
+
+def load_skill(name):
+    """A guide's frontmatter (`key: value` lines between `---`) plus its body as the system prompt."""
+    text = (_SKILLS_DIR / f"{name}.md").read_text(encoding="utf-8").replace("\r\n", "\n")
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    if not match:
+        raise ValueError(f"Skill {name}.md has no frontmatter")
+    meta = {}
+    for line in match.group(1).splitlines():
+        key, _, value = line.partition(":")
+        if value.strip():
+            meta[key.strip()] = value.strip()
+    if not meta.get("output"):
+        raise ValueError(f"Skill {name}.md does not name its output segment")
+    spec = {"model": name, "output": meta["output"], "segments": [meta["output"]],
+            "system": text[match.end():].strip()}
+    if meta.get("tag_style"):
+        spec["tag_style"] = meta["tag_style"]
+    return spec
+
+
+def preset_spec(preset):
+    if preset in _SKILL_PRESETS:
+        return load_skill(_SKILL_PRESETS[preset])
+    return load_exported_presets()[preset]
+
+
 def exported_system(preset):
-    return load_exported_presets()[preset]["system"]
+    return preset_spec(preset)["system"]
+
+
+# Underscores between words, ported from PromptForge server/tagspacing.mjs.
+# "Letter or digit" is [^\W_] because Python's re has no \p{L}.
+_BETWEEN = re.compile(r"(?:(?<=[^\W_])|(?<=[)\\]))_(?=[^\W_]|[(\\])")
+_EMOTICON = re.compile(r"^\(?[\W_]?[^\W_]?_[^\W_]?[\W_]?\)?$")
+_SCORE = re.compile(r"^\(?score_\d", re.IGNORECASE)
+
+
+def space_underscores(text):
+    """Respell `best_quality` as `best quality`, tag by tag, for models that want spaces.
+
+    The model writes underscores from habit even when its prompt spells every
+    tag with spaces. Score tags (`score_7`) and emoticons (`o_o`, `^_^`) keep theirs.
+    """
+    pieces = []
+    for piece in str(text or "").split(","):
+        tag = piece.strip()
+        if "_" in tag and not _SCORE.match(tag) and not _EMOTICON.match(tag):
+            piece = _BETWEEN.sub(" ", piece)
+        pieces.append(piece)
+    return ",".join(pieces)
 
 
 def prompt_response(preset, raw):
-    spec = load_exported_presets()[preset]
+    spec = preset_spec(preset)
     segments = h3_prompting.parse_segments(raw, spec["segments"])
-    result = segments[spec["output"]].strip()
+    # Small models copy the code fence the guide's example sits in.
+    result = re.sub(r"^```\w*\s*|\s*```$", "", segments[spec["output"]].strip()).strip()
     if not result:
         raise ValueError("The model returned an empty prompt segment")
+    if spec.get("tag_style") == "space":
+        result = space_underscores(result)
     return result
 
 

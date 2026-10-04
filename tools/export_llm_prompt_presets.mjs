@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // Offline developer export; PromptForge is not a runtime dependency.
+// Video presets only: the image-model presets are hand-written guides in
+// data/llm_skills/, not copies of PromptForge's prompts.
 // Usage: node tools/export_llm_prompt_presets.mjs PROMPTFORGE_ROOT OUT_JSON
 import { writeFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -23,9 +25,6 @@ store.reload();
 const selections = [
   ['promptforge_wan22', 'wan', 'Positive prompt'],
   ['promptforge_ltx', 'ltx', 'Enhanced paragraph'],
-  ['promptforge_krea2', 'krea2', 'Enhanced prompt'],
-  ['promptforge_anima', 'anima', 'Positive prompt'],
-  ['promptforge_illustrious', 'illustrious', 'Positive prompt'],
 ];
 const presets = {};
 for (const [id, key, output] of selections) {
