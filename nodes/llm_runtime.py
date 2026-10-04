@@ -420,8 +420,8 @@ def _load_transformers_model(config, need_vision):
 
 
 def _load_llama_cpp_model(config, need_vision):
-    # Vision only when the caller names the model's mmproj (H3 Forge does);
-    # the analyze node's llama.cpp path still sends text only.
+    # Callers pair vision GGUFs with the matching projector before loading.
+    # Text-only requests keep the existing no-projector path.
     mmproj = config.get("llama_mmproj_path") or ""
     if need_vision and not mmproj:
         raise ValueError("The llama.cpp backend currently supports text-only GGUF models.")

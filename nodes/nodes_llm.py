@@ -58,8 +58,8 @@ from .llm_runtime import (
 
 class DaSiWa_LLMModelSelector:
     DESCRIPTION = (
-        "DaSiWa LLM Model Selector: choose a local transformers LLM/VLM folder "
-        "from ComfyUI/models/llm and configure caching, dtype, device, and unload behavior."
+        "DaSiWa LLM Model Selector: choose a local model from ComfyUI/models/llm "
+        "or an operator-configured server, and configure inference and caching."
     )
 
     @classmethod
@@ -68,7 +68,7 @@ class DaSiWa_LLMModelSelector:
             "required": {
                 "model": (_list_llm_models(), {"description": "Model folder under ComfyUI/models/llm. Use a full Hugging Face-style folder with config/tokenizer files."}),
                 "custom_path": ("STRING", {"default": "", "description": "Optional absolute path, or relative path under ComfyUI/models/llm. Overrides model when set."}),
-                "backend": (["transformers", "llama_cpp", "ollama", "openai", "ollama_server"], {"default": "transformers", "description": "Transformers loads complete local model folders, llama.cpp loads local GGUF files, and Ollama calls its loopback API."}),
+                "backend": (["transformers", "llama_cpp", "ollama", "openai", "ollama_server"], {"default": "transformers", "description": "Transformers loads local model folders; llama.cpp loads local GGUFs; ollama is legacy loopback. openai/ollama_server use operator-configured endpoints."}),
                 "task": (["auto", "text", "vision"], {"default": "auto", "description": "Use vision when analyzing connected images/frame batches."}),
                 "device": (["auto", "cuda", "cpu"], {"default": "auto", "description": "Device placement for the model."}),
                 "dtype": (["auto", "float16", "bfloat16", "float32"], {"default": "auto", "description": "Model dtype. Auto follows the model config when possible."}),
@@ -135,8 +135,8 @@ class DaSiWa_LLMModelSelector:
 
 class DaSiWa_LLMAnalyze:
     DESCRIPTION = (
-        "DaSiWa LLM Analyze: run a local text or vision-language model against "
-        "connected text, image, or VHS/video frame batches and return a STRING response."
+        "DaSiWa LLM Analyze: run a local or external text/vision model against "
+        "connected text, images or video frame batches, with model-aware prompt rewriting."
     )
 
     @classmethod
@@ -217,7 +217,13 @@ class DaSiWa_LLMAnalyze:
                     temperature, top_p, repetition_penalty, seed, max_input_tokens, use_kv_cache,
                 )
             elif backend == "llama_cpp":
-                loaded = _load_llama_cpp_model(llm_config, need_vision=len(pil_images) > 0)
+                load_config = llm_config
+                if pil_images:
+                    projector = llm_config.get("llama_mmproj_path") or _find_mmproj(llm_config["model_path"])
+                    if not projector:
+                        raise ValueError("GGUF vision requires a matching mmproj file beside the model.")
+                    load_config = dict(llm_config, llama_mmproj_path=projector)
+                loaded = _load_llama_cpp_model(load_config, need_vision=len(pil_images) > 0)
                 response, image_count = _run_llama_cpp_generation(
                     loaded, final_system, user_text, max_new_tokens, temperature, top_p,
                     repetition_penalty, seed, images_b64=pil_images_b64(pil_images),

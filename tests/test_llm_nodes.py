@@ -153,6 +153,7 @@ def test_gguf_analyze_forwards_sampled_images(monkeypatch):
     from PIL import Image
     sampled = [Image.new("RGB", (12, 8))]
     monkeypatch.setattr(llm, "_prepare_images", lambda *args: sampled)
+    monkeypatch.setattr(llm, "_find_mmproj", lambda path: "matching-mmproj.gguf")
     monkeypatch.setattr(llm, "_load_llama_cpp_model", lambda config, need_vision: "loaded-vision" if need_vision else "wrong")
     captured = []
     def generate(loaded, system, user, tokens, temperature, top_p, penalty, seed, images_b64=None):
@@ -181,6 +182,45 @@ def test_h3_invalid_image_count_fails_before_backend_load(monkeypatch, mode, cou
         llm.DaSiWa_LLMAnalyze().analyze(**kwargs)
 
 
-
-
-
+@pytest.mark.parametrize("has_projector", [True, False])
+def test_gguf_vision_analyze_real_loader_boundary(monkeypatch, tmp_path, has_projector):
+    import types
+    from PIL import Image
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"model fixture; never loaded by llama.cpp")
+    projector = tmp_path / "model-mmproj.gguf"
+    if has_projector:
+        projector.write_bytes(b"projector fixture")
+    selection = node_defaults(llm.DaSiWa_LLMModelSelector)
+    selection.update(backend="llama_cpp", custom_path=str(model), cache_mode="cached", llama_n_gpu_layers=0)
+    config, = llm.DaSiWa_LLMModelSelector().select(**selection)
+    captured = {}
+    class FakeLlama:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+        def create_chat_completion(self, **kwargs):
+            captured["generation"] = kwargs
+            return {"choices": [{"message": {"content": "fixture caption"}}]}
+    package = types.ModuleType("llama_cpp")
+    package.Llama = FakeLlama
+    formats = types.ModuleType("llama_cpp.llama_chat_format")
+    formats.MTMDChatHandler = lambda **kwargs: kwargs
+    monkeypatch.setitem(sys.modules, "llama_cpp", package)
+    monkeypatch.setitem(sys.modules, "llama_cpp.llama_chat_format", formats)
+    monkeypatch.setattr(llm, "_prepare_images", lambda *args: [Image.new("RGB", (8, 8))])
+    monkeypatch.setattr(llm, "_LLM_CACHE", {})
+    from nodes import llm_runtime
+    monkeypatch.setattr(llm_runtime, "_LLM_CACHE", {})
+    kwargs = node_defaults(llm.DaSiWa_LLMAnalyze)
+    kwargs.update(llm_config=config)
+    if not has_projector:
+        with pytest.raises(ValueError, match="matching mmproj"):
+            llm.DaSiWa_LLMAnalyze().analyze(**kwargs)
+        assert not captured
+        return
+    response, info = llm.DaSiWa_LLMAnalyze().analyze(**kwargs)
+    assert response == "fixture caption"
+    assert "images_sent=1" in info
+    assert captured["chat_handler"]["clip_model_path"] == str(projector)
+    assert captured["generation"]["messages"][1]["content"][1]["type"] == "image_url"
+    assert "llama_mmproj_path" not in config
