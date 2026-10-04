@@ -332,10 +332,10 @@ Bridge any string/text node through **DaSiWa Random String Picker** to randomize
 The **DaSiWa LLM / VLM nodes** let you run local transformers chat or vision-language models from inside a ComfyUI workflow. They accept native `STRING` inputs and native `IMAGE` batches from nodes such as Load Image or VHS frame loaders.
 
 - **Native ComfyUI Inputs:** Analyze connected text, still images, or video/image-sequence frame batches.
-- **Prompt Presets:** Custom system instructions, LTX-2.3/Wan2.2 video prompt enhancement, and image/video caption presets for mixed tags, tag-only, or natural language.
+- **Prompt Presets:** Custom system instructions, existing LTX-2.3/Wan2.2 and caption presets, plus PromptForge-backed H3, Wan 2.2, LTX, Krea2, Anima and Illustrious rewriting. Returns the model's primary prompt without segment scaffolding; legacy preset instructions remain unchanged.
 - **Memory Modes:** Keep models cached for speed, or use full cleanup to unload DaSiWa and ComfyUI managed models before/after analysis so later image/video models recover VRAM/RAM.
 - **Frame Sampling:** Limit video analysis with max frames, stride, frame strategy, resize controls, context limits, and optional KV-cache reduction.
-- **Local, GGUF, or Loopback Ollama Models:** Load already-installed Transformers folders, local GGUF through llama.cpp, or call Ollama on `127.0.0.1`. Runtime model downloads, custom remote model code, and arbitrary Ollama URLs are disabled so a workflow cannot make the ComfyUI server fetch code or send requests to an attacker-chosen service.
+- **Local and External Models:** Load already-installed Transformers folders or GGUFs, keep the legacy loopback Ollama mode, or use operator-configured OpenAI-compatible/Ollama servers. Endpoints and credentials stay outside workflow JSON; runtime downloads and custom remote model code remain disabled. The Director and LLM nodes share backend implementations without changing Director settings or workflows.
 
 [Full documentation →](docs/llm_nodes.md)
 

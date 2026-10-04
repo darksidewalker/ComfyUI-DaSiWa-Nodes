@@ -1,6 +1,6 @@
 # DaSiWa LLM / VLM Nodes
 
-Run local Transformers, llama.cpp GGUF, or Ollama text models inside a ComfyUI workflow.
+Run local Transformers, llama.cpp GGUF, loopback Ollama, or operator-configured external LLM servers inside a ComfyUI workflow. Model execution and server transports are shared with the Director's Prompt Forge; the Director keeps its existing settings, routes, cancellation and reference workflow.
 
 ## Nodes
 
@@ -75,9 +75,51 @@ Video/image-sequence handling:
 - `use_kv_cache` is a per-generation toggle for Transformers. Turning it off may reduce peak memory for some models, but generation is slower. The implementation and quantization strategy belong to Model Selector because they are backend configuration.
 - `memory_cleanup` uses the same full cleanup path before and/or after the node: DaSiWa model cache, ComfyUI managed models, Python garbage, and the device allocator are cleared. This intentionally makes later image/video models reload rather than retain VRAM/RAM.
 
+## External LLM servers
+
+Choose `openai` or `ollama_server` in Model Selector and enter the server's model ID in `server_model`. Local `model`/`custom_path` are not used for these modes. The original `ollama` mode remains fixed to loopback and uses `ollama_model`.
+
+The ComfyUI operator configures addresses outside the workflow, in the environment used to start ComfyUI:
+
+```fish
+set -gx DASIWA_LLM_OPENAI_URL http://127.0.0.1:8041/v1
+set -gx DASIWA_LLM_OLLAMA_URL http://127.0.0.1:11434
+```
+
+`DASIWA_LLM_OPENAI_API_KEY` supplies authentication when needed. Never put keys in workflow JSON. OpenAI-compatible addresses may include `/v1`; the transport adds it when absent. `ollama_server` defaults to loopback when its environment variable is empty. Director GUI Settings remain separate and unchanged.
+
+For these server modes, `max_new_tokens`, temperature, top-p, seed and `ollama_timeout` are passed to the shared transport. `llama_n_ctx` also supplies Ollama's context size. Transformers dtype, quantization, KV-cache controls and `max_input_tokens` are local controls; they do not configure remote servers. OpenAI-compatible APIs have no standard repetition-penalty equivalent; a nondefault requested penalty is reported as unsupported rather than mapped to presence penalty.
+
+Cached Ollama-server calls use a five-minute keep-alive; unload-after-run requests zero keep-alive. OpenAI-compatible unload is best-effort using the server's per-model unload endpoint, and `info` reports whether it succeeded. It cannot unload a server that offers no unload API. Remote default unload does not clear ComfyUI's local model cache; explicitly selecting `memory_cleanup` still clears local memory as before.
+
+## PromptForge presets
+
+These new choices request model-specific output and return only the generated prompt, without segment delimiters or explanation panels:
+
+| Preset | Output dialect |
+|---|---|
+| `promptforge_h3` | H3 description, soundscape and music fields |
+| `promptforge_wan22` | Wan 2.2 subject → motion → camera → scene prose |
+| `promptforge_ltx` | LTX enhanced paragraph |
+| `promptforge_krea2` | Krea2 continuous prose, no negative prompt or weight syntax |
+| `promptforge_anima` | Anima positive prompt |
+| `promptforge_illustrious` | Illustrious positive prompt |
+
+The legacy Wan/LTX and caption preset IDs and instructions are unchanged. `custom` still uses the system widget; selecting a preset does not append custom instructions. Use the ordinary multiline `prompt` field for the idea, or convert that widget to an input to connect a STRING node. Optional `text_input` is still appended after it, separated by a blank line. Leave either text source empty if only the other should contribute.
+
+For H3, choose `h3_mode` and `h3_duration`. T2VA requires no sampled pictures, I2VA/L2VA one, and FL2VA two in endpoint order. Set `max_frames` accordingly. These are reference endpoints, not arbitrary video analysis frames; do not infer output aspect ratio from them. REF2VA, labelled casts and continuation drafting remain in the Director. The existing 256-token output default is preserved for older workflows; select a larger budget such as 3500 for a full H3 result and sufficient context for its long system instructions.
+
+Non-H3 instructions are exported from PromptForge's actual registry/prompt store into `data/llm_prompt_presets.json`. H3 uses the existing `data/h3_forge.json`, shared with the Director. PromptForge is not needed at runtime. To refresh the checked-in non-H3 bundle after source instruction/registry changes:
+
+```sh
+node tools/export_llm_prompt_presets.mjs /path/to/PromptForge data/llm_prompt_presets.json
+```
+
+The bundle records its source revision and is deterministic. Exported instructions request only the primary output segment. This integration does not provide PromptForge tools such as tag search or guidance retrieval.
+
 ## Notes
 
-Text-only LLMs can analyze text and prompts. Image or video-frame analysis currently requires a vision-language model with a compatible `AutoProcessor`, such as Qwen-VL/LLaVA-style Transformers model folders. The initial llama.cpp and Ollama backends are text-only.
+Text-only LLMs can analyze text and prompts. Images require an appropriate vision-language model: a compatible Transformers processor, a GGUF with its matching mmproj projector, or a vision-capable external server. GGUF Analyze discovers a matching `mmproj*.gguf` beside the model using the same pairing logic as Director; ambiguous or missing projectors fail with a clear error. GGUF vision requires llama-cpp-python 0.3.26 or newer with MTMD support. The legacy loopback `ollama` mode remains text-only.
 
 Image compression is intentionally not exposed as a memory option. Lossless compression can preserve file quality, but after the VLM processor decodes the image it does not reduce vision token count or runtime VRAM. Use `max_frames` and `resize_max_px` for image/video memory control.
 
