@@ -103,6 +103,25 @@ def _image_b64(path):
     return base64.b64encode(buf.getvalue()).decode()
 
 
+class WorkflowInterrupt:
+    """Bridge stream checks to ComfyUI's exception-based interruption contract."""
+
+    def is_set(self):
+        import comfy.model_management as management
+        management.throw_exception_if_processing_interrupted()
+        return False
+
+
+def pil_images_b64(images):
+    """Encode already-sampled frames without imposing Director's resize limit."""
+    encoded = []
+    for image in images:
+        buf = io.BytesIO()
+        image.convert("RGB").save(buf, format="JPEG", quality=90)
+        encoded.append(base64.b64encode(buf.getvalue()).decode("ascii"))
+    return encoded
+
+
 class Ollama:
     kind = "ollama"
 
@@ -137,13 +156,18 @@ class Ollama:
     def unload(self, name):
         try:
             _http(self.base + "/api/generate", {"model": name, "keep_alive": 0}, timeout=30)
-        except Exception as exc:
-            log_dasiwa("H3 Forge", f"unload of {name} failed: {exc}")
+        except Exception:
+            log_dasiwa("H3 Forge", "Ollama unload request failed.")
+            return False
         # Ollama unloads in the background; checking at once reported a model
         # "still loaded" that was gone a second later.
         import time
         for _ in range(10):
-            if name not in self.loaded():
+            try:
+                loaded = {m["name"] for m in _http(self.base + "/api/ps").get("models", [])}
+            except Exception:
+                return False
+            if name not in loaded:
                 return True
             time.sleep(0.5)
         return False
@@ -166,12 +190,20 @@ class Ollama:
             "messages": [{"role": "system", "content": system}, message],
             "options": options,
         }, timeout, cancel):
-            chunk = json.loads(line)
-            if chunk.get("error"):
-                raise ForgeError("backend", f"Ollama: {chunk['error']}")
-            parts.append((chunk.get("message") or {}).get("content") or "")
-            if chunk.get("done"):
-                stats = {"prompt_tokens": chunk.get("prompt_eval_count"), "output_tokens": chunk.get("eval_count")}
+            try:
+                chunk = json.loads(line)
+                if not isinstance(chunk, dict):
+                    raise ValueError
+                if chunk.get("error"):
+                    raise ForgeError("backend", f"Ollama: {chunk['error']}")
+                content = (chunk.get("message") or {}).get("content") or ""
+                if not isinstance(content, str):
+                    raise ValueError
+                parts.append(content)
+                if chunk.get("done"):
+                    stats = {"prompt_tokens": chunk.get("prompt_eval_count"), "output_tokens": chunk.get("eval_count")}
+            except (ValueError, TypeError, AttributeError):
+                raise ForgeError("backend", "Ollama returned an invalid stream chunk.") from None
         return "".join(parts), stats
 
 
@@ -235,10 +267,20 @@ class OpenAICompatible:
             data = line[5:].strip()
             if data == "[DONE]":
                 break
-            chunk = json.loads(data)
-            usage = chunk.get("usage") or usage
-            for choice in chunk.get("choices") or []:
-                parts.append((choice.get("delta") or {}).get("content") or "")
+            try:
+                chunk = json.loads(data)
+                if not isinstance(chunk, dict) or chunk.get("error"):
+                    raise ValueError
+                usage = chunk.get("usage") or usage
+                if not isinstance(usage, dict):
+                    raise ValueError
+                for choice in chunk.get("choices") or []:
+                    content = (choice.get("delta") or {}).get("content") or ""
+                    if not isinstance(content, str):
+                        raise ValueError
+                    parts.append(content)
+            except (ValueError, TypeError, AttributeError):
+                raise ForgeError("backend", "OpenAI-compatible server returned an error or invalid stream chunk.") from None
         return "".join(parts), {"prompt_tokens": usage.get("prompt_tokens"), "output_tokens": usage.get("completion_tokens")}
 
 
@@ -377,17 +419,16 @@ class Local:
         loaded = None
         try:
             if gguf:
-                content = user
                 if images_b64:
                     config["llama_mmproj_path"] = self._mmproj(llm, name)
-                    content = [{"type": "text", "text": user}] + [
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}} for b in images_b64]
+                messages = llm._messages_for_llama_cpp(
+                    system, user, images_b64, include_empty_system=True)
                 loaded = llm._load_llama_cpp_model(config, need_vision=bool(images_b64))
                 # Streamed here rather than through _run_llama_cpp_generation so
                 # Cancel can stop it between tokens.
                 parts = []
                 for chunk in loaded.model.create_chat_completion(
-                        messages=[{"role": "system", "content": system}, {"role": "user", "content": content}],
+                        messages=messages,
                         max_tokens=NUM_PREDICT, temperature=temperature, top_p=top_p, stream=True,
                         # llama-cpp-python samples with a fixed seed unless given
                         # one, so Regenerate would return the same draft every time.
@@ -429,6 +470,55 @@ class Local:
                 del loaded
             llm._release_all_model_memory()
         return text, {"prompt_tokens": None, "output_tokens": None}
+
+
+def run_workflow_server(config, system, user, images, max_tokens,
+                        temperature, top_p, repetition_penalty, seed,
+                        cleanup_after=False):
+    """Run a graph request against operator settings; return text/count/status."""
+    model = config.get("model_path")
+    if (not isinstance(model, str) or not model.strip() or "://" in model
+            or model.startswith("//") or any(ord(c) < 32 for c in model)):
+        raise ValueError("Enter a server model ID, not an endpoint URL")
+    settings = workflow_server_settings()
+    kind = config["backend"]
+    if kind == "openai":
+        if not settings["openai_url"]:
+            raise ValueError("Set DASIWA_LLM_OPENAI_URL in the ComfyUI service environment")
+        server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
+    elif kind == "ollama_server":
+        server = Ollama(settings["ollama_url"])
+    else:
+        raise ValueError("Unsupported workflow server backend")
+    unload = config.get("cache_mode") == "unload_after_run" or cleanup_after
+    status = {"unload_requested": bool(unload), "unloaded": False}
+    try:
+        text, _ = server.chat(
+            config["model_path"], system, user, pil_images_b64(images),
+            {"temperature": temperature, "top_p": top_p},
+            config.get("llama_n_ctx", 8192), config.get("ollama_timeout", 300),
+            WorkflowInterrupt(), max_tokens=max_tokens,
+            keep_alive=0 if unload else "5m", seed=seed,
+            repetition_penalty=repetition_penalty,
+        )
+        return text, len(images), status
+    except urlerror.HTTPError as exc:
+        code = "auth" if exc.code in (401, 403) else "backend"
+        raise ForgeError(code, f"Workflow server returned HTTP {exc.code}.") from None
+    except urlerror.URLError:
+        raise ForgeError("connection", "Could not reach the configured workflow server.") from None
+    except ForgeError as exc:
+        message = CANCELLED if exc.code == "cancelled" else "Workflow server rejected the request."
+        raise ForgeError(exc.code, message) from None
+    except ValueError:
+        raise ForgeError("backend", "Workflow server returned an invalid response.") from None
+    finally:
+        if unload:
+            try:
+                status["unloaded"] = bool(server.unload(config["model_path"]))
+            except Exception:
+                # Cleanup is best effort and must never replace a stream error.
+                status["unloaded"] = False
 
 
 def backends(settings):

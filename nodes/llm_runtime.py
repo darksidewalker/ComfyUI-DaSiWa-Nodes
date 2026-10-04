@@ -477,9 +477,23 @@ def _load_llama_cpp_model(config, need_vision):
     return loaded
 
 
+def _messages_for_llama_cpp(system, user, images_b64=None, *, include_empty_system=False):
+    """llama.cpp image_url messages, preserving text-only workflow contracts."""
+    content = user
+    if images_b64:
+        content = [{"type": "text", "text": user}] + [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b}"}}
+            for b in images_b64]
+    messages = []
+    if system or include_empty_system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": content})
+    return messages
+
+
 def _run_llama_cpp_generation(loaded, system_prompt, user_text, max_new_tokens, temperature, top_p,
-                              repetition_penalty, seed):
-    messages = _messages_for_prompt(system_prompt, user_text, 0)
+                              repetition_penalty, seed, images_b64=None):
+    messages = _messages_for_llama_cpp(system_prompt, user_text, images_b64)
     kwargs = {
         "messages": messages,
         "max_tokens": max_new_tokens,
@@ -491,7 +505,7 @@ def _run_llama_cpp_generation(loaded, system_prompt, user_text, max_new_tokens, 
     # pick a fresh seed here or every run returns the same text.
     kwargs["seed"] = seed if seed >= 0 else random.randrange(2**31)
     response = loaded.model.create_chat_completion(**kwargs)
-    return response["choices"][0]["message"]["content"].strip(), 0
+    return response["choices"][0]["message"]["content"].strip(), len(images_b64 or [])
 
 
 def _run_ollama_generation(config, system_prompt, user_text, max_new_tokens, temperature, top_p,
