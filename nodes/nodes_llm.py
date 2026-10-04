@@ -5,6 +5,16 @@ That makes the unload-after-run mode much more reliable because the graph cache
 does not hold a live reference to a very large model.
 """
 
+from .llm_prompt_presets import (
+    _BASE_OUTPUT_RULES,
+    _video_prompt_preset,
+    _caption_preset,
+    _SYSTEM_PROMPT_PRESETS,
+    _SYSTEM_PROMPT_PRESET_LABELS,
+    _resolve_system_prompt,
+    _compose_user_text,
+)
+
 # Compatibility aliases: implementations and their globals belong to runtime.
 from .llm_runtime import (
     _LLM_CACHE,
@@ -12,11 +22,6 @@ from .llm_runtime import (
     _IMAGE_RESAMPLING,
     _PIL_LANCZOS,
     _RESAMPLE_FILTERS,
-    _BASE_OUTPUT_RULES,
-    _video_prompt_preset,
-    _caption_preset,
-    _SYSTEM_PROMPT_PRESETS,
-    _SYSTEM_PROMPT_PRESET_LABELS,
     _ensure_llm_folder,
     _LLM_DIR,
     _LoadedLLM,
@@ -40,8 +45,6 @@ from .llm_runtime import (
     _image_tensor_to_pil,
     _select_frame_indices,
     _prepare_images,
-    _resolve_system_prompt,
-    _compose_user_text,
     _messages_for_prompt,
     _apply_chat_template,
     _run_generation,

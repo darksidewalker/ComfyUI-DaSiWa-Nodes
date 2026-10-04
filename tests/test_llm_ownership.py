@@ -34,3 +34,11 @@ def test_h3_prompt_builder_is_not_owned_by_director():
     assert h3_forge._REF_FIELDS is prompts._REF_FIELDS
     assert h3_forge.EASY_MODE == prompts.EASY_MODE
     assert h3_forge.BASE_MODES == prompts.BASE_MODES
+
+
+def test_legacy_presets_have_one_owner():
+    from nodes import nodes_llm
+    prompts = importlib.import_module("nodes.llm_prompt_presets")
+    assert nodes_llm._SYSTEM_PROMPT_PRESETS is prompts._SYSTEM_PROMPT_PRESETS
+    assert nodes_llm._compose_user_text is prompts._compose_user_text
+    assert prompts._compose_user_text.__module__ == "nodes.llm_prompt_presets"
