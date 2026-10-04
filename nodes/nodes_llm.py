@@ -5,6 +5,8 @@ That makes the unload-after-run mode much more reliable because the graph cache
 does not hold a live reference to a very large model.
 """
 
+from .llm_backends import run_workflow_server, pil_images_b64
+
 from .llm_prompt_presets import (
     _BASE_OUTPUT_RULES,
     _video_prompt_preset,
@@ -13,6 +15,9 @@ from .llm_prompt_presets import (
     _SYSTEM_PROMPT_PRESET_LABELS,
     _resolve_system_prompt,
     _compose_user_text,
+    prompt_response,
+    h3_request,
+    h3_response,
 )
 
 # Compatibility aliases: implementations and their globals belong to runtime.
@@ -63,7 +68,7 @@ class DaSiWa_LLMModelSelector:
             "required": {
                 "model": (_list_llm_models(), {"description": "Model folder under ComfyUI/models/llm. Use a full Hugging Face-style folder with config/tokenizer files."}),
                 "custom_path": ("STRING", {"default": "", "description": "Optional absolute path, or relative path under ComfyUI/models/llm. Overrides model when set."}),
-                "backend": (["transformers", "llama_cpp", "ollama"], {"default": "transformers", "description": "Transformers loads complete local model folders, llama.cpp loads local GGUF files, and Ollama calls its loopback API."}),
+                "backend": (["transformers", "llama_cpp", "ollama", "openai", "ollama_server"], {"default": "transformers", "description": "Transformers loads complete local model folders, llama.cpp loads local GGUF files, and Ollama calls its loopback API."}),
                 "task": (["auto", "text", "vision"], {"default": "auto", "description": "Use vision when analyzing connected images/frame batches."}),
                 "device": (["auto", "cuda", "cpu"], {"default": "auto", "description": "Device placement for the model."}),
                 "dtype": (["auto", "float16", "bfloat16", "float32"], {"default": "auto", "description": "Model dtype. Auto follows the model config when possible."}),
@@ -79,7 +84,10 @@ class DaSiWa_LLMModelSelector:
                 "llama_n_threads": ("INT", {"default": 0, "min": 0, "max": 256, "step": 1, "description": "llama.cpp CPU threads. 0 lets llama.cpp choose."}),
                 "llama_chat_format": ("STRING", {"default": "", "description": "Optional llama.cpp chat format, for example chatml. Leave empty to use GGUF metadata."}),
                 "ollama_model": ("STRING", {"default": "", "description": "Ollama model name, for example qwen3:8b. Required when backend is ollama."}),
-                "ollama_timeout": ("INT", {"default": 300, "min": 1, "max": 3600, "step": 1, "description": "Loopback Ollama request timeout in seconds."}),
+                "ollama_timeout": ("INT", {"default": 300, "min": 1, "max": 3600, "step": 1, "description": "Ollama/server request timeout in seconds."}),
+            },
+            "optional": {
+                "server_model": ("STRING", {"default": "", "description": "Model ID on the operator-configured OpenAI-compatible or Ollama server."}),
             }
         }
 
@@ -91,8 +99,12 @@ class DaSiWa_LLMModelSelector:
     def select(self, model, custom_path, backend, task, device, dtype, quantization, cache_mode,
                attention_implementation, kv_cache_implementation, kv_cache_quant_backend,
                kv_cache_nbits, kv_cache_residual_length, llama_n_ctx, llama_n_gpu_layers,
-               llama_n_threads, llama_chat_format, ollama_model, ollama_timeout):
-        if backend == "ollama":
+               llama_n_threads, llama_chat_format, ollama_model, ollama_timeout, server_model=""):
+        if backend in ("openai", "ollama_server"):
+            model_path = str(server_model or "").strip()
+            if not model_path:
+                raise ValueError("Enter server_model for the selected server backend.")
+        elif backend == "ollama":
             model_path = ollama_model.strip()
             if not model_path:
                 raise ValueError("Enter ollama_model when backend is ollama.")
@@ -152,6 +164,8 @@ class DaSiWa_LLMAnalyze:
             "optional": {
                 "images": ("IMAGE", {"description": "Native ComfyUI IMAGE input. Works with Load Image and VHS/image-sequence frame batches."}),
                 "text_input": ("STRING", {"forceInput": True, "description": "Connected text to analyze."}),
+                "h3_mode": (["T2VA", "I2VA", "FL2VA", "L2VA"], {"default": "T2VA", "description": "Mode for the PromptForge H3 preset; REF2VA uses the Director."}),
+                "h3_duration": ("FLOAT", {"default": 10.0, "min": 1.0, "max": 120.0, "step": 0.1, "description": "Clip duration for the PromptForge H3 preset."}),
             }
         }
 
@@ -163,9 +177,10 @@ class DaSiWa_LLMAnalyze:
     def analyze(self, llm_config, system_prompt_preset, system_prompt, prompt, max_new_tokens,
                 max_input_tokens, temperature, top_p, repetition_penalty, use_kv_cache,
                 seed, max_frames, frame_stride, frame_strategy, resize_max_px,
-                resize_algorithm, memory_cleanup, images=None, text_input=""):
+                resize_algorithm, memory_cleanup, images=None, text_input="",
+                h3_mode="T2VA", h3_duration=10.0):
         backend = llm_config.get("backend")
-        if backend not in ("transformers", "llama_cpp", "ollama"):
+        if backend not in ("transformers", "llama_cpp", "ollama", "openai", "ollama_server"):
             raise ValueError(f"Unsupported LLM backend: {backend}")
 
         final_system, user_text = _compose_user_text(
@@ -173,6 +188,7 @@ class DaSiWa_LLMAnalyze:
             system_prompt,
             prompt,
             text_input,
+            resolve_system=system_prompt_preset != "promptforge_h3",
         )
         if not user_text:
             user_text = "Analyze the provided input."
@@ -185,7 +201,10 @@ class DaSiWa_LLMAnalyze:
             resize_max_px,
             resize_algorithm,
         )
+        if system_prompt_preset == "promptforge_h3":
+            final_system, user_text = h3_request(user_text, h3_mode, h3_duration, len(pil_images))
         loaded = None
+        remote_status = None
         cleanup_before = memory_cleanup in ("before_run", "before_and_after")
         cleanup_after = memory_cleanup in ("after_run", "before_and_after")
         if cleanup_before:
@@ -201,7 +220,12 @@ class DaSiWa_LLMAnalyze:
                 loaded = _load_llama_cpp_model(llm_config, need_vision=len(pil_images) > 0)
                 response, image_count = _run_llama_cpp_generation(
                     loaded, final_system, user_text, max_new_tokens, temperature, top_p,
-                    repetition_penalty, seed,
+                    repetition_penalty, seed, images_b64=pil_images_b64(pil_images),
+                )
+            elif backend in ("openai", "ollama_server"):
+                response, image_count, remote_status = run_workflow_server(
+                    llm_config, final_system, user_text, pil_images, max_new_tokens,
+                    temperature, top_p, repetition_penalty, seed, cleanup_after,
                 )
             else:
                 response, image_count = _run_ollama_generation(
@@ -209,6 +233,10 @@ class DaSiWa_LLMAnalyze:
                     repetition_penalty, seed, pil_images,
                     unload_after_request=(llm_config.get("cache_mode") == "unload_after_run" or cleanup_after),
                 )
+            if system_prompt_preset == "promptforge_h3":
+                response = h3_response(response, h3_mode, h3_duration)
+            elif system_prompt_preset.startswith("promptforge_"):
+                response = prompt_response(system_prompt_preset, response)
             info = (
                 f"model={llm_config['model_path']}; "
                 f"backend={backend}; "
@@ -222,9 +250,17 @@ class DaSiWa_LLMAnalyze:
                 f"use_kv_cache={use_kv_cache}; "
                 f"kv_cache_implementation={llm_config.get('kv_cache_implementation', 'default')}"
             )
+            if remote_status is not None:
+                info += (f"; remote_unload_requested={remote_status['unload_requested']}"
+                         f"; remote_unloaded={remote_status['unloaded']}")
+                if backend == "openai" and repetition_penalty != 1.0:
+                    info += "; repetition_penalty_supported=False"
             return (response, info)
         finally:
-            if llm_config.get("cache_mode") == "unload_after_run" or cleanup_after:
+            if cleanup_after or (
+                backend not in ("openai", "ollama_server")
+                and llm_config.get("cache_mode") == "unload_after_run"
+            ):
                 _release_all_model_memory()
                 if loaded is not None:
                     try:
