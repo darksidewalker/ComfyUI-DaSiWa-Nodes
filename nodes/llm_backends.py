@@ -26,12 +26,15 @@ class ForgeError(Exception):
 # ── Context room ──────────────────────────────────────────────────────────
 # The H3 instructions alone are ~10k tokens, so pictures do not fit in the
 # default 16,384: nine square ones need ~19k before a word is written, and
-# llama.cpp then fails with a bare "llama_decode returned 1". A request that
-# carries pictures gets VISION_CONTEXT where the context is ours to set (a
-# local GGUF, Ollama), and is measured first so it fails with a message that
-# says what to do. An OpenAI-compatible server's context is its own; a
-# context error from one is translated, never retried without the pictures.
-VISION_CONTEXT = 32768
+# llama.cpp then fails with a bare "llama_decode returned 1". Where the
+# context is ours to set (a local GGUF, Ollama) each picture adds its own room
+# on top of the default, so one picture costs a little and nine reach 32,768;
+# a square one really takes ~1,090 tokens, so each has room to spare. The
+# request is still measured first so it fails with a message that says what
+# to do. An OpenAI-compatible server's context is its own; a context error
+# from one is translated, never retried without the pictures.
+CONTEXT_PER_PICTURE = 1820
+CONTEXT_STEP = 256
 # Room left for the answer; an H3 draft is usually 1-2k tokens.
 REPLY_ROOM = 2048
 # Estimates, not a tokenizer: about 3.8 characters per token for this
@@ -54,8 +57,12 @@ def estimate_tokens(system, user, images_b64=()):
 
 
 def context_for(num_ctx, images_b64):
-    """The context to load with: the vision size whenever pictures are sent."""
-    return max(int(num_ctx), VISION_CONTEXT) if images_b64 else int(num_ctx)
+    """The context to load with: the default plus room for each picture sent."""
+    pictures = len(images_b64 or ())
+    if not pictures:
+        return int(num_ctx)
+    need = int(num_ctx) + pictures * CONTEXT_PER_PICTURE
+    return -(-need // CONTEXT_STEP) * CONTEXT_STEP
 
 
 def sets_its_context(kind, name):

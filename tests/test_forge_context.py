@@ -28,10 +28,13 @@ def test_picture_cost_follows_its_size():
     assert backends.estimate_tokens("a" * 380, "", [SQUARE]) == 100 + 1028
 
 
-def test_pictures_get_the_vision_context():
+def test_each_picture_adds_its_own_room():
     assert backends.context_for(16384, []) == 16384
-    assert backends.context_for(16384, [SQUARE]) == backends.VISION_CONTEXT == 32768
-    assert backends.context_for(65536, [SQUARE]) == 65536
+    assert backends.context_for(16384, [SQUARE]) == 18432
+    assert backends.context_for(16384, [SQUARE] * 3) == 22016
+    assert backends.context_for(16384, [SQUARE] * 9) == 32768
+    # Each picture's room is more than a square picture costs.
+    assert backends.CONTEXT_PER_PICTURE > backends.image_tokens(SQUARE)
 
 
 def test_only_contexts_we_set_are_checked():
@@ -89,12 +92,19 @@ def test_blind_drafts_keep_the_default_context(monkeypatch, tmp_path):
     assert sent == [{"images": 0, "num_ctx": 16384}]
 
 
-def test_too_many_pictures_stop_before_loading(monkeypatch, tmp_path):
-    body, sent = _labelled(monkeypatch, tmp_path, 25, kind="ollama", name="qwen3-vl:8b")
+def test_one_picture_costs_only_its_own_room(monkeypatch, tmp_path):
+    body, sent = _labelled(monkeypatch, tmp_path, 1, kind="ollama", name="qwen3-vl:8b")
+    forge._generate(body, str(tmp_path), None, None)
+    assert sent == [{"images": 1, "num_ctx": 18432}]
+
+
+def test_a_draft_that_cannot_fit_stops_before_loading(monkeypatch, tmp_path):
+    body, sent = _labelled(monkeypatch, tmp_path, 9, kind="ollama", name="qwen3-vl:8b")
+    monkeypatch.setattr(forge, "context_for", lambda num_ctx, images: num_ctx)  # as if the room were not added
     with pytest.raises(backends.ForgeError) as err:
         forge._generate(body, str(tmp_path), None, None)
-    assert err.value.code == "too_long" and "25 pictures" in err.value.message
-    assert "the model gets 32,768" in err.value.message
+    assert err.value.code == "too_long" and "9 pictures" in err.value.message
+    assert "the model gets 16,384" in err.value.message and "untick" in err.value.message
     assert sent == []
 
 
