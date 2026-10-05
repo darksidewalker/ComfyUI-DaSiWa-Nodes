@@ -5,7 +5,11 @@ Analyze node's code path, so every backend, unload rule and picture handling
 stays in one place.
 """
 
+import json
+from pathlib import Path
+
 from .llm_backends import ForgeError, parse_server_choice, server_model_choices
+from .llm_prompt_presets import preset_spec
 from .llm_runtime import _list_llm_models, _resolve_model_path
 from .nodes_llm import DaSiWa_LLMAnalyze
 
@@ -20,11 +24,69 @@ WRITE_FOR = {
 
 # Room for a long prompt plus a thinking model's reasoning; the advanced
 # node's 256 cuts a full Anima or Krea2 prompt short.
-MAX_NEW_TOKENS = 2048
+DEFAULT_MAX_TOKENS = 2048
 PICTURE_ONLY = "Write the prompt from the attached pictures."
 # A batch goes in whole up to this many, Analyze's own default; a longer one
 # (a loaded video) is sampled evenly, always starting with the first image.
 MAX_IMAGES = 8
+
+# Detail and creativity, 1-10 each; 5 is standard and adds no line, so the
+# guide decides. Detail is how much gets written, creativity how far past the
+# idea the writer may go - two different things, so two sliders.
+STANDARD = 5
+
+# Kept inside the guide's own length, so Wan's and LTX's word bands still
+# hold. A first wording, not yet measured.
+DETAIL_RULES = {
+    1: "as short as it can be. Only what the idea names, at the very bottom of your length.",
+    2: "very short. The idea plus one or two essentials.",
+    3: "short. The idea plus the few details it needs.",
+    4: "a little shorter than usual.",
+    6: "a little more than usual: one more detail of light, material or setting.",
+    7: "detailed. Add more of the light, materials, setting and camera.",
+    8: "very detailed. Cover the light, materials, setting, camera and the small touches.",
+    9: "richly detailed, toward the top of your length.",
+    10: "as detailed as the format allows: every visible part of the picture, at the top of your length.",
+}
+
+# PromptForge's ten Creativity presets, Literal to Wild: its temperatures and
+# its rules, as used on these same models there.
+CREATIVITY = {
+    1: (0.30, "Add nothing. Put exactly what the person wrote into this model's dialect and stop. If they left something out it stays out - no setting, no light, no mood, no wardrobe that is not already in the idea."),
+    2: (0.45, "Stay close to what the person wrote. Put what they named into this model's dialect and add only what the image cannot be built without. Do not invent a setting, a mood or a wardrobe they did not ask for."),
+    3: (0.55, "Follow the idea closely, and fill only the gaps that would otherwise leave the image undefined - where this happens, what the light is doing. Take the most ordinary answer available and move on."),
+    4: (0.62, "Complete the scene they described using conventional, expected choices. Every addition should be one they would have written themselves had they thought of it."),
+    5: (0.70, None),
+    6: (0.78, "Fill the gaps with choices that have some character to them rather than the safest one. You may add a supporting element they never mentioned, as long as the scene they described is still the subject."),
+    7: (0.85, "Bring your own ideas to the setting, the light and the framing. Add elements they never asked for where they make the image stronger, and let the atmosphere be a deliberate choice rather than a default."),
+    8: (0.92, "Expand freely. Add atmosphere, framing and supporting detail they never asked for, as far as it makes the image better. Nothing you add may contradict what they did write."),
+    9: (1.00, "Push well past the idea. Reach for a striking setting, a strong light and an unusual angle rather than a plausible one. The subject and the action they named are fixed; treat everything else as an invitation."),
+    10: (1.10, "Treat the idea as a starting point and build well past it. Unexpected detail, strong atmosphere and bold framing are wanted here. Only the subject and the action they named are fixed; everything around them is yours."),
+}
+
+# Styles: one label list for every model. Each label carries tags for the tag
+# models and descriptive words for the prose ones (PromptForge's Anima and
+# Krea2 lists); a label is a payload, never just its name.
+NO_STYLE = "None"
+
+
+def load_styles():
+    path = Path(__file__).resolve().parents[1] / "data" / "llm_styles.json"
+    with path.open(encoding="utf-8") as handle:
+        return json.load(handle)["styles"]
+
+
+def style_line(style, spec):
+    """PromptForge's style instruction, worded for the model's dialect."""
+    if not style or style == NO_STYLE:
+        return ""
+    entry = load_styles().get(style)
+    if not entry:
+        return ""
+    if spec.get("tag_style"):
+        return f"Style: {style} - include these tags: {', '.join(entry['tags'] or entry['words'])}"
+    return f"Style: {style} - carry this look through the description: {', '.join(entry['words'] or entry['tags'])}"
+
 
 # Server models sit in the one model list as "Ollama: name" and "Server: id".
 # Addresses come from Settings or the environment, never the graph.
@@ -34,6 +96,38 @@ NO_MODEL = "None"
 def model_choices():
     local = [m for m in _list_llm_models() if m != NO_MODEL]
     return (local + server_model_choices()) or [NO_MODEL]
+
+
+def request_text(idea, detail, creativity, style_text=""):
+    """The idea, then the style, creativity and detail lines that apply."""
+    lines = [idea or PICTURE_ONLY]
+    if style_text:
+        lines.append(style_text)
+    rule = CREATIVITY[int(creativity)][1]
+    if rule:
+        lines.append(f"Creativity {int(creativity)} of 10: {rule}")
+    if DETAIL_RULES.get(int(detail)):
+        lines.append(f"Detail {int(detail)} of 10: {DETAIL_RULES[int(detail)]}")
+    return "\n\n".join(lines)
+
+
+def assemble(prompt, spec, always_at_top, add_quality_tags):
+    """The quality ladder (when asked for; tag models only), then the person's
+    own text exactly as typed, then the written prompt. A tag already up front
+    is dropped from the written part so nothing appears twice."""
+    pinned = str(always_at_top or "").strip().strip(",").strip()
+    pinned_tags = {t.strip().lower() for t in pinned.split(",") if t.strip()}
+    quality = [t for t in (spec.get("quality") or []) if t.lower() not in pinned_tags] if add_quality_tags else []
+    front = [*quality, *([pinned] if pinned else [])]
+    if not front:
+        return prompt
+    if spec.get("tag_style"):
+        # Prose pieces never equal a tag, so this only ever drops tags. The
+        # model's tags were respelled with spaces; the person's were not.
+        same = lambda t: t.strip().lower().replace("_", " ")
+        taken = {same(t) for t in pinned_tags | set(quality)}
+        prompt = ", ".join(p for p in prompt.split(", ") if same(p) not in taken)
+    return ", ".join([*front, prompt]) if prompt else ", ".join(front)
 
 
 def simple_config(model, keep_loaded):
@@ -81,9 +175,15 @@ class DaSiWa_LLMPromptWriter:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": (model_choices(), {"description": "Models in ComfyUI/models/llm, Ollama's models, and the operator's OpenAI-compatible server's. Press R after adding one. A vision model can also read a connected picture."}),
+                "model": (model_choices(), {"description": "Models in ComfyUI/models/llm, plus Ollama's and the OpenAI-compatible server's from Settings > DaSiWa > LLM servers. Press R after adding one. A vision model can also read connected images."}),
                 "write_for": (list(WRITE_FOR), {"default": "Anima", "description": "The image or video model the prompt is for."}),
+                "always_at_top": ("STRING", {"default": "", "multiline": False, "placeholder": "quality tags, LoRA trigger words... (always first, exactly as typed)", "description": "Quality tags, LoRA trigger words or anything else that must lead the prompt. Put at the very top exactly as typed; the model never sees or changes it."}),
                 "idea": ("STRING", {"default": "", "multiline": True, "description": "What you want in the picture, in your own words or as tags."}),
+                "style": ([NO_STYLE, *load_styles()], {"default": NO_STYLE, "description": "A look to carry through the prompt. Tag models get matching tags, prose models a description of the look. None adds nothing."}),
+                "detail": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How much gets written. 5 is standard; lower is shorter, higher covers more."}),
+                "creativity": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How far past your idea the writer may go. 1 adds nothing, 5 is balanced, 10 builds well past it."}),
+                "add_quality_tags": ("BOOLEAN", {"default": False, "description": "Put this model's usual quality tags first. Anima and Illustrious only; the prose models have none."}),
+                "max_tokens": ("INT", {"default": DEFAULT_MAX_TOKENS, "min": 128, "max": 8192, "step": 64, "description": "The most the model may write. Lower it to stop a model that runs on; set it too low and the prompt stops mid-sentence."}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1, "control_after_generate": True, "description": "Change it for a different take on the same idea."}),
                 "keep_loaded": ("BOOLEAN", {"default": False, "description": "Off frees the memory after every prompt so the image model has it. On is faster for repeated prompts."}),
             },
@@ -103,31 +203,35 @@ class DaSiWa_LLMPromptWriter:
         # where a stopped Ollama gets a clear message instead of "not in list".
         return True
 
-    def write(self, model, write_for, idea, seed, keep_loaded, images=None):
+    def write(self, model, write_for, idea, seed, keep_loaded, always_at_top="", style=NO_STYLE, detail=STANDARD,
+              creativity=STANDARD, add_quality_tags=False, max_tokens=DEFAULT_MAX_TOKENS, images=None):
         idea = str(idea or "").strip()
         if not idea and images is None:
             raise ValueError("Type an idea, or connect a picture to write the prompt from.")
         config = simple_config(model, keep_loaded)
+        preset = WRITE_FOR[write_for]
+        spec = preset_spec(preset)
         try:
-            prompt = self._analyze(config, write_for, idea, seed, images)
+            prompt = self._analyze(config, preset, request_text(idea, detail, creativity, style_line(style, spec)),
+                                   CREATIVITY[int(creativity)][0], max_tokens, seed, images)
         except ForgeError as exc:
             if exc.code != "connection":
                 raise
             where = "Ollama" if config["backend"] == "ollama_server" else "the model server"
             raise ValueError(f"Could not reach {where}. Start it, check {config['model_path']} "
                              "is still installed, and press R to refresh the model list.") from None
-        return (prompt,)
+        return (assemble(prompt, spec, always_at_top, add_quality_tags),)
 
     @staticmethod
-    def _analyze(config, write_for, idea, seed, images):
+    def _analyze(config, preset, text, temperature, max_tokens, seed, images):
         prompt, _ = DaSiWa_LLMAnalyze().analyze(
             llm_config=config,
-            system_prompt_preset=WRITE_FOR[write_for],
+            system_prompt_preset=preset,
             system_prompt="",
-            prompt=idea or PICTURE_ONLY,
-            max_new_tokens=MAX_NEW_TOKENS,
+            prompt=text,
+            max_new_tokens=max_tokens,
             max_input_tokens=0,
-            temperature=0.2,
+            temperature=temperature,
             top_p=0.9,
             repetition_penalty=1.0,
             use_kv_cache=True,

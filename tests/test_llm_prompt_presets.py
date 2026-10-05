@@ -174,6 +174,31 @@ def test_space_underscores_matches_promptforge(raw, expected):
     assert prompts.space_underscores(raw) == expected
 
 
+@pytest.mark.parametrize("raw,expected", [
+    ("masterpiece, 1girl, solo, makima (chainsaw man), chainsaw man, rain",
+     r"masterpiece, 1girl, solo, makima \(chainsaw man\), chainsaw man, rain"),
+    ("makima_(chainsaw_man)", r"makima_\(chainsaw_man\)"),
+    ("(chibi:2), 1girl", "(chibi:2), 1girl"),
+    ("(glitch:1.5), 1girl", "(glitch:1.5), 1girl"),
+    ("( chibi : 2 ), 1girl", "( chibi : 2 ), 1girl"),
+    ("(a:2), (b:3)", "(a:2), (b:3)"),
+    ("2b (nier:automata), nier:automata", r"2b \(nier:automata\), nier:automata"),
+    ("(re:zero)", r"\(re:zero\)"),
+    (r"makima \(chainsaw man\)", r"makima \(chainsaw man\)"),
+    ("masterpiece, best quality, 1girl, solo", "masterpiece, best quality, 1girl, solo"),
+    ("", ""),
+])
+def test_escape_literal_parens_matches_promptforge(raw, expected):
+    assert prompts.escape_literal_parens(raw) == expected
+    assert prompts.escape_literal_parens(expected) == expected
+
+
+def test_tag_presets_escape_a_bare_series():
+    raw = "===SEGMENT: Positive prompt===\nwatercolor_(medium), (rain:1.2)"
+    assert prompts.prompt_response("promptforge_illustrious", raw) == r"watercolor \(medium\), (rain:1.2)"
+    assert prompts.prompt_response("promptforge_krea2", raw.replace("Positive prompt", "Enhanced prompt")) == "watercolor_(medium), (rain:1.2)"
+
+
 def test_space_style_presets_respell_and_prose_presets_do_not():
     raw = "===SEGMENT: {}===\nbest_quality, plate_armor, score_7"
     for preset in ("promptforge_illustrious", "promptforge_anima"):

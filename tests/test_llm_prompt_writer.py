@@ -24,7 +24,12 @@ def _fake_server(monkeypatch, raw, sent):
 def test_schema_is_the_short_list(monkeypatch):
     monkeypatch.setattr(simple, "model_choices", lambda: ["None"])
     schema = simple.DaSiWa_LLMPromptWriter.INPUT_TYPES()
-    assert list(schema["required"]) == ["model", "write_for", "idea", "seed", "keep_loaded"]
+    assert list(schema["required"]) == ["model", "write_for", "always_at_top", "idea", "style", "detail", "creativity",
+                                        "add_quality_tags", "max_tokens", "seed", "keep_loaded"]
+    assert schema["required"]["style"][0][0] == "None" and "Watercolor" in schema["required"]["style"][0]
+    for name in ("detail", "creativity"):
+        assert (schema["required"][name][1]["min"], schema["required"][name][1]["max"], schema["required"][name][1]["default"]) == (1, 10, 5)
+    assert schema["required"]["add_quality_tags"][1]["default"] is False
     assert list(schema["optional"]) == ["images"]
     assert schema["required"]["write_for"][0] == list(simple.WRITE_FOR)
     assert simple.DaSiWa_LLMPromptWriter.RETURN_NAMES == ("prompt",)
@@ -40,6 +45,8 @@ def test_every_target_is_a_real_preset():
 def test_one_list_holds_local_ollama_and_server_models(monkeypatch):
     from nodes import llm_backends
     monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://trusted:8099")
+    monkeypatch.delenv("DASIWA_LLM_OLLAMA_URL", raising=False)
+    monkeypatch.setattr(llm_backends, "comfy_settings", lambda: {})
     monkeypatch.setattr(simple, "_list_llm_models", lambda: ["qwen/model-Q8_0.gguf"])
     asked = []
     monkeypatch.setattr(llm_backends.Ollama, "models", lambda self, timeout=10: asked.append(("ollama", self.base, timeout)) or [{"id": "ollama:qwen3.5:9b", "label": "qwen3.5:9b (9B)"}])
@@ -51,6 +58,7 @@ def test_one_list_holds_local_ollama_and_server_models(monkeypatch):
 def test_unreachable_servers_leave_the_local_list(monkeypatch):
     from nodes import llm_backends
     monkeypatch.delenv("DASIWA_LLM_OPENAI_URL", raising=False)
+    monkeypatch.setattr(llm_backends, "comfy_settings", lambda: {})
     monkeypatch.setattr(simple, "_list_llm_models", lambda: ["None"])
     def down(self, timeout=10):
         raise OSError("connection refused")
@@ -67,8 +75,51 @@ def test_writes_through_the_server_with_the_guide(monkeypatch):
     body = sent[0][1]
     assert body["messages"][0]["content"] == prompts.exported_system("promptforge_illustrious")
     assert body["messages"][1]["content"] == "a catgirl"
-    assert body["max_tokens"] == simple.MAX_NEW_TOKENS
+    assert body["max_tokens"] == simple.DEFAULT_MAX_TOKENS
+    assert body["temperature"] == 0.70
     assert body["model"] == "qwen3.5:9b"
+
+
+def test_sliders_and_the_front_of_the_prompt(monkeypatch):
+    sent = []
+    _fake_server(monkeypatch, "===SEGMENT: Positive prompt===\nmasterpiece, 1girl, my_lora, cat_ears", sent)
+    (prompt,) = simple.DaSiWa_LLMPromptWriter().write(
+        model="Server: m", write_for="Illustrious", idea="a catgirl", seed=5, keep_loaded=False,
+        always_at_top="my_lora, (detailed:1.2)", detail=9, creativity=1, add_quality_tags=True, max_tokens=900)
+    # Quality ladder, then the pinned text untouched, then the model's tags minus repeats.
+    assert prompt == "masterpiece, best quality, absurdres, my_lora, (detailed:1.2), 1girl, cat ears"
+    body = sent[0][1]
+    assert body["max_tokens"] == 900 and body["temperature"] == 0.30
+    user = body["messages"][1]["content"]
+    assert user.startswith("a catgirl\n\nCreativity 1 of 10: Add nothing.")
+    assert "Detail 9 of 10: richly detailed" in user
+
+
+def test_style_carries_tags_or_words_by_dialect():
+    anima, krea = prompts.preset_spec("promptforge_anima"), prompts.preset_spec("promptforge_krea2")
+    assert simple.style_line("Watercolor", anima) == r"Style: Watercolor - include these tags: watercolor \(medium\), traditional media, soft edges"
+    assert simple.style_line("Watercolor", krea).startswith("Style: Watercolor - carry this look through the description: watercolor, paper texture")
+    # No tag list of its own: a tag model gets the words.
+    assert simple.style_line("Digital art", anima).startswith("Style: Digital art - include these tags: digital painting")
+    assert simple.style_line("None", anima) == "" and simple.style_line("Missing", krea) == ""
+    assert simple.request_text("idea", 5, 5, "Style: X") == "idea\n\nStyle: X"
+
+
+def test_standard_sliders_add_no_lines():
+    assert simple.request_text("idea", 5, 5) == "idea"
+    assert simple.request_text("", 5, 5) == simple.PICTURE_ONLY
+    assert [simple.CREATIVITY[n][0] for n in range(1, 11)] == [0.30, 0.45, 0.55, 0.62, 0.70, 0.78, 0.85, 0.92, 1.00, 1.10]
+
+
+def test_front_on_prose_and_anima():
+    krea = prompts.preset_spec("promptforge_krea2")
+    assert simple.assemble("A woman at a stall.", krea, "ohwx woman", True) == "ohwx woman, A woman at a stall."
+    assert simple.assemble("A woman at a stall.", krea, "", True) == "A woman at a stall."
+    anima = prompts.preset_spec("promptforge_anima")
+    assert anima["quality"] == ["masterpiece", "best quality", "score_7"]
+    out = simple.assemble("safe, 1girl, best quality, She walks, slowly, past the stall.", anima, "", True)
+    assert out == "masterpiece, best quality, score_7, safe, 1girl, She walks, slowly, past the stall."
+    assert simple.assemble("safe, 1girl", anima, "", False) == "safe, 1girl"
 
 
 def test_a_batch_is_sampled_up_to_eight_from_the_first(monkeypatch):

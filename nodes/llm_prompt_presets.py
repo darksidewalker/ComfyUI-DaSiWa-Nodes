@@ -35,6 +35,9 @@ def load_skill(name):
             "system": text[match.end():].strip()}
     if meta.get("tag_style"):
         spec["tag_style"] = meta["tag_style"]
+    # The model's quality ladder, added in code only when asked for.
+    if meta.get("quality"):
+        spec["quality"] = [t.strip() for t in meta["quality"].split(",") if t.strip()]
     return spec
 
 
@@ -68,6 +71,39 @@ def space_underscores(text):
     return ",".join(pieces)
 
 
+_WEIGHT = re.compile(r":\s*\d+(?:\.\d+)?\s*$")
+
+
+def escape_literal_parens(text):
+    """`watercolor (medium)` becomes `watercolor \\(medium\\)`; `(rain:1.2)` stays a weight.
+
+    Ported from PromptForge server/parens.mjs. A tag model reads every bare
+    pair as a weight, so a disambiguated tag left bare steers nothing. Models
+    write them bare even when the guide shows them escaped.
+    """
+    src = str(text or "")
+    out, i = [], 0
+    while i < len(src):
+        ch = src[i]
+        if ch == "\\" and src[i + 1:i + 2] in ("(", ")"):
+            out.append(src[i:i + 2])
+            i += 2
+            continue
+        if ch != "(":
+            out.append(ch)
+            i += 1
+            continue
+        close = src.find(")", i + 1)
+        inner = None if close == -1 else src[i + 1:close]
+        if inner is None or "(" in inner:
+            out.append(ch)
+            i += 1
+            continue
+        out.append(src[i:close + 1] if _WEIGHT.search(inner) else f"\\({inner}\\)")
+        i = close + 1
+    return "".join(out)
+
+
 def prompt_response(preset, raw):
     spec = preset_spec(preset)
     segments = h3_prompting.parse_segments(raw, spec["segments"])
@@ -76,7 +112,7 @@ def prompt_response(preset, raw):
     if not result:
         raise ValueError("The model returned an empty prompt segment")
     if spec.get("tag_style") == "space":
-        result = space_underscores(result)
+        result = escape_literal_parens(space_underscores(result))
     return result
 
 

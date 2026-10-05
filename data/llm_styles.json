@@ -1,0 +1,262 @@
+{
+  "source": "PromptForge config/models.yaml (anima and krea2 styles)",
+  "styles": {
+    "Painterly": {
+      "tags": [
+        "painterly",
+        "painterly brushstrokes",
+        "smooth gradients",
+        "soft shading"
+      ],
+      "words": [
+        "painterly brushwork",
+        "visible brush strokes",
+        "soft gradients",
+        "blended edges"
+      ]
+    },
+    "Anime": {
+      "tags": [
+        "anime coloring",
+        "cel shading",
+        "clean lineart",
+        "vibrant colors"
+      ],
+      "words": [
+        "anime illustration",
+        "cel-shaded color",
+        "clean linework",
+        "saturated palette"
+      ]
+    },
+    "Cel shaded": {
+      "tags": [
+        "cel shading",
+        "hard cel shading",
+        "anime coloring",
+        "clean lineart"
+      ],
+      "words": [
+        "cel shading",
+        "hard-edged shadows",
+        "flat blocks of color",
+        "clean linework"
+      ]
+    },
+    "Flat color": {
+      "tags": [
+        "flat color",
+        "anime coloring",
+        "clean lineart"
+      ],
+      "words": [
+        "flat color",
+        "no gradients",
+        "clean linework",
+        "graphic shapes"
+      ]
+    },
+    "Lineless": {
+      "tags": [
+        "no lineart",
+        "lineless",
+        "painterly",
+        "soft shading",
+        "smooth gradients"
+      ],
+      "words": [
+        "no outlines",
+        "forms defined by color alone",
+        "soft shading",
+        "smooth gradients"
+      ]
+    },
+    "Soft painting": {
+      "tags": [
+        "painterly",
+        "soft shading",
+        "smooth gradients",
+        "soft lines"
+      ],
+      "words": [
+        "soft painterly rendering",
+        "diffuse shading",
+        "smooth gradients",
+        "gentle edges"
+      ]
+    },
+    "Watercolor": {
+      "tags": [
+        "watercolor \\(medium\\)",
+        "traditional media",
+        "soft edges"
+      ],
+      "words": [
+        "watercolor",
+        "paper texture",
+        "bleeding pigment",
+        "soft edges",
+        "visible washes"
+      ]
+    },
+    "Gouache": {
+      "tags": [
+        "gouache \\(medium\\)",
+        "traditional media",
+        "painterly brushstrokes"
+      ],
+      "words": [
+        "gouache",
+        "matte opaque paint",
+        "visible brush strokes",
+        "flat rich color"
+      ]
+    },
+    "Sketch": {
+      "tags": [
+        "sketch",
+        "unfinished",
+        "graphite \\(medium\\)",
+        "loose brushwork"
+      ],
+      "words": [
+        "pencil sketch",
+        "graphite",
+        "loose construction lines",
+        "unfinished",
+        "paper texture"
+      ]
+    },
+    "Ink lineart": {
+      "tags": [
+        "lineart",
+        "ink \\(medium\\)",
+        "clean lineart",
+        "sharp lines"
+      ],
+      "words": [
+        "ink drawing",
+        "black linework",
+        "sharp confident lines",
+        "hatching for shadow"
+      ]
+    },
+    "Manga": {
+      "tags": [
+        "monochrome",
+        "greyscale",
+        "screentones",
+        "halftone",
+        "lineart"
+      ],
+      "words": [
+        "black and white manga",
+        "screentone shading",
+        "halftone dots",
+        "inked linework"
+      ]
+    },
+    "Chibi": {
+      "tags": [
+        "chibi"
+      ],
+      "words": [
+        "chibi proportions",
+        "oversized head",
+        "small rounded body",
+        "simplified features"
+      ]
+    },
+    "Pixel art": {
+      "tags": [
+        "pixel art"
+      ],
+      "words": [
+        "pixel art",
+        "limited palette",
+        "visible pixel grid",
+        "hard aliased edges"
+      ]
+    },
+    "90s anime": {
+      "tags": [
+        "retro artstyle",
+        "anime screencap",
+        "flat color"
+      ],
+      "words": [
+        "1990s anime cel",
+        "retro anime look",
+        "flat cel color",
+        "film grain"
+      ]
+    },
+    "Concept art": {
+      "tags": [
+        "concept art",
+        "key visual",
+        "painterly",
+        "detailed background"
+      ],
+      "words": [
+        "concept art",
+        "key visual",
+        "painterly rendering",
+        "detailed environment"
+      ]
+    },
+    "Cinematic lighting": {
+      "tags": [
+        "cinematic lighting",
+        "dramatic lighting",
+        "rim lighting",
+        "volumetric lighting"
+      ],
+      "words": [
+        "cinematic lighting",
+        "dramatic key light",
+        "rim light",
+        "volumetric haze",
+        "widescreen framing"
+      ]
+    },
+    "Semi-realistic": {
+      "tags": [
+        "semi-realistic",
+        "realistic anatomy",
+        "detailed skin texture",
+        "natural skin tones",
+        "subsurface scattering"
+      ],
+      "words": [
+        "semi-realistic rendering",
+        "realistic anatomy",
+        "detailed skin texture",
+        "stylized proportions"
+      ]
+    },
+    "Realistic": {
+      "tags": [
+        "realistic",
+        "realistic anatomy",
+        "detailed skin texture",
+        "realistic lighting"
+      ],
+      "words": [
+        "photorealistic",
+        "natural skin texture",
+        "realistic light falloff",
+        "shallow depth of field"
+      ]
+    },
+    "Digital art": {
+      "tags": [],
+      "words": [
+        "digital painting",
+        "clean rendering",
+        "controlled color palette",
+        "crisp edges"
+      ]
+    }
+  }
+}

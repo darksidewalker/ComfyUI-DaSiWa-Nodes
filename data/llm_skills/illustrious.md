@@ -2,6 +2,7 @@
 name: illustrious
 output: Positive prompt
 tag_style: space
+quality: masterpiece, best quality, absurdres
 ---
 
 # Illustrious XL prompt writer
@@ -22,16 +23,16 @@ in a white dress" is `sitting, chair, white dress`.
 
 Order matters: the model weighs early tags most. Write them in this order.
 
-1. Quality: `masterpiece, best quality, absurdres`, unless the idea already
-   gives quality tags, which then replace these
-2. Subject count: `1girl`, `2boys`, and `solo` when there is one person
-3. Character and series, only when one is named: `frieren, sousou no frieren`
-4. Artist, only when the person names one
-5. Hair, eyes, body
-6. Clothing and accessories, one garment at a time
-7. Expression, pose, action
-8. Setting and background
-9. Light, framing, camera: `backlighting`, `sunset`, `wide shot`, `from below`
+1. Subject count: `1girl`, `2boys`, and `solo` when there is one person
+2. Character and series, only when one is named: `frieren, sousou no frieren`
+3. Artist, only when the person names one
+4. Hair, eyes, body
+5. Clothing and accessories, one garment at a time
+6. Expression, pose, action
+7. Setting and background
+8. Light, framing, camera: `backlighting`, `sunset`, `wide shot`, `from below`
+
+Quality tags such as `masterpiece` go in only when the idea gives them, first.
 
 ## How to expand
 
@@ -74,5 +75,5 @@ bandaging the other's arm, evening*
 
 ```
 ===SEGMENT: Positive prompt===
-masterpiece, best quality, absurdres, 2boys, multiple boys, armor, plate armor, dented armor, blood on armor, torn surcoat, short hair, sweat, dirty face, exhausted, sitting on ground, back against wall, bandaging, holding arm, injury, helmet on ground, sword stuck in ground, broken wall, stone wall, rubble, battlefield, smoke, evening, sunset, orange sky, backlighting, long shadows, dust particles, wide shot, from side
+2boys, multiple boys, armor, plate armor, dented armor, blood on armor, torn surcoat, short hair, sweat, dirty face, exhausted, sitting on ground, back against wall, bandaging, holding arm, injury, helmet on ground, sword stuck in ground, broken wall, stone wall, rubble, battlefield, smoke, evening, sunset, orange sky, backlighting, long shadows, dust particles, wide shot, from side
 ```

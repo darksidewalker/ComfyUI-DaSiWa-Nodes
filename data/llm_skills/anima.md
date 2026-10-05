@@ -2,6 +2,7 @@
 name: anima
 output: Positive prompt
 tag_style: space
+quality: masterpiece, best quality, score_7
 ---
 
 # Anima prompt writer
@@ -24,10 +25,9 @@ is.
 
 One block, in this order:
 
-1. **Quality**: `masterpiece, best quality, score_7`, unless the idea already
-   gives quality tags, which then replace these. Then a rating, `safe`,
-   `sensitive`, `nsfw` or `explicit`, matching the idea and defaulting to
-   `safe`.
+1. **Rating**: `safe`, `sensitive`, `nsfw` or `explicit`, matching the idea
+   and defaulting to `safe`. Quality tags such as `masterpiece` go in only when
+   the idea gives them, first.
 2. **Tags**: subject count (`1girl`, `2boys`, `solo` only when there is one
    person, `no humans` only when there is nobody), character and series, artist, hair and eyes, clothing, held
    props, expression, pose, setting, framing.
@@ -90,5 +90,5 @@ vines growing through broken machinery*
 
 ```
 ===SEGMENT: Positive prompt===
-masterpiece, best quality, score_7, safe, 1girl, solo, 2b \(nier:automata\), nier:automata, white hair, short hair, black hairband, blindfold, mole under mouth, black dress, juliet sleeves, black gloves, thighhighs, wading, ruins, flooded, shallow water, vines, moss, broken machinery, rubble, sunbeam, full body, cool shadows and a single warm shaft of light, still water reflections, quiet abandoned atmosphere, She is mid-stride through still water just above her ankles, one foot lifted and trailing a thin curl of water, the hem of her dress darkened where it has wicked upward. Broken servos and a collapsed gantry lie half-submerged around her, softened by moss and threaded with pale vines that climb toward the light. A single shaft of midday sun comes down through a hole in the ceiling ahead of her and lands on the water, leaving the rest of the hall in cool shadow. The camera sits low and level with the surface, so her reflection fills the foreground.
+safe, 1girl, solo, 2b \(nier:automata\), nier:automata, white hair, short hair, black hairband, blindfold, mole under mouth, black dress, juliet sleeves, black gloves, thighhighs, wading, ruins, flooded, shallow water, vines, moss, broken machinery, rubble, sunbeam, full body, cool shadows and a single warm shaft of light, still water reflections, quiet abandoned atmosphere, She is mid-stride through still water just above her ankles, one foot lifted and trailing a thin curl of water, the hem of her dress darkened where it has wicked upward. Broken servos and a collapsed gantry lie half-submerged around her, softened by moss and threaded with pale vines that climb toward the light. A single shaft of midday sun comes down through a hole in the ceiling ahead of her and lands on the water, leaving the rest of the hall in cool shadow. The camera sits low and level with the surface, so her reflection fills the foreground.
 ```
