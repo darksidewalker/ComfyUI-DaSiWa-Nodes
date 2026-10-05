@@ -10,8 +10,10 @@ The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
 
 - `model`: one list of everything this machine can write with:
   - GGUF files and Hugging Face model folders in `ComfyUI/models/llm` (a `.gguf` runs through llama.cpp, a folder through Transformers);
-  - `Ollama: <name>` for every model Ollama has installed, at `DASIWA_LLM_OLLAMA_URL` or `http://127.0.0.1:11434` when that is unset;
-  - `Server: <id>` for every model on the OpenAI-compatible server at `DASIWA_LLM_OPENAI_URL` (llama-swap, LM Studio, llama.cpp server), when the operator has set it.
+  - `Ollama: <name>` for every model Ollama has installed, on this computer unless Settings say otherwise;
+  - `Server: <id>` for every model on the OpenAI-compatible server (llama-swap, LM Studio, llama.cpp server), once its address is set.
+
+  Both addresses are set in **Settings > DaSiWa > LLM servers**, the same ones the Director's Forge uses (see External LLM servers below).
 
   The list is read when ComfyUI loads; press R after adding a model. A server that is not running is simply left out of the list.
 - `write_for`: Anima, Illustrious, Krea2, Wan 2.2 or LTX 2.3.
@@ -97,14 +99,16 @@ Video/image-sequence handling:
 
 Choose `openai` or `ollama_server` in Model Selector and enter the server's model ID in `server_model`. Local `model`/`custom_path` are not used for these modes. The original `ollama` mode remains fixed to loopback and uses `ollama_model`.
 
-The ComfyUI operator configures addresses outside the workflow, in the environment used to start ComfyUI:
+Addresses are configured outside the workflow, so a downloaded workflow cannot point this machine at a server of its choosing. Set them in **Settings > DaSiWa > LLM servers**: Ollama address, OpenAI-compatible server address and API key. These are the same settings the Director's Forge uses; ComfyUI keeps them in its settings file on this machine (`user/default/comfy.settings.json`), and the nodes read them when they run. Press R after changing them to refresh the Prompt Writer's model list.
+
+An operator can override them in the environment used to start ComfyUI, which wins over Settings:
 
 ```fish
 set -gx DASIWA_LLM_OPENAI_URL http://127.0.0.1:8041/v1
 set -gx DASIWA_LLM_OLLAMA_URL http://127.0.0.1:11434
 ```
 
-`DASIWA_LLM_OPENAI_API_KEY` supplies authentication when needed. Never put keys in workflow JSON. OpenAI-compatible addresses may include `/v1`; the transport adds it when absent. `ollama_server` defaults to loopback when its environment variable is empty. Director GUI Settings remain separate and unchanged.
+`DASIWA_LLM_OPENAI_API_KEY` supplies authentication when needed. Never put keys in workflow JSON. OpenAI-compatible addresses may include `/v1`; the transport adds it when absent. With neither a setting nor an environment variable, Ollama is looked for on this computer. With ComfyUI's `--multi-user`, the default user's settings are the ones read.
 
 For these server modes, `max_new_tokens`, temperature, top-p, seed and `ollama_timeout` are passed to the shared transport. `llama_n_ctx` also supplies Ollama's context size. Transformers dtype, quantization, KV-cache controls and `max_input_tokens` are local controls; they do not configure remote servers. OpenAI-compatible APIs have no standard repetition-penalty equivalent; a nondefault requested penalty is reported as unsupported rather than mapped to presence penalty.
 

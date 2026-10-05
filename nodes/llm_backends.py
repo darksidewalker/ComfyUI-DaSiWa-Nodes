@@ -51,12 +51,39 @@ def _workflow_url(value, default=""):
     return value
 
 
+# The LLM server addresses in ComfyUI Settings (DaSiWa > LLM servers), shared
+# with the Director's Forge. ComfyUI keeps them in the user's settings file on
+# this machine, so like the environment they come from the operator, not the graph.
+SETTING_KEYS = {
+    "ollama_url": "DaSiWa.H3Forge.OllamaURL",
+    "openai_url": "DaSiWa.H3Forge.OpenAIURL",
+    "openai_api_key": "DaSiWa.H3Forge.OpenAIKey",
+}
+
+
+def comfy_settings():
+    """The LLM server values from ComfyUI's settings file, or {} when there is none."""
+    try:
+        import folder_paths
+        path = os.path.join(folder_paths.get_user_directory(), "default", "comfy.settings.json")
+        with open(path, encoding="utf-8") as handle:
+            saved = json.load(handle)
+    except Exception:
+        return {}
+    return {key: str(saved.get(setting_id) or "").strip() for key, setting_id in SETTING_KEYS.items()}
+
+
 def workflow_server_settings():
-    """Read server-operator configuration at execution time, never from graphs."""
+    """Read server-operator configuration at execution time, never from graphs.
+
+    The environment wins, then ComfyUI Settings, then Ollama on this machine."""
+    saved = comfy_settings()
+    def pick(env, key):
+        return os.environ.get(env, "").strip() or saved.get(key, "")
     return {
-        "ollama_url": _workflow_url(os.environ.get("DASIWA_LLM_OLLAMA_URL"), DEFAULT_OLLAMA),
-        "openai_url": _workflow_url(os.environ.get("DASIWA_LLM_OPENAI_URL")),
-        "openai_api_key": os.environ.get("DASIWA_LLM_OPENAI_API_KEY", "").strip(),
+        "ollama_url": _workflow_url(pick("DASIWA_LLM_OLLAMA_URL", "ollama_url"), DEFAULT_OLLAMA),
+        "openai_url": _workflow_url(pick("DASIWA_LLM_OPENAI_URL", "openai_url")),
+        "openai_api_key": pick("DASIWA_LLM_OPENAI_API_KEY", "openai_api_key"),
     }
 
 
@@ -484,7 +511,8 @@ def run_workflow_server(config, system, user, images, max_tokens,
     kind = config["backend"]
     if kind == "openai":
         if not settings["openai_url"]:
-            raise ValueError("Set DASIWA_LLM_OPENAI_URL in the ComfyUI service environment")
+            raise ValueError("Set the OpenAI-compatible server address in ComfyUI Settings > DaSiWa > LLM servers "
+                             "(or DASIWA_LLM_OPENAI_URL in the ComfyUI service environment)")
         server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
     elif kind == "ollama_server":
         server = Ollama(settings["ollama_url"])

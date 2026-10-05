@@ -13,6 +13,7 @@ from nodes import llm_backends as backend
 
 
 def test_workflow_addresses_are_operator_config(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
     monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://trusted:8041/v1/")
     monkeypatch.setenv("DASIWA_LLM_OPENAI_API_KEY", " secret ")
     monkeypatch.delenv("DASIWA_LLM_OLLAMA_URL", raising=False)
@@ -103,6 +104,8 @@ def test_workflow_model_cannot_be_endpoint(monkeypatch, model):
 
 def test_workflow_openai_requires_operator_url(monkeypatch):
     monkeypatch.delenv("DASIWA_LLM_OPENAI_URL", raising=False)
+    # Nor from this machine's ComfyUI Settings: only the graph offers one here.
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
     sent = capture_lines(monkeypatch, [])
     with pytest.raises(ValueError, match="DASIWA_LLM_OPENAI_URL"):
         backend.run_workflow_server({"backend":"openai", "model_path":"m", "openai_url":"http://evil"},

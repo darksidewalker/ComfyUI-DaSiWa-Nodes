@@ -11,15 +11,19 @@ import { forgeReferences, labelRole, refPromptFields, referenceSnapshot, referen
 
 // Server addresses live in ComfyUI Settings, never in the workflow, so a
 // downloaded workflow cannot point this machine at a server of its choosing.
+// Shared by the Director's Forge and the LLM nodes (nodes/llm_backends.py
+// reads the same IDs from the settings file); the IDs predate the sharing.
 const SETTING_OLLAMA = "DaSiWa.H3Forge.OllamaURL";
 const SETTING_OPENAI = "DaSiWa.H3Forge.OpenAIURL";
 const SETTING_OPENAI_KEY = "DaSiWa.H3Forge.OpenAIKey";
+const SECTION = "LLM servers";
+const SHARED = " Used by the H3 Director's Forge and the DaSiWa LLM nodes; press R after changing it to refresh their model lists.";
 app.registerExtension({
   name: "DaSiWa.H3Forge",
   settings: [
-    { id: SETTING_OLLAMA, category: ["DaSiWa", "H3 Forge", "Ollama address"], name: "Ollama address", type: "text", defaultValue: "", tooltip: "Leave empty for Ollama on this computer (http://127.0.0.1:11434). Set it to use Ollama on another machine." },
-    { id: SETTING_OPENAI, category: ["DaSiWa", "H3 Forge", "OpenAI-compatible server"], name: "OpenAI-compatible server address", type: "text", defaultValue: "", tooltip: "Optional: a llama.cpp server, llama-swap, LM Studio or koboldcpp, e.g. http://127.0.0.1:8080. Empty = off." },
-    { id: SETTING_OPENAI_KEY, category: ["DaSiWa", "H3 Forge", "OpenAI-compatible API key"], name: "OpenAI-compatible API key", type: "text", defaultValue: "", tooltip: "Only if that server asks for one (llama-server --api-key, llama-swap apiKeys, LM Studio with authentication). Sent only to the address above. Stored in ComfyUI's settings file like every other setting." },
+    { id: SETTING_OLLAMA, category: ["DaSiWa", SECTION, "Ollama address"], name: "Ollama address", type: "text", defaultValue: "", tooltip: "Leave empty for Ollama on this computer (http://127.0.0.1:11434). Set it to use Ollama on another machine." + SHARED },
+    { id: SETTING_OPENAI, category: ["DaSiWa", SECTION, "OpenAI-compatible server"], name: "OpenAI-compatible server address", type: "text", defaultValue: "", tooltip: "Optional: a llama.cpp server, llama-swap, LM Studio or koboldcpp, e.g. http://127.0.0.1:8080. Empty = off." + SHARED },
+    { id: SETTING_OPENAI_KEY, category: ["DaSiWa", SECTION, "OpenAI-compatible API key"], name: "OpenAI-compatible API key", type: "text", defaultValue: "", tooltip: "Only if that server asks for one (llama-server --api-key, llama-swap apiKeys, LM Studio with authentication). Sent only to the address above. Stored in ComfyUI's settings file like every other setting." },
   ],
 });
 function settingValue(id) {

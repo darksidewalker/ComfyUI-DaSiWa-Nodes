@@ -90,6 +90,46 @@ def test_stopped_ollama_says_what_to_do(monkeypatch):
         simple.DaSiWa_LLMPromptWriter().write(model="Ollama: qwen3.5:9b", write_for="Anima", idea="x", seed=0, keep_loaded=False)
 
 
+def _settings_file(monkeypatch, tmp_path, values):
+    import types
+    (tmp_path / "default").mkdir()
+    (tmp_path / "default" / "comfy.settings.json").write_text(json.dumps(values), encoding="utf-8")
+    monkeypatch.setitem(sys.modules, "folder_paths", types.SimpleNamespace(get_user_directory=lambda: str(tmp_path)))
+    for env in ("DASIWA_LLM_OLLAMA_URL", "DASIWA_LLM_OPENAI_URL", "DASIWA_LLM_OPENAI_API_KEY"):
+        monkeypatch.delenv(env, raising=False)
+
+
+def test_servers_come_from_comfyui_settings(monkeypatch, tmp_path):
+    from nodes import llm_backends
+    _settings_file(monkeypatch, tmp_path, {
+        "DaSiWa.H3Forge.OllamaURL": "http://192.168.0.50:11434/",
+        "DaSiWa.H3Forge.OpenAIURL": "http://127.0.0.1:8099",
+        "DaSiWa.H3Forge.OpenAIKey": "k",
+        "Comfy.Other": "ignored",
+    })
+    assert llm_backends.workflow_server_settings() == {
+        "ollama_url": "http://192.168.0.50:11434", "openai_url": "http://127.0.0.1:8099", "openai_api_key": "k"}
+
+
+def test_environment_wins_over_settings(monkeypatch, tmp_path):
+    from nodes import llm_backends
+    _settings_file(monkeypatch, tmp_path, {"DaSiWa.H3Forge.OpenAIURL": "http://127.0.0.1:8099"})
+    monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://10.0.0.2:1234/v1")
+    settings = llm_backends.workflow_server_settings()
+    assert settings["openai_url"] == "http://10.0.0.2:1234/v1"
+    assert settings["ollama_url"] == "http://127.0.0.1:11434"
+
+
+def test_no_settings_file_means_local_ollama_only(monkeypatch, tmp_path):
+    import types
+    from nodes import llm_backends
+    monkeypatch.setitem(sys.modules, "folder_paths", types.SimpleNamespace(get_user_directory=lambda: str(tmp_path / "missing")))
+    for env in ("DASIWA_LLM_OLLAMA_URL", "DASIWA_LLM_OPENAI_URL", "DASIWA_LLM_OPENAI_API_KEY"):
+        monkeypatch.delenv(env, raising=False)
+    assert llm_backends.workflow_server_settings() == {
+        "ollama_url": "http://127.0.0.1:11434", "openai_url": "", "openai_api_key": ""}
+
+
 def test_nothing_to_write_from_says_what_to_do():
     with pytest.raises(ValueError, match="Type an idea"):
         simple.DaSiWa_LLMPromptWriter().write(model="x", write_for="Anima", idea="  ", seed=0, keep_loaded=False)
