@@ -5,7 +5,7 @@ Analyze node's code path, so every backend, unload rule and picture handling
 stays in one place.
 """
 
-from .llm_backends import ForgeError, Ollama, OpenAICompatible, workflow_server_settings
+from .llm_backends import ForgeError, parse_server_choice, server_model_choices
 from .llm_runtime import _list_llm_models, _resolve_model_path
 from .nodes_llm import DaSiWa_LLMAnalyze
 
@@ -26,47 +26,22 @@ PICTURE_ONLY = "Write the prompt from the attached pictures."
 # (a loaded video) is sampled evenly, always starting with the first image.
 MAX_IMAGES = 8
 
-# Server models in the one model list. Addresses come only from the ComfyUI
-# environment (DASIWA_LLM_OLLAMA_URL, DASIWA_LLM_OPENAI_URL), never the graph.
-OLLAMA = "Ollama: "
-SERVER = "Server: "
+# Server models sit in the one model list as "Ollama: name" and "Server: id".
+# Addresses come from Settings or the environment, never the graph.
 NO_MODEL = "None"
-# The list is built when ComfyUI loads; a server that is not running must not hold it up.
-LIST_TIMEOUT = 2
-
-
-def server_models():
-    """Ollama's models and the configured OpenAI-compatible server's, as list entries."""
-    try:
-        settings = workflow_server_settings()
-    except ForgeError:
-        return []
-    out = []
-    try:
-        out += [OLLAMA + m["id"][len("ollama:"):] for m in Ollama(settings["ollama_url"]).models(timeout=LIST_TIMEOUT)]
-    except Exception:
-        pass  # No Ollama on this machine is normal.
-    if settings["openai_url"]:
-        try:
-            server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
-            out += [SERVER + m["id"][len("openai:"):] for m in server.models(timeout=LIST_TIMEOUT)]
-        except Exception:
-            pass
-    return out
 
 
 def model_choices():
     local = [m for m in _list_llm_models() if m != NO_MODEL]
-    return (local + server_models()) or [NO_MODEL]
+    return (local + server_model_choices()) or [NO_MODEL]
 
 
 def simple_config(model, keep_loaded):
     """The Model Selector's output for this choice, with its defaults."""
     model = str(model or "")
-    if model.startswith(OLLAMA):
-        backend, model_path = "ollama_server", model[len(OLLAMA):]
-    elif model.startswith(SERVER):
-        backend, model_path = "openai", model[len(SERVER):]
+    server = parse_server_choice(model)
+    if server:
+        backend, model_path = server
     elif not model or model == NO_MODEL:
         raise ValueError(
             "No model found. Put a GGUF file or a Hugging Face model folder in ComfyUI/models/llm, "
@@ -139,7 +114,7 @@ class DaSiWa_LLMPromptWriter:
             if exc.code != "connection":
                 raise
             where = "Ollama" if config["backend"] == "ollama_server" else "the model server"
-            raise ValueError(f"Could not reach {where}. Start it, check {model[len(OLLAMA if where == 'Ollama' else SERVER):]} "
+            raise ValueError(f"Could not reach {where}. Start it, check {config['model_path']} "
                              "is still installed, and press R to refresh the model list.") from None
         return (prompt,)
 

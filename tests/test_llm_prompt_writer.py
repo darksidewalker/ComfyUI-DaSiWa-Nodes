@@ -144,6 +144,40 @@ def test_no_settings_file_means_local_ollama_only(monkeypatch, tmp_path):
         "ollama_url": "http://127.0.0.1:11434", "openai_url": "", "openai_api_key": ""}
 
 
+def _selector_defaults():
+    from nodes import nodes_llm
+    kwargs = {}
+    for name, spec in nodes_llm.DaSiWa_LLMModelSelector.INPUT_TYPES()["required"].items():
+        kwargs[name] = spec[1]["default"] if len(spec) > 1 and "default" in spec[1] else spec[0][0]
+    return nodes_llm, kwargs
+
+
+def test_advanced_selector_lists_server_models_after_local(monkeypatch):
+    from nodes import llm_backends, nodes_llm
+    monkeypatch.setattr(nodes_llm, "server_model_choices", lambda: ["Ollama: qwen3.5:9b", "Server: m"])
+    choices = nodes_llm.DaSiWa_LLMModelSelector.INPUT_TYPES()["required"]["model"][0]
+    assert choices[0] == "None" and choices[-2:] == ["Ollama: qwen3.5:9b", "Server: m"]
+    assert nodes_llm.DaSiWa_LLMModelSelector.VALIDATE_INPUTS("Ollama: gone") is True
+
+
+@pytest.mark.parametrize("choice,backend,name", [
+    ("Ollama: qwen3.5:9b", "ollama_server", "qwen3.5:9b"),
+    ("Server: hf.co/a/b:Q8_0", "openai", "hf.co/a/b:Q8_0"),
+])
+def test_advanced_selector_server_choice_sets_its_backend(monkeypatch, choice, backend, name):
+    nodes_llm, kwargs = _selector_defaults()
+    kwargs.update(model=choice, backend="transformers")
+    (config,) = nodes_llm.DaSiWa_LLMModelSelector().select(**kwargs)
+    assert (config["backend"], config["model_path"]) == (backend, name)
+
+
+def test_advanced_selector_old_server_fields_still_work(monkeypatch):
+    nodes_llm, kwargs = _selector_defaults()
+    kwargs.update(model="None", backend="ollama_server")
+    (config,) = nodes_llm.DaSiWa_LLMModelSelector().select(**kwargs, server_model="qwen3.5:9b")
+    assert (config["backend"], config["model_path"]) == ("ollama_server", "qwen3.5:9b")
+
+
 def test_nothing_to_write_from_says_what_to_do():
     with pytest.raises(ValueError, match="Type an idea"):
         simple.DaSiWa_LLMPromptWriter().write(model="x", write_for="Anima", idea="  ", seed=0, keep_loaded=False)

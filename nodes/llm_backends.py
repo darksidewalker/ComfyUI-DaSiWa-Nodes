@@ -87,6 +87,42 @@ def workflow_server_settings():
     }
 
 
+# Server models as entries in a node's model list, beside the local files.
+SERVER_CHOICE_PREFIXES = {"Ollama: ": "ollama_server", "Server: ": "openai"}
+# Lists are built when ComfyUI loads; a server that is not running must not hold it up.
+LIST_TIMEOUT = 2
+
+
+def server_model_choices():
+    """'Ollama: name' for each Ollama model, 'Server: id' for each model on the
+    OpenAI-compatible server, from the operator's addresses. A server that does
+    not answer is left out."""
+    try:
+        settings = workflow_server_settings()
+    except ForgeError:
+        return []
+    out = []
+    try:
+        out += ["Ollama: " + m["id"][len("ollama:"):] for m in Ollama(settings["ollama_url"]).models(timeout=LIST_TIMEOUT)]
+    except Exception:
+        pass  # No Ollama on this machine is normal.
+    if settings["openai_url"]:
+        try:
+            server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
+            out += ["Server: " + m["id"][len("openai:"):] for m in server.models(timeout=LIST_TIMEOUT)]
+        except Exception:
+            pass
+    return out
+
+
+def parse_server_choice(choice):
+    """(backend, model id) for an 'Ollama: ' or 'Server: ' entry, else None."""
+    for prefix, backend in SERVER_CHOICE_PREFIXES.items():
+        if str(choice or "").startswith(prefix):
+            return backend, choice[len(prefix):]
+    return None
+
+
 def _is_this_machine(url):
     host = re.sub(r"^https?://", "", url).split("/")[0].rsplit(":", 1)[0].strip("[]").lower()
     return host in ("127.0.0.1", "localhost", "::1", "0.0.0.0")

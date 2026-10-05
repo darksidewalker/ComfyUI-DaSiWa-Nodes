@@ -97,7 +97,9 @@ Video/image-sequence handling:
 
 ## External LLM servers
 
-Choose `openai` or `ollama_server` in Model Selector and enter the server's model ID in `server_model`. Local `model`/`custom_path` are not used for these modes. The original `ollama` mode remains fixed to loopback and uses `ollama_model`.
+The quickest way: pick an `Ollama: <name>` or `Server: <id>` entry from Model Selector's `model` list, which lists every model on the configured servers after the local ones (press R after adding one). That entry sets the backend itself; the `backend` widget is ignored for it.
+
+Or, as before, choose `openai` or `ollama_server` in Model Selector and enter the server's model ID in `server_model`. Local `model`/`custom_path` are not used for these modes. The original `ollama` mode remains fixed to loopback and uses `ollama_model`.
 
 Addresses are configured outside the workflow, so a downloaded workflow cannot point this machine at a server of its choosing. Set them in **Settings > DaSiWa > LLM servers**: Ollama address, OpenAI-compatible server address and API key. These are the same settings the Director's Forge uses; ComfyUI keeps them in its settings file on this machine (`user/default/comfy.settings.json`), and the nodes read them when they run. Press R after changing them to refresh the Prompt Writer's model list.
 
