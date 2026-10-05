@@ -24,7 +24,7 @@ def _fake_server(monkeypatch, raw, sent):
 def test_schema_is_the_short_list(monkeypatch):
     monkeypatch.setattr(simple, "model_choices", lambda: ["None"])
     schema = simple.DaSiWa_LLMPromptWriter.INPUT_TYPES()
-    assert list(schema["required"]) == ["model", "write_for", "always_at_top", "idea", "style", "detail", "creativity",
+    assert list(schema["required"]) == ["model", "write_for", "start_with", "idea", "style", "detail", "creativity",
                                         "add_quality_tags", "max_tokens", "seed", "keep_loaded"]
     assert schema["required"]["style"][0][0] == "None" and "Watercolor" in schema["required"]["style"][0]
     for name in ("detail", "creativity"):
@@ -85,7 +85,7 @@ def test_sliders_and_the_front_of_the_prompt(monkeypatch):
     _fake_server(monkeypatch, "===SEGMENT: Positive prompt===\nmasterpiece, 1girl, my_lora, cat_ears", sent)
     (prompt,) = simple.DaSiWa_LLMPromptWriter().write(
         model="Server: m", write_for="Illustrious", idea="a catgirl", seed=5, keep_loaded=False,
-        always_at_top="my_lora, (detailed:1.2)", detail=9, creativity=1, add_quality_tags=True, max_tokens=900)
+        start_with="my_lora, (detailed:1.2)", detail=9, creativity=1, add_quality_tags=True, max_tokens=900)
     # Quality ladder, then the pinned text untouched, then the model's tags minus repeats.
     assert prompt == "masterpiece, best quality, absurdres, my_lora, (detailed:1.2), 1girl, cat ears"
     body = sent[0][1]

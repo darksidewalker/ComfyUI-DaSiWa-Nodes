@@ -111,11 +111,11 @@ def request_text(idea, detail, creativity, style_text=""):
     return "\n\n".join(lines)
 
 
-def assemble(prompt, spec, always_at_top, add_quality_tags):
+def assemble(prompt, spec, start_with, add_quality_tags):
     """The quality ladder (when asked for; tag models only), then the person's
     own text exactly as typed, then the written prompt. A tag already up front
     is dropped from the written part so nothing appears twice."""
-    pinned = str(always_at_top or "").strip().strip(",").strip()
+    pinned = str(start_with or "").strip().strip(",").strip()
     pinned_tags = {t.strip().lower() for t in pinned.split(",") if t.strip()}
     quality = [t for t in (spec.get("quality") or []) if t.lower() not in pinned_tags] if add_quality_tags else []
     front = [*quality, *([pinned] if pinned else [])]
@@ -177,8 +177,8 @@ class DaSiWa_LLMPromptWriter:
             "required": {
                 "model": (model_choices(), {"description": "Models in ComfyUI/models/llm, plus Ollama's and the OpenAI-compatible server's from Settings > DaSiWa > LLM servers. Press R after adding one. A vision model can also read connected images."}),
                 "write_for": (list(WRITE_FOR), {"default": "Anima", "description": "The image or video model the prompt is for."}),
-                "always_at_top": ("STRING", {"default": "", "multiline": False, "placeholder": "quality tags, LoRA trigger words... (always first, exactly as typed)", "description": "Quality tags, LoRA trigger words or anything else that must lead the prompt. Put at the very top exactly as typed; the model never sees or changes it."}),
-                "idea": ("STRING", {"default": "", "multiline": True, "description": "What you want in the picture, in your own words or as tags."}),
+                "start_with": ("STRING", {"default": "", "multiline": True, "placeholder": "Quality tags and LoRA trigger words go here. Always first, exactly as typed.", "description": "Quality tags, LoRA trigger words or anything else that must lead the prompt. Put at the very top exactly as typed; the model never sees or changes it."}),
+                "idea": ("STRING", {"default": "", "multiline": True, "placeholder": "Write your idea here", "description": "What you want in the picture, in your own words or as tags."}),
                 "style": ([NO_STYLE, *load_styles()], {"default": NO_STYLE, "description": "A look to carry through the prompt. Tag models get matching tags, prose models a description of the look. None adds nothing."}),
                 "detail": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How much gets written. 5 is standard; lower is shorter, higher covers more."}),
                 "creativity": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How far past your idea the writer may go. 1 adds nothing, 5 is balanced, 10 builds well past it."}),
@@ -203,7 +203,7 @@ class DaSiWa_LLMPromptWriter:
         # where a stopped Ollama gets a clear message instead of "not in list".
         return True
 
-    def write(self, model, write_for, idea, seed, keep_loaded, always_at_top="", style=NO_STYLE, detail=STANDARD,
+    def write(self, model, write_for, idea, seed, keep_loaded, start_with="", style=NO_STYLE, detail=STANDARD,
               creativity=STANDARD, add_quality_tags=False, max_tokens=DEFAULT_MAX_TOKENS, images=None):
         idea = str(idea or "").strip()
         if not idea and images is None:
@@ -220,7 +220,7 @@ class DaSiWa_LLMPromptWriter:
             where = "Ollama" if config["backend"] == "ollama_server" else "the model server"
             raise ValueError(f"Could not reach {where}. Start it, check {config['model_path']} "
                              "is still installed, and press R to refresh the model list.") from None
-        return (assemble(prompt, spec, always_at_top, add_quality_tags),)
+        return (assemble(prompt, spec, start_with, add_quality_tags),)
 
     @staticmethod
     def _analyze(config, preset, text, temperature, max_tokens, seed, images):

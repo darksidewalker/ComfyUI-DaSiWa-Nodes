@@ -17,12 +17,12 @@ The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
 
   The list is read when ComfyUI loads; press R after adding a model. A server that is not running is simply left out of the list.
 - `write_for`: Anima, Illustrious, Krea2, Wan 2.2 or LTX 2.3.
-- `always_at_top`: quality tags, LoRA trigger words or anything else that must lead the prompt. It goes at the very top exactly as typed and never passes through the model, so it cannot be misspelled or dropped. On Anima and Illustrious, a copy of one of these tags in the written part is removed.
+- `start_with`: quality tags, LoRA trigger words or anything else that must lead the prompt. It goes at the very top exactly as typed and never passes through the model, so it cannot be misspelled or dropped. On Anima and Illustrious, a copy of one of these tags in the written part is removed.
 - `idea`: what you want, in your own words or as tags.
 - `style`: a look to carry through the prompt (Anime, Watercolor, Sketch, 90s anime, Realistic and more). Anima and Illustrious get matching tags; Krea2, Wan and LTX get a description of the look. None adds nothing.
 - `detail` (1-10, 5 standard): how much gets written. 5 lets the model's guide decide; lower is shorter, higher covers more, within that model's length.
 - `creativity` (1-10, 5 standard): how far past the idea the writer may go, from 1 (add nothing) to 10 (build well past it). Sets the temperature, 0.30 to 1.10, with 0.70 at 5.
-- `add_quality_tags` (off by default): put the model's usual quality tags first: `masterpiece, best quality, score_7` on Anima, `masterpiece, best quality, absurdres` on Illustrious. The prose models have none. Otherwise quality tags appear only when the idea or `always_at_top` gives them.
+- `add_quality_tags` (off by default): put the model's usual quality tags first: `masterpiece, best quality, score_7` on Anima, `masterpiece, best quality, absurdres` on Illustrious. The prose models have none. Otherwise quality tags appear only when the idea or `start_with` gives them.
 - `max_tokens`: the most the model may write, 2048 by default. Too low and the prompt stops mid-sentence.
 - `seed`: change it, or let it randomize, for a different take on the same idea.
 - `keep_loaded`: off frees the memory after every prompt so the image model has it; on is faster when writing several in a row.
