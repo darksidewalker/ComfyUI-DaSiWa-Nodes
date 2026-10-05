@@ -8,13 +8,17 @@ Run local Transformers, llama.cpp GGUF, loopback Ollama, or operator-configured 
 
 The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
 
-- `model`: a GGUF file or Hugging Face model folder from `ComfyUI/models/llm`. A `.gguf` runs through llama.cpp, a folder through Transformers.
+- `model`: one list of everything this machine can write with:
+  - GGUF files and Hugging Face model folders in `ComfyUI/models/llm` (a `.gguf` runs through llama.cpp, a folder through Transformers);
+  - `Ollama: <name>` for every model Ollama has installed, at `DASIWA_LLM_OLLAMA_URL` or `http://127.0.0.1:11434` when that is unset;
+  - `Server: <id>` for every model on the OpenAI-compatible server at `DASIWA_LLM_OPENAI_URL` (llama-swap, LM Studio, llama.cpp server), when the operator has set it.
+
+  The list is read when ComfyUI loads; press R after adding a model. A server that is not running is simply left out of the list.
 - `write_for`: Anima, Illustrious, Krea2, Wan 2.2 or LTX 2.3.
 - `idea`: what you want, in your own words or as tags.
 - `seed`: change it, or let it randomize, for a different take on the same idea.
 - `keep_loaded`: off frees the memory after every prompt so the image model has it; on is faster when writing several in a row.
 - `picture` (optional): a reference picture for a vision model. With an empty idea, the prompt is written from the picture.
-- `server_model` (optional): a model name on Ollama, used instead of a local model. If the operator has set `DASIWA_LLM_OPENAI_URL`, that server is used instead.
 
 Everything else uses the advanced nodes' defaults, with a 2048-token budget so long prompts are not cut short. For any other setting, use the two advanced nodes below. Both run the same code.
 

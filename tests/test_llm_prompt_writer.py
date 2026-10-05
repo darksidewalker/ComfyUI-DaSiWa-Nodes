@@ -14,19 +14,21 @@ def _fake_server(monkeypatch, raw, sent):
     from nodes import llm_backends
     monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://trusted")
     def stream(url, payload, timeout, cancel, headers=None):
-        sent.append(payload)
+        sent.append((url, payload))
         yield "data: " + json.dumps({"choices": [{"delta": {"content": raw}}]})
         yield "data: [DONE]"
     monkeypatch.setattr(llm_backends, "_stream_lines", stream)
     monkeypatch.setattr(llm_backends.OpenAICompatible, "unload", lambda self, name: False)
 
 
-def test_schema_is_the_short_list():
+def test_schema_is_the_short_list(monkeypatch):
+    monkeypatch.setattr(simple, "model_choices", lambda: ["None"])
     schema = simple.DaSiWa_LLMPromptWriter.INPUT_TYPES()
     assert list(schema["required"]) == ["model", "write_for", "idea", "seed", "keep_loaded"]
-    assert list(schema["optional"]) == ["picture", "server_model"]
+    assert list(schema["optional"]) == ["picture"]
     assert schema["required"]["write_for"][0] == list(simple.WRITE_FOR)
     assert simple.DaSiWa_LLMPromptWriter.RETURN_NAMES == ("prompt",)
+    assert simple.DaSiWa_LLMPromptWriter.VALIDATE_INPUTS("Ollama: gone:latest") is True
 
 
 def test_every_target_is_a_real_preset():
@@ -35,31 +37,57 @@ def test_every_target_is_a_real_preset():
         assert prompts.preset_spec(preset)["system"]
 
 
+def test_one_list_holds_local_ollama_and_server_models(monkeypatch):
+    from nodes import llm_backends
+    monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://trusted:8099")
+    monkeypatch.setattr(simple, "_list_llm_models", lambda: ["qwen/model-Q8_0.gguf"])
+    asked = []
+    monkeypatch.setattr(llm_backends.Ollama, "models", lambda self, timeout=10: asked.append(("ollama", self.base, timeout)) or [{"id": "ollama:qwen3.5:9b", "label": "qwen3.5:9b (9B)"}])
+    monkeypatch.setattr(llm_backends.OpenAICompatible, "models", lambda self, timeout=10: asked.append(("openai", self.base, timeout)) or [{"id": "openai:Qwen3-VL-8B", "label": "Qwen3-VL-8B"}])
+    assert simple.model_choices() == ["qwen/model-Q8_0.gguf", "Ollama: qwen3.5:9b", "Server: Qwen3-VL-8B"]
+    assert asked == [("ollama", "http://127.0.0.1:11434", 2), ("openai", "http://trusted:8099", 2)]
+
+
+def test_unreachable_servers_leave_the_local_list(monkeypatch):
+    from nodes import llm_backends
+    monkeypatch.delenv("DASIWA_LLM_OPENAI_URL", raising=False)
+    monkeypatch.setattr(simple, "_list_llm_models", lambda: ["None"])
+    def down(self, timeout=10):
+        raise OSError("connection refused")
+    monkeypatch.setattr(llm_backends.Ollama, "models", down)
+    assert simple.model_choices() == ["None"]
+
+
 def test_writes_through_the_server_with_the_guide(monkeypatch):
     sent = []
     _fake_server(monkeypatch, "<think>x</think>\n===SEGMENT: Positive prompt===\nbest_quality, cat_ears", sent)
     (prompt,) = simple.DaSiWa_LLMPromptWriter().write(
-        model="None", write_for="Illustrious", idea=" a catgirl ", seed=5, keep_loaded=False,
-        server_model="qwen3.5:9b")
+        model="Server: qwen3.5:9b", write_for="Illustrious", idea=" a catgirl ", seed=5, keep_loaded=False)
     assert prompt == "best quality, cat ears"
-    body = sent[0]
+    body = sent[0][1]
     assert body["messages"][0]["content"] == prompts.exported_system("promptforge_illustrious")
     assert body["messages"][1]["content"] == "a catgirl"
     assert body["max_tokens"] == simple.MAX_NEW_TOKENS
     assert body["model"] == "qwen3.5:9b"
 
 
-def test_server_without_openai_address_uses_ollama(monkeypatch):
-    monkeypatch.delenv("DASIWA_LLM_OPENAI_URL", raising=False)
-    assert simple.simple_config("None", "qwen3.5:9b", True)["backend"] == "ollama_server"
-    assert simple.simple_config("None", "qwen3.5:9b", True)["cache_mode"] == "cached"
-
-
-def test_local_backend_follows_the_file(monkeypatch):
+def test_prefixes_pick_the_backend(monkeypatch):
     monkeypatch.setattr(simple, "_resolve_model_path", lambda name, custom, allow_gguf: f"/models/{name}")
-    gguf = simple.simple_config("qwen/model-Q8_0.gguf", "", False)
+    ollama = simple.simple_config("Ollama: qwen3.5:9b", True)
+    assert (ollama["backend"], ollama["model_path"], ollama["cache_mode"]) == ("ollama_server", "qwen3.5:9b", "cached")
+    assert simple.simple_config("Server: a/b:Q8_0", False)["backend"] == "openai"
+    gguf = simple.simple_config("qwen/model-Q8_0.gguf", False)
     assert gguf["backend"] == "llama_cpp" and gguf["cache_mode"] == "unload_after_run"
-    assert simple.simple_config("Qwen3-VL-4B", "", False)["backend"] == "transformers"
+    assert simple.simple_config("Qwen3-VL-4B", False)["backend"] == "transformers"
+
+
+def test_stopped_ollama_says_what_to_do(monkeypatch):
+    from nodes import llm_backends
+    def refused(*args, **kwargs):
+        raise llm_backends.ForgeError("connection", "Could not reach the configured workflow server.")
+    monkeypatch.setattr(simple.DaSiWa_LLMPromptWriter, "_analyze", staticmethod(refused))
+    with pytest.raises(ValueError, match="Could not reach Ollama. Start it, check qwen3.5:9b"):
+        simple.DaSiWa_LLMPromptWriter().write(model="Ollama: qwen3.5:9b", write_for="Anima", idea="x", seed=0, keep_loaded=False)
 
 
 def test_nothing_to_write_from_says_what_to_do():
@@ -67,7 +95,6 @@ def test_nothing_to_write_from_says_what_to_do():
         simple.DaSiWa_LLMPromptWriter().write(model="x", write_for="Anima", idea="  ", seed=0, keep_loaded=False)
 
 
-def test_no_model_says_where_to_put_one(monkeypatch):
-    monkeypatch.delenv("DASIWA_LLM_OPENAI_URL", raising=False)
+def test_no_model_says_where_to_put_one():
     with pytest.raises(ValueError, match="models/llm"):
-        simple.simple_config("None", "", False)
+        simple.simple_config("None", False)

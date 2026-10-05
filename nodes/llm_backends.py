@@ -128,9 +128,9 @@ class Ollama:
     def __init__(self, base):
         self.base = base
 
-    def models(self):
+    def models(self, timeout=10):
         out = []
-        for m in _http(self.base + "/api/tags").get("models", []):
+        for m in _http(self.base + "/api/tags", timeout=timeout).get("models", []):
             details = m.get("details") or {}
             # Embedding models (nomic-embed-text and the like: BERT family)
             # cannot write, so they are not offered.
@@ -218,9 +218,9 @@ class OpenAICompatible:
         # LM Studio with authentication on, or a hosted OpenAI-compatible API.
         self.headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    def models(self):
+    def models(self, timeout=10):
         return [{"id": f"openai:{m['id']}", "label": m["id"]}
-                for m in _http(self.api + "/models", headers=self.headers).get("data", [])]
+                for m in _http(self.api + "/models", timeout=timeout, headers=self.headers).get("data", [])]
 
     def can_see(self, name):
         # No standard capability endpoint; the request itself is the test.

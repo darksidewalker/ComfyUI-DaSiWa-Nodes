@@ -5,8 +5,7 @@ Analyze node's code path, so every backend, unload rule and picture handling
 stays in one place.
 """
 
-import os
-
+from .llm_backends import ForgeError, Ollama, OpenAICompatible, workflow_server_settings
 from .llm_runtime import _list_llm_models, _resolve_model_path
 from .nodes_llm import DaSiWa_LLMAnalyze
 
@@ -24,21 +23,54 @@ WRITE_FOR = {
 MAX_NEW_TOKENS = 2048
 PICTURE_ONLY = "Write the prompt from the attached picture."
 
+# Server models in the one model list. Addresses come only from the ComfyUI
+# environment (DASIWA_LLM_OLLAMA_URL, DASIWA_LLM_OPENAI_URL), never the graph.
+OLLAMA = "Ollama: "
+SERVER = "Server: "
+NO_MODEL = "None"
+# The list is built when ComfyUI loads; a server that is not running must not hold it up.
+LIST_TIMEOUT = 2
 
-def simple_config(model, server_model, keep_loaded):
+
+def server_models():
+    """Ollama's models and the configured OpenAI-compatible server's, as list entries."""
+    try:
+        settings = workflow_server_settings()
+    except ForgeError:
+        return []
+    out = []
+    try:
+        out += [OLLAMA + m["id"][len("ollama:"):] for m in Ollama(settings["ollama_url"]).models(timeout=LIST_TIMEOUT)]
+    except Exception:
+        pass  # No Ollama on this machine is normal.
+    if settings["openai_url"]:
+        try:
+            server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
+            out += [SERVER + m["id"][len("openai:"):] for m in server.models(timeout=LIST_TIMEOUT)]
+        except Exception:
+            pass
+    return out
+
+
+def model_choices():
+    local = [m for m in _list_llm_models() if m != NO_MODEL]
+    return (local + server_models()) or [NO_MODEL]
+
+
+def simple_config(model, keep_loaded):
     """The Model Selector's output for this choice, with its defaults."""
-    server_model = str(server_model or "").strip()
-    if server_model:
-        # An operator-set OpenAI-compatible address wins; otherwise Ollama, on loopback by default.
-        backend = "openai" if os.environ.get("DASIWA_LLM_OPENAI_URL", "").strip() else "ollama_server"
-        model_path = server_model
+    model = str(model or "")
+    if model.startswith(OLLAMA):
+        backend, model_path = "ollama_server", model[len(OLLAMA):]
+    elif model.startswith(SERVER):
+        backend, model_path = "openai", model[len(SERVER):]
+    elif not model or model == NO_MODEL:
+        raise ValueError(
+            "No model found. Put a GGUF file or a Hugging Face model folder in ComfyUI/models/llm, "
+            "or start Ollama and pull a model, then press R in ComfyUI to refresh the list."
+        )
     else:
-        if not model or model == "None":
-            raise ValueError(
-                "No model chosen. Put a GGUF file or a Hugging Face model folder in ComfyUI/models/llm, "
-                "restart ComfyUI and pick it here, or type a model name in server_model to use Ollama."
-            )
-        backend = "llama_cpp" if str(model).lower().endswith(".gguf") else "transformers"
+        backend = "llama_cpp" if model.lower().endswith(".gguf") else "transformers"
         model_path = _resolve_model_path(model, "", allow_gguf=backend == "llama_cpp")
     return {
         "model_path": model_path,
@@ -71,7 +103,7 @@ class DaSiWa_LLMPromptWriter:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": (_list_llm_models(), {"description": "A GGUF or model folder from ComfyUI/models/llm. A vision model can also read a connected picture."}),
+                "model": (model_choices(), {"description": "Models in ComfyUI/models/llm, Ollama's models, and the operator's OpenAI-compatible server's. Press R after adding one. A vision model can also read a connected picture."}),
                 "write_for": (list(WRITE_FOR), {"default": "Anima", "description": "The image or video model the prompt is for."}),
                 "idea": ("STRING", {"default": "", "multiline": True, "description": "What you want in the picture, in your own words or as tags."}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1, "control_after_generate": True, "description": "Change it for a different take on the same idea."}),
@@ -79,7 +111,6 @@ class DaSiWa_LLMPromptWriter:
             },
             "optional": {
                 "picture": ("IMAGE", {"description": "Optional reference picture. Needs a vision model."}),
-                "server_model": ("STRING", {"default": "", "description": "Optional: a model name on your Ollama (or operator-configured) server, used instead of a local model."}),
             },
         }
 
@@ -88,12 +119,31 @@ class DaSiWa_LLMPromptWriter:
     FUNCTION = "write"
     CATEGORY = "DaSiWa/LLM"
 
-    def write(self, model, write_for, idea, seed, keep_loaded, picture=None, server_model=""):
+    @classmethod
+    def VALIDATE_INPUTS(cls, model):
+        # A server model saved in a workflow is checked when the node runs,
+        # where a stopped Ollama gets a clear message instead of "not in list".
+        return True
+
+    def write(self, model, write_for, idea, seed, keep_loaded, picture=None):
         idea = str(idea or "").strip()
         if not idea and picture is None:
             raise ValueError("Type an idea, or connect a picture to write the prompt from.")
+        config = simple_config(model, keep_loaded)
+        try:
+            prompt = self._analyze(config, write_for, idea, seed, picture)
+        except ForgeError as exc:
+            if exc.code != "connection":
+                raise
+            where = "Ollama" if config["backend"] == "ollama_server" else "the model server"
+            raise ValueError(f"Could not reach {where}. Start it, check {model[len(OLLAMA if where == 'Ollama' else SERVER):]} "
+                             "is still installed, and press R to refresh the model list.") from None
+        return (prompt,)
+
+    @staticmethod
+    def _analyze(config, write_for, idea, seed, picture):
         prompt, _ = DaSiWa_LLMAnalyze().analyze(
-            llm_config=simple_config(model, server_model, keep_loaded),
+            llm_config=config,
             system_prompt_preset=WRITE_FOR[write_for],
             system_prompt="",
             prompt=idea or PICTURE_ONLY,
@@ -113,4 +163,4 @@ class DaSiWa_LLMPromptWriter:
             images=picture,
             text_input="",
         )
-        return (prompt,)
+        return prompt
