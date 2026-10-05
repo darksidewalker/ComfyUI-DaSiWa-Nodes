@@ -189,6 +189,8 @@ async function open(node) {
     // who is who and no picture goes to the model; H3 sees them itself.
   // Base-mode pictures are frames by definition and need no label.
   const labelled = mode === "REF2VA" && refs.some(r => r.kind === "image" && r.easy_role);
+  // Off by default: labels alone are what small models write well from.
+  const seePictures = el("input", { type: "checkbox", checked: !!prefs.see_pictures });
   if (refs.length) {
     if (!continuity && labelled) brief.placeholder = 'Name the labels: "Character 1 sits on the bed in the place. Character 2 walks in and waves."';
     const list = el("div", { className: "refs" });
@@ -256,6 +258,10 @@ async function open(node) {
       box.append(el("span", { className: "muted", textContent: continuity
         ? "Pictures with the same Character number are one character."
         : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". Image-only labelled drafts need no writer vision; mixed media and saved references use the full REF2VA path.' }));
+      if (!continuity) {
+        box.append(el("label", {}, seePictures, " Let the model see the pictures"));
+        box.append(el("span", { className: "muted", textContent: "Off: the writer works from the labels alone, which any model can do. On: it also looks at the pictures to match their look and setting. Needs a vision model. Smaller models (9B and under) can get less accurate with pictures, mixing up who is who or describing looks the pictures already carry." }));
+      }
     }
   } else if (mode !== "T2VA" && !continuity) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
@@ -316,7 +322,7 @@ async function open(node) {
     return JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r), ...(rows.some(Boolean) ? [rows] : [])]);
   };
   const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
-  const controls = [brief, modelSel, detail, creativity, shots, structured, ...referenceControls];
+  const controls = [brief, modelSel, detail, creativity, shots, structured, seePictures, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });
     shotBox.querySelectorAll("textarea").forEach(c => { c.disabled = disabled; });
@@ -336,6 +342,8 @@ async function open(node) {
       // Drafts saved before the Shots control have none: they were Auto.
       const shotsValue = String(count ?? "Auto");
       if (Array.from(shots.options).some(o => o.value === shotsValue)) shots.value = shotsValue;
+      // Drafts saved before the vision choice were all written blind.
+      if (labelled && !continuity) seePictures.checked = !!entry.draftOptions.see_pictures;
       shotTexts.set(node, Array.isArray(entry.draftOptions.shot_briefs) ? [...entry.draftOptions.shot_briefs] : []);
       renderShots();
       if (detail.oninput) detail.oninput();
@@ -440,10 +448,11 @@ async function open(node) {
     const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
     if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
     briefs.set(briefKey, text);
-    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value });
+    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value, see_pictures: seePictures.checked });
     result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
-    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows };
+    const easy = !continuity && labelled;
+    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows, see_pictures: easy && seePictures.checked };
     const requestKey = openedKey, forgeInputKey = inputKey();
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     running = requestId; setControlsDisabled(true); renderHistory();
@@ -459,7 +468,7 @@ async function open(node) {
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           output_canvas: hook.outputCanvas?.() ?? null,
           detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows,
-          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy: !continuity && labelled,
+          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy, see_pictures: easy && seePictures.checked,
           structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),
         }),
       });
@@ -472,7 +481,9 @@ async function open(node) {
       data.forgeInputKey = forgeInputKey; data.existing_definitions = definitions.value; data.reference_snapshot = referenceSnapshot(refs);
       const saved = saveForgeResult(node, data, text);
       showResult(saved);
-      const seen = data.easy ? " · picture labels used (no images sent to the writer)" : data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
+      const seen = data.easy ? (data.saw_images ? ` · picture labels used, and looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}`
+          : seePictures.checked && data.vision === false ? " · this model cannot see images, so it used the picture labels only"
+          : " · picture labels used (no images sent to the writer)") : data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
       setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
     } catch (err) {

@@ -273,6 +273,13 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
         if others:
             lines += ["", "References:", *others]
         lines += easy_lines(cast)
+        # Writer vision is opt-in here; the mode's instructions assume none.
+        if carries_image and attached_labels:
+            lines += ["", (
+                f"The pictures {', '.join(attached_labels)} are attached to this message, in that order, so you can see "
+                "them after all. Use them for where everyone stands, what the place holds, and the look and light of "
+                "the style sentence. The cast above still decides who is who, and you still never describe how anyone looks."
+            )]
     elif references:
         ref_lines, pictures = format_references(references, mode)
         lines += ["", "References:", *ref_lines]

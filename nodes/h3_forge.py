@@ -258,8 +258,10 @@ def _generate(body, input_directory, release_memory, stop):
 
     sees = backend.can_see(name)
     images = []
-    # Easy mode sends no picture to the writer: the labels say who is who.
-    if sees is not False and input_directory and not easy:
+    # Easy mode sends no picture to the writer unless asked: the labels say who
+    # is who, and small models write more accurately from the labels alone.
+    see_pictures = easy and bool(body.get("see_pictures"))
+    if sees is not False and input_directory and (see_pictures or not easy):
         from .helper_minimax_h3_director import resolve_input_path
         for ref in references:
             if ref.get("kind") == "image" and ref.get("path"):
