@@ -98,9 +98,13 @@ def server_context_error(body_text):
 
 
 def local_context_error(exc, num_ctx, pictures):
-    """llama.cpp's own failures, said plainly: out of context, or out of memory."""
+    """llama.cpp's own failures, said plainly: out of context, or out of memory.
+
+    Out of context reads "llama_decode returned 1" while the text is read and
+    "Failed to evaluate chunk: error code 1" while a picture is (llama-cpp-
+    python 0.3.36, measured on 0.4.78 with nine pictures at 16,384)."""
     text = str(exc)
-    if "llama_decode" in text:
+    if "llama_decode" in text or "evaluate chunk" in text:
         return ForgeError("too_long", f"The model ran out of room ({num_ctx:,} tokens) while reading the instructions"
                                       f"{' and pictures' if pictures else ''}. "
                                       f"{'Use fewer pictures.' if pictures else 'Shorten the idea.'}")

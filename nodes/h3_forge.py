@@ -296,6 +296,8 @@ def _generate(body, input_directory, release_memory, stop):
         contract = easy_vision_spec(spec, attached_labels) if easy else spec
         ctx = context_for(num_ctx, with_images)
         check_fits(kind, name, contract["system"], user, with_images, ctx, vision_box=see_pictures)
+        if ctx != num_ctx:
+            log_dasiwa("H3 Forge", f"{len(with_images)} picture(s): asking for {ctx:,} tokens of context")
         return backend.chat(name, contract["system"], user, with_images, sampling, ctx, timeout, stop)
 
     if kind != "local":

@@ -133,6 +133,8 @@ def test_server_context_refusal_is_not_retried_blind(monkeypatch, tmp_path):
 def test_llama_cpp_failures_are_said_plainly():
     err = backends.local_context_error(RuntimeError("llama_decode returned 1"), 16384, 3)
     assert err.code == "too_long" and "16,384" in err.message and "fewer pictures" in err.message
+    err = backends.local_context_error(RuntimeError("Failed to evaluate chunk: error code 1"), 16384, 9)
+    assert err.code == "too_long" and "fewer pictures" in err.message
     err = backends.local_context_error(ValueError("Failed to create llama_context"), 32768, 3)
     assert err.code == "memory" and "untick" in err.message
     assert backends.local_context_error(ValueError("something else"), 16384, 0) is None
