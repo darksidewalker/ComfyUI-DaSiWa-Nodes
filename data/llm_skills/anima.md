@@ -2,7 +2,6 @@
 name: anima
 output: Positive prompt
 tag_style: space
-quality: masterpiece, best quality, score_7
 ---
 
 # Anima prompt writer

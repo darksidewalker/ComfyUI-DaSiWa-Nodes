@@ -111,23 +111,20 @@ def request_text(idea, detail, creativity, style_text=""):
     return "\n\n".join(lines)
 
 
-def assemble(prompt, spec, start_with, add_quality_tags):
-    """The quality ladder (when asked for; tag models only), then the person's
-    own text exactly as typed, then the written prompt. A tag already up front
-    is dropped from the written part so nothing appears twice."""
+def assemble(prompt, spec, start_with):
+    """The person's own text exactly as typed, then the written prompt. On a
+    tag model, a tag already up front is dropped from the written part so
+    nothing appears twice."""
     pinned = str(start_with or "").strip().strip(",").strip()
-    pinned_tags = {t.strip().lower() for t in pinned.split(",") if t.strip()}
-    quality = [t for t in (spec.get("quality") or []) if t.lower() not in pinned_tags] if add_quality_tags else []
-    front = [*quality, *([pinned] if pinned else [])]
-    if not front:
+    if not pinned:
         return prompt
     if spec.get("tag_style"):
         # Prose pieces never equal a tag, so this only ever drops tags. The
         # model's tags were respelled with spaces; the person's were not.
         same = lambda t: t.strip().lower().replace("_", " ")
-        taken = {same(t) for t in pinned_tags | set(quality)}
+        taken = {same(t) for t in pinned.split(",") if t.strip()}
         prompt = ", ".join(p for p in prompt.split(", ") if same(p) not in taken)
-    return ", ".join([*front, prompt]) if prompt else ", ".join(front)
+    return f"{pinned}, {prompt}" if prompt else pinned
 
 
 def simple_config(model, keep_loaded):
@@ -182,7 +179,6 @@ class DaSiWa_LLMPromptWriter:
                 "style": ([NO_STYLE, *load_styles()], {"default": NO_STYLE, "description": "A look to carry through the prompt. Tag models get matching tags, prose models a description of the look. None adds nothing."}),
                 "detail": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How much gets written. 5 is standard; lower is shorter, higher covers more."}),
                 "creativity": ("INT", {"default": STANDARD, "min": 1, "max": 10, "step": 1, "display": "slider", "description": "How far past your idea the writer may go. 1 adds nothing, 5 is balanced, 10 builds well past it."}),
-                "add_quality_tags": ("BOOLEAN", {"default": False, "description": "Put this model's usual quality tags first. Anima and Illustrious only; the prose models have none."}),
                 "max_tokens": ("INT", {"default": DEFAULT_MAX_TOKENS, "min": 128, "max": 8192, "step": 64, "description": "The most the model may write. Lower it to stop a model that runs on; set it too low and the prompt stops mid-sentence."}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 2**31 - 1, "control_after_generate": True, "description": "Change it for a different take on the same idea."}),
                 "keep_loaded": ("BOOLEAN", {"default": False, "description": "Off frees the memory after every prompt so the image model has it. On is faster for repeated prompts."}),
@@ -204,7 +200,7 @@ class DaSiWa_LLMPromptWriter:
         return True
 
     def write(self, model, write_for, idea, seed, keep_loaded, start_with="", style=NO_STYLE, detail=STANDARD,
-              creativity=STANDARD, add_quality_tags=False, max_tokens=DEFAULT_MAX_TOKENS, images=None):
+              creativity=STANDARD, max_tokens=DEFAULT_MAX_TOKENS, images=None):
         idea = str(idea or "").strip()
         if not idea and images is None:
             raise ValueError("Type an idea, or connect a picture to write the prompt from.")
@@ -220,7 +216,7 @@ class DaSiWa_LLMPromptWriter:
             where = "Ollama" if config["backend"] == "ollama_server" else "the model server"
             raise ValueError(f"Could not reach {where}. Start it, check {config['model_path']} "
                              "is still installed, and press R to refresh the model list.") from None
-        return (assemble(prompt, spec, start_with, add_quality_tags),)
+        return (assemble(prompt, spec, start_with),)
 
     @staticmethod
     def _analyze(config, preset, text, temperature, max_tokens, seed, images):

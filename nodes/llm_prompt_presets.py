@@ -35,9 +35,6 @@ def load_skill(name):
             "system": text[match.end():].strip()}
     if meta.get("tag_style"):
         spec["tag_style"] = meta["tag_style"]
-    # The model's quality ladder, added in code only when asked for.
-    if meta.get("quality"):
-        spec["quality"] = [t.strip() for t in meta["quality"].split(",") if t.strip()]
     return spec
 
 

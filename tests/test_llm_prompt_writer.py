@@ -25,11 +25,10 @@ def test_schema_is_the_short_list(monkeypatch):
     monkeypatch.setattr(simple, "model_choices", lambda: ["None"])
     schema = simple.DaSiWa_LLMPromptWriter.INPUT_TYPES()
     assert list(schema["required"]) == ["model", "write_for", "start_with", "idea", "style", "detail", "creativity",
-                                        "add_quality_tags", "max_tokens", "seed", "keep_loaded"]
+                                        "max_tokens", "seed", "keep_loaded"]
     assert schema["required"]["style"][0][0] == "None" and "Watercolor" in schema["required"]["style"][0]
     for name in ("detail", "creativity"):
         assert (schema["required"][name][1]["min"], schema["required"][name][1]["max"], schema["required"][name][1]["default"]) == (1, 10, 5)
-    assert schema["required"]["add_quality_tags"][1]["default"] is False
     assert list(schema["optional"]) == ["images"]
     assert schema["required"]["write_for"][0] == list(simple.WRITE_FOR)
     assert simple.DaSiWa_LLMPromptWriter.RETURN_NAMES == ("prompt",)
@@ -85,9 +84,9 @@ def test_sliders_and_the_front_of_the_prompt(monkeypatch):
     _fake_server(monkeypatch, "===SEGMENT: Positive prompt===\nmasterpiece, 1girl, my_lora, cat_ears", sent)
     (prompt,) = simple.DaSiWa_LLMPromptWriter().write(
         model="Server: m", write_for="Illustrious", idea="a catgirl", seed=5, keep_loaded=False,
-        start_with="my_lora, (detailed:1.2)", detail=9, creativity=1, add_quality_tags=True, max_tokens=900)
-    # Quality ladder, then the pinned text untouched, then the model's tags minus repeats.
-    assert prompt == "masterpiece, best quality, absurdres, my_lora, (detailed:1.2), 1girl, cat ears"
+        start_with="masterpiece, my_lora, (detailed:1.2)", detail=9, creativity=1, max_tokens=900)
+    # The person's text untouched, then the model's tags minus repeats.
+    assert prompt == "masterpiece, my_lora, (detailed:1.2), 1girl, cat ears"
     body = sent[0][1]
     assert body["max_tokens"] == 900 and body["temperature"] == 0.30
     user = body["messages"][1]["content"]
@@ -113,13 +112,13 @@ def test_standard_sliders_add_no_lines():
 
 def test_front_on_prose_and_anima():
     krea = prompts.preset_spec("promptforge_krea2")
-    assert simple.assemble("A woman at a stall.", krea, "ohwx woman", True) == "ohwx woman, A woman at a stall."
-    assert simple.assemble("A woman at a stall.", krea, "", True) == "A woman at a stall."
+    assert simple.assemble("A woman at a stall.", krea, "ohwx woman") == "ohwx woman, A woman at a stall."
+    assert simple.assemble("A woman at a stall.", krea, "") == "A woman at a stall."
     anima = prompts.preset_spec("promptforge_anima")
-    assert anima["quality"] == ["masterpiece", "best quality", "score_7"]
-    out = simple.assemble("safe, 1girl, best quality, She walks, slowly, past the stall.", anima, "", True)
-    assert out == "masterpiece, best quality, score_7, safe, 1girl, She walks, slowly, past the stall."
-    assert simple.assemble("safe, 1girl", anima, "", False) == "safe, 1girl"
+    assert "quality" not in anima
+    out = simple.assemble("safe, 1girl, best quality, She walks, slowly, past the stall.", anima, "masterpiece, best_quality, score_7")
+    assert out == "masterpiece, best_quality, score_7, safe, 1girl, She walks, slowly, past the stall."
+    assert simple.assemble("safe, 1girl", anima, "") == "safe, 1girl"
 
 
 def test_a_batch_is_sampled_up_to_eight_from_the_first(monkeypatch):

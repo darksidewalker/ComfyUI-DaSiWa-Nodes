@@ -2,7 +2,6 @@
 name: illustrious
 output: Positive prompt
 tag_style: space
-quality: masterpiece, best quality, absurdres
 ---
 
 # Illustrious XL prompt writer
