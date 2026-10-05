@@ -60,6 +60,43 @@ def test_see_pictures_sends_them_in_label_order(monkeypatch, tmp_path):
     assert user.index("Cast (fixed)") < user.index("are attached")
 
 
+def test_seeing_writer_is_asked_for_details_to_keep(monkeypatch, tmp_path):
+    result, sent = _run(monkeypatch, tmp_path, True)
+    assert "===SEGMENT: Details to keep===, with one line each for <Subject 1>, <Subject 2>" in sent[0]["user"]
+    blind, sent = _run(monkeypatch, tmp_path, False)
+    assert "Details to keep" not in sent[0]["user"]
+
+
+def test_details_to_keep_join_the_retention_lines():
+    from nodes import h3_prompting as hp
+    cast = hp.easy_cast([pic("character-1", "a.png"), pic("place", "b.png")])
+    segments = {
+        "Subject definitions": "<Subject 1>: waves",
+        "Detailed description": "[Shot 1] <Subject 1> waves in <Subject 2>.",
+        "Details to keep": "<Subject 1>: lavender scarf, silver hairclip\n<Subject 2>: stone bridge on the left",
+    }
+    hp.easy_segments(cast, segments)
+    ret = segments["Retention analysis"].splitlines()
+    assert ret[0].endswith("in every shot. Keep: lavender scarf, silver hairclip.")
+    assert ret[1].endswith("light and time of day. Keep: stone bridge on the left.")
+    assert "Details to keep" not in segments
+    # Blind runs write none, and the lines are exactly as before.
+    segments = {"Subject definitions": "<Subject 1>: waves", "Detailed description": "[Shot 1] <Subject 1> waves."}
+    hp.easy_segments(cast, segments)
+    assert "Keep:" not in segments["Retention analysis"]
+
+
+def test_acting_lines_run_into_one_paragraph_are_split():
+    from nodes import h3_prompting as hp
+    body = ("<Subject 1>: walks with a gentle gait, bending down to smell the flowers, her expression animated by delight. "
+            "<Subject 2>: smiles warmly while observing <Subject 1>, maintaining a relaxed posture.")
+    acting = hp._acting(body)
+    assert acting["<Subject 1>"].endswith("animated by delight.")
+    assert acting["<Subject 2>"] == "smiles warmly while observing <Subject 1>, maintaining a relaxed posture."
+    assert hp._acting("<Subject 1>: tired, slow blinks\n<Subject 2> — stiff and formal") == {
+        "<Subject 1>": "tired, slow blinks", "<Subject 2>": "stiff and formal"}
+
+
 def test_see_pictures_on_a_blind_model_falls_back_to_labels(monkeypatch, tmp_path):
     result, sent = _run(monkeypatch, tmp_path, True, sees=False)
     assert result["saw_images"] == 0 and result["vision"] is False

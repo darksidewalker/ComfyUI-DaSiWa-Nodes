@@ -275,11 +275,20 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
         lines += easy_lines(cast)
         # Writer vision is opt-in here; the mode's instructions assume none.
         if carries_image and attached_labels:
+            keepers = [s["tag"] for s in cast["subjects"] if s["kind"] in ("character", "place")]
             lines += ["", (
                 f"The pictures {', '.join(attached_labels)} are attached to this message, in that order, so you can see "
                 "them after all. Use them for where everyone stands, what the place holds, and the look and light of "
-                "the style sentence. The cast above still decides who is who, and you still never describe how anyone looks."
+                "the style sentence. The cast above still decides who is who, and you still never describe how anyone "
+                "looks in the other segments."
             )]
+            if keepers:
+                lines.append(
+                    f"After Music, add one more segment, ===SEGMENT: {KEEP_SEGMENT}===, with one line each for "
+                    f"{', '.join(keepers)}: the tag, a colon, then two to four short details you can see in its pictures "
+                    "that must not change - a mark, an accessory, the colour of a key garment, a landmark of the place. "
+                    "Only what is visible; no mood or style words."
+                )
     elif references:
         ref_lines, pictures = format_references(references, mode)
         lines += ["", "References:", *ref_lines]
@@ -433,6 +442,8 @@ GROUP_ROLES = ("group-12", "group-21", "group-13", "group-31", "group-23", "grou
 EASY_ROLES = tuple(f"character-{n}" for n in range(1, 33)) + ("place", "style", "first-frame", "last-frame",
               "pose", "custom") + GROUP_ROLES
 EASY_MODE = "REF2VA easy"
+# Asked for only when the writer sees the pictures; folded into Retention analysis.
+KEEP_SEGMENT = "Details to keep"
 _POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right")}
 
 
@@ -572,13 +583,22 @@ def _shots(description):
     return shots
 
 
+# A subject label opens a line, or follows a finished sentence with a colon or
+# dash: models sometimes run every acting line into one paragraph. A mention
+# inside a sentence ("smiles at <Subject 1>,") is not a label.
+_LABEL = re.compile(r"(?m)^\s*(?:[-*•]\s*)?(<Subject \d+>)\s*(?:[:—–-]\s*)?|(?<=[.!?])[ \t]+(<Subject \d+>)\s*[:—–]\s*")
+
+
 def _acting(body):
-    """The model's acting lines by tag: "<Subject 1>: ...", "- <Subject 1> — ..."."""
+    """The model's lines by tag: "<Subject 1>: ...", "- <Subject 1> — ..."."""
+    text = str(body or "")
+    marks = list(_LABEL.finditer(text))
     out = {}
-    for raw in str(body or "").splitlines():
-        m = re.match(r"^\s*(?:[-*•]\s*)?(<Subject \d+>)\s*(?:[:—–-]\s*)?(.*)$", raw)
-        if m and m.group(2).strip():
-            out[m.group(1)] = f"{out[m.group(1)]} {m.group(2).strip()}" if m.group(1) in out else m.group(2).strip()
+    for i, m in enumerate(marks):
+        tag = m.group(1) or m.group(2)
+        line = " ".join(text[m.end():marks[i + 1].start() if i + 1 < len(marks) else len(text)].split())
+        if line:
+            out[tag] = f"{out[tag]} {line}" if tag in out else line
     return out
 
 
@@ -616,6 +636,9 @@ def easy_segments(cast, segments):
     """Subject definitions and Retention analysis written in code, into the
     parsed segments. Returns the warnings (a character no shot names)."""
     acting = _acting(segments.get("Subject definitions"))
+    # Written only when the writer saw the pictures: a few visible details per
+    # subject that must not change, added to that subject's retention line.
+    keep = {tag: _sentence(line) for tag, line in _acting(segments.pop(KEEP_SEGMENT, "")).items()}
     shots = _shots(_bare(segments.get("Detailed description"), ["Detailed description", "integrated_multimodal_description"]))
     every = sorted(shots)
     last = every[-1] if every else None
@@ -630,10 +653,12 @@ def easy_segments(cast, segments):
             if every and not cited:
                 warnings.append(f"{s['name']} ({s['tag']}) is never named in a shot. Check detailed_description, or say in the idea what {s['name']} does.")
             where = _span(cited) or (_span(every) if every else "every shot")
-            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot.")
+            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot."
+                             + (f" Keep: {keep[s['tag']]}" if keep.get(s["tag"]) else ""))
         elif s["kind"] == "place":
             definitions.append(f"{s['tag']} is the place in {pics}, where the video happens; keep it as the picture shows.")
-            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day.")
+            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day."
+                             + (f" Keep: {keep[s['tag']]}" if keep.get(s["tag"]) else ""))
         else:
             definitions.append(f"{s['tag']} is the rendering style of {pics}, applied to the whole video and not its content.")
             retention.append(f"{s['tag']} (applies to every shot): fully_preserved — hold the same rendering throughout.")
