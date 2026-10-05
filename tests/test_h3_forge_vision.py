@@ -60,30 +60,48 @@ def test_see_pictures_sends_them_in_label_order(monkeypatch, tmp_path):
     assert user.index("Cast (fixed)") < user.index("are attached")
 
 
-def test_seeing_writer_is_asked_for_details_to_keep(monkeypatch, tmp_path):
-    result, sent = _run(monkeypatch, tmp_path, True)
-    assert "===SEGMENT: Details to keep===, with one line each for <Subject 1>, <Subject 2>" in sent[0]["user"]
-    blind, sent = _run(monkeypatch, tmp_path, False)
-    assert "Details to keep" not in sent[0]["user"]
+ALL_KINDS = [pic("character-1", "a.png"), pic("place", "b.png"), pic("style", "c.png"),
+             pic("first-frame", "d.png"), pic("pose", "e.png")]
 
 
-def test_details_to_keep_join_the_retention_lines():
+def test_seeing_writer_is_asked_for_a_description_of_each_by_kind(monkeypatch, tmp_path):
     from nodes import h3_prompting as hp
-    cast = hp.easy_cast([pic("character-1", "a.png"), pic("place", "b.png")])
+    message = hp.build_user_message(hp.load_bundle(), "Character 1 waves", "REF2VA", 8, 5, "balanced", ALL_KINDS, True,
+                                    [f"<Picture {n}>" for n in range(1, 6)], cast=hp.easy_cast(ALL_KINDS))
+    assert "===SEGMENT: Descriptions===" in message
+    assert "- <Subject 1> (a character): what they look like" in message
+    assert "- <Subject 2> (the place): the background" in message
+    assert "- <Subject 3> (the style): how it is drawn" in message
+    assert "- <Picture 4> (the first frame): a general description of the whole picture" in message
+    assert "- <Picture 5> (a pose): the pose only" in message
+    result, sent = _run(monkeypatch, tmp_path, False)
+    assert "Descriptions" not in sent[0]["user"]
+
+
+def test_descriptions_join_retention_and_the_pose_line():
+    from nodes import h3_prompting as hp
+    cast = hp.easy_cast(ALL_KINDS)
     segments = {
         "Subject definitions": "<Subject 1>: waves",
         "Detailed description": "[Shot 1] <Subject 1> waves in <Subject 2>.",
-        "Details to keep": "<Subject 1>: lavender scarf, silver hairclip\n<Subject 2>: stone bridge on the left",
+        "Descriptions": ("<Subject 1>: A woman with short silver hair in a lavender scarf.\n"
+                         "<Subject 2>: A lavender field under a low evening sun\n"
+                         "<Subject 3>: Soft watercolour with thin ink lines.\n"
+                         "<Picture 4>: <Subject 1> stands left of a stone bridge, seen from the waist up.\n"
+                         "<Picture 5>: Standing with one hand raised to shade the eyes, facing left."),
     }
     hp.easy_segments(cast, segments)
     ret = segments["Retention analysis"].splitlines()
-    assert ret[0].endswith("in every shot. Keep: lavender scarf, silver hairclip.")
-    assert ret[1].endswith("light and time of day. Keep: stone bridge on the left.")
-    assert "Details to keep" not in segments
-    # Blind runs write none, and the lines are exactly as before.
+    assert ret[0].endswith("in every shot. As the pictures show: A woman with short silver hair in a lavender scarf.")
+    assert ret[1].endswith("time of day. As the pictures show: A lavender field under a low evening sun.")
+    assert ret[2].endswith("throughout. As the pictures show: Soft watercolour with thin ink lines.")
+    assert ret[3].endswith("subject positions. As the pictures show: <Subject 1> stands left of a stone bridge, seen from the waist up.")
+    assert segments["Subject definitions"].endswith("As the pictures show: Standing with one hand raised to shade the eyes, facing left.")
+    assert "Descriptions" not in segments
+    # Blind runs write none, and every line is exactly as before.
     segments = {"Subject definitions": "<Subject 1>: waves", "Detailed description": "[Shot 1] <Subject 1> waves."}
     hp.easy_segments(cast, segments)
-    assert "Keep:" not in segments["Retention analysis"]
+    assert "As the pictures show" not in segments["Retention analysis"] + segments["Subject definitions"]
 
 
 def test_acting_lines_run_into_one_paragraph_are_split():
