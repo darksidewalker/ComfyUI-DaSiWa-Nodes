@@ -25,7 +25,7 @@ def test_schema_is_the_short_list(monkeypatch):
     monkeypatch.setattr(simple, "model_choices", lambda: ["None"])
     schema = simple.DaSiWa_LLMPromptWriter.INPUT_TYPES()
     assert list(schema["required"]) == ["model", "write_for", "idea", "seed", "keep_loaded"]
-    assert list(schema["optional"]) == ["picture"]
+    assert list(schema["optional"]) == ["images"]
     assert schema["required"]["write_for"][0] == list(simple.WRITE_FOR)
     assert simple.DaSiWa_LLMPromptWriter.RETURN_NAMES == ("prompt",)
     assert simple.DaSiWa_LLMPromptWriter.VALIDATE_INPUTS("Ollama: gone:latest") is True

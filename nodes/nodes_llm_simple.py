@@ -110,7 +110,7 @@ class DaSiWa_LLMPromptWriter:
                 "keep_loaded": ("BOOLEAN", {"default": False, "description": "Off frees the memory after every prompt so the image model has it. On is faster for repeated prompts."}),
             },
             "optional": {
-                "picture": ("IMAGE", {"description": "Optional reference picture. Needs a vision model."}),
+                "images": ("IMAGE", {"description": "Optional reference picture, as on the Analyze node. Needs a vision model. From a batch, only the first image is used."}),
             },
         }
 
@@ -125,13 +125,13 @@ class DaSiWa_LLMPromptWriter:
         # where a stopped Ollama gets a clear message instead of "not in list".
         return True
 
-    def write(self, model, write_for, idea, seed, keep_loaded, picture=None):
+    def write(self, model, write_for, idea, seed, keep_loaded, images=None):
         idea = str(idea or "").strip()
-        if not idea and picture is None:
+        if not idea and images is None:
             raise ValueError("Type an idea, or connect a picture to write the prompt from.")
         config = simple_config(model, keep_loaded)
         try:
-            prompt = self._analyze(config, write_for, idea, seed, picture)
+            prompt = self._analyze(config, write_for, idea, seed, images)
         except ForgeError as exc:
             if exc.code != "connection":
                 raise
@@ -141,7 +141,7 @@ class DaSiWa_LLMPromptWriter:
         return (prompt,)
 
     @staticmethod
-    def _analyze(config, write_for, idea, seed, picture):
+    def _analyze(config, write_for, idea, seed, images):
         prompt, _ = DaSiWa_LLMAnalyze().analyze(
             llm_config=config,
             system_prompt_preset=WRITE_FOR[write_for],
@@ -160,7 +160,7 @@ class DaSiWa_LLMPromptWriter:
             resize_max_px=768,
             resize_algorithm="lanczos",
             memory_cleanup="off",
-            images=picture,
+            images=images,
             text_input="",
         )
         return prompt

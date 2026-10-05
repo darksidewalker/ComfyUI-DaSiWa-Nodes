@@ -20,7 +20,7 @@ The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
 - `idea`: what you want, in your own words or as tags.
 - `seed`: change it, or let it randomize, for a different take on the same idea.
 - `keep_loaded`: off frees the memory after every prompt so the image model has it; on is faster when writing several in a row.
-- `picture` (optional): a reference picture for a vision model. With an empty idea, the prompt is written from the picture.
+- `images` (optional): a reference picture for a vision model, the same input as on Analyze. From a batch, only the first image is used. With an empty idea, the prompt is written from the picture.
 
 Everything else uses the advanced nodes' defaults, with a 2048-token budget so long prompts are not cut short. For any other setting, use the two advanced nodes below. Both run the same code.
 
