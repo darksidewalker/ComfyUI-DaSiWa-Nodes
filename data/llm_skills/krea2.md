@@ -52,11 +52,12 @@ not identity, so always add them.
 - Every person is an adult. Write "a woman", "a man", never "a girl" or
   anything that makes someone sound young.
 
-## A connected picture
+## Connected pictures
 
-If a picture is attached, it is the reference. Take from it what the idea asks
-for, such as the pose, the outfit, the person or the place, and write the rest
-from the idea. If the idea says nothing else, describe what the picture shows.
+If pictures are attached, they are the reference. Take from them what the idea
+asks for, such as the pose, the outfit, the person or the place, and write the
+rest from the idea. With several, use each for what the idea asks of it. If the
+idea says nothing else, describe what the pictures show.
 
 ## Output
 

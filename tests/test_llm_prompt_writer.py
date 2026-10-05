@@ -71,6 +71,20 @@ def test_writes_through_the_server_with_the_guide(monkeypatch):
     assert body["model"] == "qwen3.5:9b"
 
 
+def test_a_batch_is_sampled_up_to_eight_from_the_first(monkeypatch):
+    from nodes import nodes_llm
+    asked = []
+    def prepare(images, max_frames, frame_stride, frame_strategy, resize_max_px, resize_algorithm):
+        asked.append((images, max_frames, frame_strategy))
+        return []
+    monkeypatch.setattr(nodes_llm, "_prepare_images", prepare)
+    _fake_server(monkeypatch, "===SEGMENT: Positive prompt===\nA dancer.", [])
+    simple.DaSiWa_LLMPromptWriter().write(model="Server: m", write_for="Wan 2.2", idea="", seed=0, keep_loaded=False,
+                                          images="batch")
+    assert asked == [("batch", 8, "evenly_spaced")]
+    assert nodes_llm._select_frame_indices(20, 8, 1, "evenly_spaced")[0] == 0
+
+
 def test_prefixes_pick_the_backend(monkeypatch):
     monkeypatch.setattr(simple, "_resolve_model_path", lambda name, custom, allow_gguf: f"/models/{name}")
     ollama = simple.simple_config("Ollama: qwen3.5:9b", True)

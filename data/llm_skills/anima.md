@@ -68,11 +68,12 @@ or eye colour, or an outfit nobody asked for.
   words.
 - Anima is not a photo model. "Realistic" pulls it only a little.
 
-## A connected picture
+## Connected pictures
 
-If a picture is attached, it is the reference. Take from it what the idea asks
-for, such as the pose, the outfit or the character, and write the rest from the
-idea. If the idea says nothing else, describe what the picture shows.
+If pictures are attached, they are the reference. Take from them what the idea
+asks for, such as the pose, the outfit or the character, and write the rest
+from the idea. With several, use each for what the idea asks of it. If the idea
+says nothing else, describe what the pictures show.
 
 ## Output
 

@@ -21,7 +21,10 @@ WRITE_FOR = {
 # Room for a long prompt plus a thinking model's reasoning; the advanced
 # node's 256 cuts a full Anima or Krea2 prompt short.
 MAX_NEW_TOKENS = 2048
-PICTURE_ONLY = "Write the prompt from the attached picture."
+PICTURE_ONLY = "Write the prompt from the attached pictures."
+# A batch goes in whole up to this many, Analyze's own default; a longer one
+# (a loaded video) is sampled evenly, always starting with the first image.
+MAX_IMAGES = 8
 
 # Server models in the one model list. Addresses come only from the ComfyUI
 # environment (DASIWA_LLM_OLLAMA_URL, DASIWA_LLM_OPENAI_URL), never the graph.
@@ -110,7 +113,7 @@ class DaSiWa_LLMPromptWriter:
                 "keep_loaded": ("BOOLEAN", {"default": False, "description": "Off frees the memory after every prompt so the image model has it. On is faster for repeated prompts."}),
             },
             "optional": {
-                "images": ("IMAGE", {"description": "Optional reference picture, as on the Analyze node. Needs a vision model. From a batch, only the first image is used."}),
+                "images": ("IMAGE", {"description": "Optional reference pictures, one image or a batch, as on the Analyze node. Needs a vision model. Up to 8 are sent; a longer batch is sampled evenly from the first image to the last. For Wan and LTX the first image is the first frame."}),
             },
         }
 
@@ -154,9 +157,9 @@ class DaSiWa_LLMPromptWriter:
             repetition_penalty=1.0,
             use_kv_cache=True,
             seed=seed,
-            max_frames=1,
+            max_frames=MAX_IMAGES,
             frame_stride=1,
-            frame_strategy="first",
+            frame_strategy="evenly_spaced",
             resize_max_px=768,
             resize_algorithm="lanczos",
             memory_cleanup="off",

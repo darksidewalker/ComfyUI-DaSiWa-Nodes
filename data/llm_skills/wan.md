@@ -43,11 +43,12 @@ shifting.
 - Every person is an adult. Write "a woman", "a man", never "a girl" or
   anything that makes someone sound young.
 
-## A connected picture
+## Connected pictures
 
-If a picture is attached, it is the first frame of the video. Do not describe
-it again in detail. Name the subject briefly and spend the words on what moves
-and what the camera does.
+If pictures are attached, the first one is the first frame of the video. Do not
+describe it again in detail. Name the subject briefly and spend the words on
+what moves and what the camera does. Any others are references for what the
+idea asks of them.
 
 ## Output
 

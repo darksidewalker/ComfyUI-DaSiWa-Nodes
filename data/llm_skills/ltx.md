@@ -46,10 +46,11 @@ and sound that bring it to life.
 - Every person is an adult. Write "a woman", "a man", never "a girl" or
   anything that makes someone sound young.
 
-## A connected picture
+## Connected pictures
 
-If a picture is attached, it is the first frame. Keep what it shows and write
-what happens next: the movement, the camera and the sound.
+If pictures are attached, the first one is the first frame. Keep what it shows
+and write what happens next: the movement, the camera and the sound. Any others
+are references for what the idea asks of them.
 
 ## Output
 
