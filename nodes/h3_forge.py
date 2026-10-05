@@ -73,6 +73,8 @@ from .h3_prompting import (
     _POSITIONS,
     _easy_role,
     easy_cast,
+    easy_vision_spec,
+    describe_targets,
     _join_and,
     _picture_list,
     _shown_in,
@@ -102,7 +104,7 @@ from .h3_prompting import (
     _alignment_line,
     simple_prompt,
 )
-from .llm_backends import IMAGE_MAX_EDGE, NUM_PREDICT
+from .llm_backends import IMAGE_MAX_EDGE, NUM_PREDICT, refresh_server_model_choices
 
 
 _REQUEST_LOCK = threading.RLock()
@@ -257,14 +259,18 @@ def _generate(body, input_directory, release_memory, stop):
     cast = easy_cast(references) if easy else None
 
     sees = backend.can_see(name)
-    images = []
-    # Easy mode sends no picture to the writer: the labels say who is who.
-    if sees is not False and input_directory and not easy:
+    images, image_labels = [], []
+    # Easy mode sends no picture to the writer unless asked: the labels say who
+    # is who, and small models write more accurately from the labels alone.
+    see_pictures = easy and bool(body.get("see_pictures"))
+    if sees is not False and input_directory and (see_pictures or not easy):
         from .helper_minimax_h3_director import resolve_input_path
-        for ref in references:
-            if ref.get("kind") == "image" and ref.get("path"):
+        _, pictures = format_references(references, mode)
+        for ref, tag in pictures:
+            if ref.get("path"):
                 try:
                     images.append(_image_b64(resolve_input_path(ref["path"], input_directory)))
+                    image_labels.append(tag)
                 except (ValueError, OSError) as exc:
                     raise ForgeError("bad_references", f"Invalid reference image: {exc}") from exc
 
@@ -280,14 +286,14 @@ def _generate(body, input_directory, release_memory, stop):
         release_memory()
 
     def run(with_images):
-        _, pictures = format_references(references, mode)
-        attached_labels = [tag for ref, tag in pictures if ref.get("path")] if with_images else []
+        attached_labels = image_labels if with_images else []
         user = build_user_message(bundle, brief, mode, duration, detail, creativity, references, bool(with_images), attached_labels,
                                   output_canvas=body.get("output_canvas"), cast=cast, shots=shots)
         if mode == "REF2VA" and existing_definitions.strip():
             user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
                      "after existing ones; verify current media citations:\n" + existing_definitions)
-        return backend.chat(name, spec["system"], user, with_images, sampling, num_ctx, timeout, stop)
+        contract = easy_vision_spec(spec, attached_labels) if easy else spec
+        return backend.chat(name, contract["system"], user, with_images, sampling, num_ctx, timeout, stop)
 
     if kind != "local":
         _FORGE_LOADED.add((backend, name))
@@ -317,13 +323,16 @@ def _generate(body, input_directory, release_memory, stop):
             _FORGE_LOADED.discard((backend, name))
 
     stats["seconds"] = round(__import__("time").time() - started, 1)
+    # Parse the required base first. Optional vision enrichment warns rather
+    # than discarding an otherwise usable legacy/model response.
     segments = parse_segments(raw, spec["segments"])
     lost = runaway(segments)
     if lost:
         raise ForgeError("runaway", f"The model lost the thread in {lost[0]} (one sentence ran {lost[1]:,} characters), "
                          "so nothing was applied. Regenerate, or pick a different model.", raw)
-    easy_warnings = easy_segments(cast, segments) if easy else []
-    if easy and "Detailed description" in segments:
+    targets = [tag for tag, _, _ in describe_targets(cast, image_labels if images else [])] if easy else []
+    easy_warnings = easy_segments(cast, segments, targets) if easy else []
+    if easy and not images and "Detailed description" in segments:
         segments["Detailed description"] = keep_reference_look(segments["Detailed description"], brief)
     music_warning = music_request_warning(bundle, brief, segments)
     moved = repair_cut_times(duration, segments)
@@ -570,6 +579,8 @@ def register_routes():
         try:
             body = await request.json()
             models, errors = await asyncio.to_thread(list_all, body.get("settings"))
+            # Workflow discovery uses operator configuration, not dialog settings.
+            await asyncio.to_thread(refresh_server_model_choices)
         except ForgeError as exc:
             return web.json_response({"error": exc.code, "message": exc.message}, status=400)
         bundle = load_bundle()

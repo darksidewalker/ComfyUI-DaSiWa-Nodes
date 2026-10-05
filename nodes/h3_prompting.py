@@ -272,7 +272,25 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
         others = [line for line in ref_lines if not any(line.startswith(f"- {tag}") for tag in labelled)]
         if others:
             lines += ["", "References:", *others]
-        lines += easy_lines(cast)
+        lines += easy_lines(cast, sees_pictures=bool(carries_image and attached_labels))
+        if carries_image and attached_labels:
+            wanted = describe_targets(cast, attached_labels)
+            unseen = [tag for _ref, tag in pictures if tag not in attached_labels]
+            if unseen:
+                lines.append(f"Reference pictures {', '.join(unseen)} are not visible. Do not invent visual attributes; use explicit text only.")
+            lines += ["", (
+                f"The pictures {', '.join(attached_labels)} are attached to this message, in that order, so you can see "
+                "them after all. Use them for where everyone stands, what the place holds, and the look and light of "
+                "the style sentence. The cast above still decides who is who, and you still never describe how anyone "
+                f"looks in the other segments; that goes only in {DESCRIBE_SEGMENT}."
+            )]
+            if wanted:
+                lines.append(
+                    f"After Music, add one more segment, ===SEGMENT: {DESCRIBE_SEGMENT}===, with one line for each of "
+                    "these: the tag, a colon, then one or two sentences from what you see in its pictures."
+                )
+                lines += [f"- {tag} ({what}): {about}" for tag, what, about in wanted]
+                lines.append("Describe only what is visible; no mood words.")
     elif references:
         ref_lines, pictures = format_references(references, mode)
         lines += ["", "References:", *ref_lines]
@@ -426,6 +444,75 @@ GROUP_ROLES = ("group-12", "group-21", "group-13", "group-31", "group-23", "grou
 EASY_ROLES = tuple(f"character-{n}" for n in range(1, 33)) + ("place", "style", "first-frame", "last-frame",
               "pose", "custom") + GROUP_ROLES
 EASY_MODE = "REF2VA easy"
+# Asked for only when the writer sees the pictures: a one or two sentence
+# description per labelled picture, by what it was labelled as, folded into
+# Retention analysis. Pose and custom pictures carry their own instructions.
+DESCRIBE_SEGMENT = "Descriptions"
+_DESCRIBE = {
+    "character": ("a character", "what they look like - face, hair, build, outfit and anything they carry."),
+    "place": ("the place", "the background - the setting, its landmarks, the light and the time of day."),
+    "style": ("the style", "how it is drawn - the medium, linework, colour and shading."),
+}
+_DESCRIBE_FRAME = "a general description of the whole picture - who and what is in it, where, the framing and the light."
+_DESCRIBE_POSE = "the pose only - stance, where the arms and legs are, the gesture and which way they face; not who it is or what they wear."
+
+
+def describe_targets(cast, attached_labels=None):
+    """Targets backed by attached pictures; None preserves the helper's old API."""
+    visible = None if attached_labels is None else set(attached_labels)
+
+    def attached(numbers):
+        return visible is None or any(f"<Picture {n}>" in visible for n in numbers)
+
+    out = [(s["tag"], *_DESCRIBE[s["kind"]]) for s in cast["subjects"]
+           if s["kind"] in _DESCRIBE and attached(s["pictures"] + [p["picture"] for p in s.get("placements", [])])]
+    out += [(f"<Picture {f['picture']}>", f"the {f['which']} frame", _DESCRIBE_FRAME)
+            for f in cast["frames"] if attached([f["picture"]])]
+    out += [(f"<Picture {u['picture']}>", "a pose", _DESCRIBE_POSE)
+            for u in cast["uses"] if u["which"] == "pose" and attached([u["picture"]])]
+    return out
+
+
+def easy_vision_spec(spec, attached_labels):
+    """A per-call contract: never mutate the exported bundle or blind fallback."""
+    if not attached_labels:
+        return spec
+    system = spec["system"]
+    # Replace the blind rule itself, rather than appending an instruction that
+    # contradicts it. Fail clearly if a future export changes this contract.
+    pattern = r"You have not seen the pictures,.*?Never name a medium yourself[^\n]*"
+    system, count = re.subn(pattern, (
+        "You can see only the attached pictures listed in the message. Use visible evidence "
+        "for composition, spatial relationships, lighting and the overall style sentence, "
+        "including the medium when visible. Do not infer visual attributes from unattached "
+        "pictures. Keep character appearance out of the other segments: record it only in "
+        "Descriptions. If no visible source establishes a look, use the brief or say the "
+        "video keeps the look of the reference pictures."
+    ), system, count=1, flags=re.S)
+    if count != 1:
+        raise ForgeError("bad_contract", "The labelled Forge system prompt's blind rule has changed.")
+    system = system.replace(
+        "Nothing about\nhow they look — the pictures carry that —",
+        "Nothing about\nhow they look — visible appearance belongs only in Descriptions —"
+    )
+    system = system.replace(
+        "Do not write Retention analysis. The app writes it from your shots.",
+        "Do not write Retention analysis. The app writes it from your shots and Descriptions.\n\n"
+        "**Descriptions.** After Music, write one line for each target requested in the message: "
+        "its exact tag, a colon, and one or two sentences from attached pictures only. "
+        "Follow each target's role; do not invent unseen details or describe unrequested targets. "
+        "Describe only what is visible, with no mood words. The app folds these lines into "
+        "Retention analysis (pose lines into Subject definitions), not an extra final field. "
+        "If no targets are requested, write N/A."
+    )
+    labels = [*spec["segments"], DESCRIBE_SEGMENT]
+    prefix, heading, _ = system.rpartition("## Segments to emit")
+    if not heading:
+        raise ForgeError("bad_contract", "The labelled Forge system prompt has no segment contract.")
+    system = prefix + heading + "\n\n" + "\n".join(f"{i}. `{label}`" for i, label in enumerate(labels, 1))
+    return {**spec, "system": system, "segments": labels}
+
+
 _POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right")}
 
 
@@ -533,11 +620,15 @@ def _tail(refs):
     return f" · {extra}" if extra else ""
 
 
-def easy_lines(cast):
+def easy_lines(cast, sees_pictures=False):
     """The cast block, in place of the per-picture reference lines."""
     lines = ["", "Cast (fixed). The person labelled every picture, and Subject definitions are already written from those labels. "
              "Use exactly these subjects: add none, merge none, split none. The video model sees the pictures itself, "
              "so never describe how anyone or anything looks."]
+    if sees_pictures:
+        lines[-1] = ("Cast (fixed). The person labelled every picture, and Subject definitions are already written from those labels. "
+                     "Use exactly these subjects: add none, merge none, split none. "
+                     "Describe visible reference appearance only in Descriptions; use attached sources only.")
     for s in cast["subjects"]:
         tail = _tail(s["refs"])
         pics = _picture_list(s["pictures"])
@@ -565,13 +656,28 @@ def _shots(description):
     return shots
 
 
-def _acting(body):
-    """The model's acting lines by tag: "<Subject 1>: ...", "- <Subject 1> — ..."."""
+# A subject label opens a line, or follows a finished sentence with a colon or
+# dash: models sometimes run every acting line into one paragraph. A mention
+# inside a sentence ("smiles at <Subject 1>,") is not a label.
+def _label_pattern(tags):
+    return re.compile(rf"(?m)^\s*(?:[-*•]\s*)?(<(?:{tags}) \d+>)\s*(?:[:—–-]\s*)?|(?<=[.!?])[ \t]+(<(?:{tags}) \d+>)\s*[:—–]\s*")
+
+
+_LABEL = _label_pattern("Subject")
+# Descriptions also name first and last frames by picture.
+_DESCRIBE_LABEL = _label_pattern("Subject|Picture")
+
+
+def _acting(body, label=_LABEL):
+    """The model's lines by tag: "<Subject 1>: ...", "- <Subject 1> — ..."."""
+    text = str(body or "")
+    marks = list(label.finditer(text))
     out = {}
-    for raw in str(body or "").splitlines():
-        m = re.match(r"^\s*(?:[-*•]\s*)?(<Subject \d+>)\s*(?:[:—–-]\s*)?(.*)$", raw)
-        if m and m.group(2).strip():
-            out[m.group(1)] = f"{out[m.group(1)]} {m.group(2).strip()}" if m.group(1) in out else m.group(2).strip()
+    for i, m in enumerate(marks):
+        tag = m.group(1) or m.group(2)
+        line = " ".join(text[m.end():marks[i + 1].start() if i + 1 < len(marks) else len(text)].split())
+        if line:
+            out[tag] = f"{out[tag]} {line}" if tag in out else line
     return out
 
 
@@ -605,14 +711,32 @@ def keep_reference_look(description, brief):
     return "Keeps the look of the reference pictures.\n\n" + sep + rest
 
 
-def easy_segments(cast, segments):
+def easy_segments(cast, segments, description_targets=None):
     """Subject definitions and Retention analysis written in code, into the
     parsed segments. Returns the warnings (a character no shot names)."""
     acting = _acting(segments.get("Subject definitions"))
+    # Written only when the writer saw the pictures: one or two sentences per
+    # labelled picture, added to its retention line (a pose's to its definition).
+    description_body = segments.pop(DESCRIBE_SEGMENT, "")
+    descriptions = {tag: _sentence(line) for tag, line in _acting(description_body, _DESCRIBE_LABEL).items()
+                    if not re.fullmatch(r"N/A[.!]?", line.strip(), re.I)}
+    description_warnings = []
+    if description_targets is not None:
+        expected = set(description_targets)
+        descriptions = {tag: text for tag, text in descriptions.items() if tag in expected}
+        missing = [tag for tag in description_targets if tag not in descriptions]
+        if missing:
+            description_warnings.append(
+                "Descriptions are missing or empty for: " + ", ".join(missing) +
+                ". The base draft is available, but its visual descriptions are incomplete; regenerate or review before applying."
+            )
+
+    def described(tag):
+        return f" As the pictures show: {descriptions[tag]}" if descriptions.get(tag) else ""
     shots = _shots(_bare(segments.get("Detailed description"), ["Detailed description", "integrated_multimodal_description"]))
     every = sorted(shots)
     last = every[-1] if every else None
-    definitions, retention, warnings = [], [], []
+    definitions, retention, warnings = [], [], description_warnings
     for s in cast["subjects"]:
         pics = _picture_list(s["pictures"])
         cited = [n for n in every if s["tag"] in shots[n]]
@@ -623,23 +747,27 @@ def easy_segments(cast, segments):
             if every and not cited:
                 warnings.append(f"{s['name']} ({s['tag']}) is never named in a shot. Check detailed_description, or say in the idea what {s['name']} does.")
             where = _span(cited) or (_span(every) if every else "every shot")
-            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot.")
+            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot."
+                             + described(s["tag"]))
         elif s["kind"] == "place":
             definitions.append(f"{s['tag']} is the place in {pics}, where the video happens; keep it as the picture shows.")
-            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day.")
+            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day."
+                             + described(s["tag"]))
         else:
             definitions.append(f"{s['tag']} is the rendering style of {pics}, applied to the whole video and not its content.")
-            retention.append(f"{s['tag']} (applies to every shot): fully_preserved — hold the same rendering throughout.")
+            retention.append(f"{s['tag']} (applies to every shot): fully_preserved — hold the same rendering throughout." + described(s["tag"]))
     for f in cast["frames"]:
         shot = "[Shot 1]" if f["which"] == "first" else (f"[Shot {last}]" if last else "the final shot")
-        definitions.append(f"<Picture {f['picture']}> is the {f['which']} frame of {shot}.")
-        retention.append(f"<Picture {f['picture']}> ({shot} {f['which']} frame): fully_preserved — the "
-                         f"{'opening' if f['which'] == 'first' else 'closing'} composition, lighting and subject positions.")
+        tag = f"<Picture {f['picture']}>"
+        definitions.append(f"{tag} is the {f['which']} frame of {shot}.")
+        retention.append(f"{tag} ({shot} {f['which']} frame): fully_preserved — the "
+                         f"{'opening' if f['which'] == 'first' else 'closing'} composition, lighting and subject positions." + described(tag))
     for u in cast["uses"]:
         said = _sentence(str(u["ref"].get("instructions") or "").strip())
         said = said[:1].upper() + said[1:]
         definitions.append((f"<Picture {u['picture']}> gives the pose only: stance, limb position and gesture, "
-                            "not identity, clothing or background." + (f" {said}" if said else ""))
+                            "not identity, clothing or background." + (f" {said}" if said else "")
+                            + described(f"<Picture {u['picture']}>"))
                            if u["which"] == "pose" else f"<Picture {u['picture']}>: {said}")
     segments["Subject definitions"] = "\n\n".join(definitions)
     segments["Retention analysis"] = "\n".join(retention)

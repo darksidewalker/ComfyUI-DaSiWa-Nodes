@@ -327,12 +327,13 @@ Bridge any string/text node through **DaSiWa Random String Picker** to randomize
 
 ---
 
-### 🧠 LLM / VLM Analyze
+### 🧠 LLM Prompt Writer & Analyze
 
 The **DaSiWa LLM / VLM nodes** let you run local transformers chat or vision-language models from inside a ComfyUI workflow. They accept native `STRING` inputs and native `IMAGE` batches from nodes such as Load Image or VHS frame loaders.
 
 - **Native ComfyUI Inputs:** Analyze connected text, still images, or video/image-sequence frame batches.
-- **Prompt Presets:** Custom system instructions, existing LTX-2.3/Wan2.2 and caption presets, plus PromptForge-backed H3, Wan 2.2, LTX, Krea2, Anima and Illustrious rewriting. Returns the model's primary prompt without segment scaffolding; legacy preset instructions remain unchanged.
+- **Prompt Writer:** Simple node for Anima, Illustrious, Krea2, Wan 2.2 and LTX 2.3, with an unchanged user prefix, style, detail, creativity and optional reference pictures.
+- **Prompt Presets:** Editable model-specific guides plus shared H3 rewriting, custom instructions and existing caption/video presets; output without segment scaffolding.
 - **Memory Modes:** Keep models cached for speed, or use full cleanup to unload DaSiWa and ComfyUI managed models before/after analysis so later image/video models recover VRAM/RAM.
 - **Frame Sampling:** Limit video analysis with max frames, stride, frame strategy, resize controls, context limits, and optional KV-cache reduction.
 - **Local and External Models:** Load already-installed Transformers folders or GGUFs, keep the legacy loopback Ollama mode, or use operator-configured OpenAI-compatible/Ollama servers. Endpoints and credentials stay outside workflow JSON; runtime downloads and custom remote model code remain disabled. The Director and LLM nodes share backend implementations without changing Director settings or workflows.

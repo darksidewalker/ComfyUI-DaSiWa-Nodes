@@ -5,6 +5,8 @@ import io
 import json
 import os
 import re
+import threading
+import time
 from urllib import error as urlerror
 from urllib import parse as urlparse
 from urllib import request as urlrequest
@@ -51,13 +53,159 @@ def _workflow_url(value, default=""):
     return value
 
 
+# User-editable ComfyUI Settings are not trusted global service configuration.
+# Workflow fallback requires explicit operator opt-in and single-user mode.
+SETTING_KEYS = {
+    "ollama_url": "DaSiWa.H3Forge.OllamaURL",
+    "openai_url": "DaSiWa.H3Forge.OpenAIURL",
+    "openai_api_key": "DaSiWa.H3Forge.OpenAIKey",
+}
+
+
+def comfy_settings():
+    """The LLM server values from ComfyUI's settings file, or {} when there is none."""
+    try:
+        import folder_paths
+        path = os.path.join(folder_paths.get_user_directory(), "default", "comfy.settings.json")
+        with open(path, encoding="utf-8") as handle:
+            saved = json.load(handle)
+    except Exception:
+        return {}
+    return {key: str(saved.get(setting_id) or "").strip() for key, setting_id in SETTING_KEYS.items()}
+
+
 def workflow_server_settings():
-    """Read server-operator configuration at execution time, never from graphs."""
+    """Trusted global environment, or explicitly opted-in single-user settings.
+
+    An endpoint and its key always come from the same configuration source."""
+    saved = {}
+    if os.environ.get("DASIWA_LLM_ALLOW_SETTINGS") == "1":
+        from comfy.cli_args import args
+        if not getattr(args, "multi_user", False):
+            saved = comfy_settings()
+    ollama_url = os.environ.get("DASIWA_LLM_OLLAMA_URL", "").strip()
+    openai_url = os.environ.get("DASIWA_LLM_OPENAI_URL", "").strip()
+    if openai_url:
+        api_key = os.environ.get("DASIWA_LLM_OPENAI_API_KEY", "").strip()
+    else:
+        openai_url = saved.get("openai_url", "")
+        api_key = saved.get("openai_api_key", "") if openai_url else ""
     return {
-        "ollama_url": _workflow_url(os.environ.get("DASIWA_LLM_OLLAMA_URL"), DEFAULT_OLLAMA),
-        "openai_url": _workflow_url(os.environ.get("DASIWA_LLM_OPENAI_URL")),
-        "openai_api_key": os.environ.get("DASIWA_LLM_OPENAI_API_KEY", "").strip(),
+        "ollama_url": _workflow_url(ollama_url or saved.get("ollama_url", ""), DEFAULT_OLLAMA),
+        "openai_url": _workflow_url(openai_url),
+        "openai_api_key": api_key,
     }
+
+
+# Server models as entries in a node's model list, beside the local files.
+SERVER_CHOICE_PREFIXES = {"Ollama: ": "ollama_server", "Server: ": "openai"}
+# Schema calls read a cache; only one discovery (automatic or explicit) runs.
+LIST_TIMEOUT = 2
+MODEL_CHOICES_TTL = 60
+MODEL_CHOICES_RETRY = 10
+_model_choices_cache = {}
+_model_choices_condition = threading.Condition()
+_model_choices_running = False
+_model_choices_thread = None
+
+
+def _server_choice_keys(settings):
+    keys = [("ollama", settings["ollama_url"], "")]
+    if settings["openai_url"]:
+        keys.append(("openai", settings["openai_url"], settings["openai_api_key"]))
+    return keys
+
+
+def _cached_server_choices(keys):
+    # Caller holds the condition. Keys (including credentials) are never logged.
+    return [choice for key in keys for choice in _model_choices_cache.get(key, ([], 0))[0]]
+
+
+def _discover_server_choices(keys, force=False):
+    global _model_choices_running
+    try:
+        for key in keys:
+            with _model_choices_condition:
+                previous, due = _model_choices_cache.get(key, ([], 0))
+                if not force and time.monotonic() < due:
+                    continue
+            kind, url, api_key = key
+            try:
+                server = Ollama(url) if kind == "ollama" else OpenAICompatible(url, api_key)
+                prefix = "Ollama: " if kind == "ollama" else "Server: "
+                choices = [prefix + m["id"][len(kind) + 1:]
+                           for m in server.models(timeout=LIST_TIMEOUT)]
+                delay = MODEL_CHOICES_TTL
+            except Exception:
+                # Retain last good results only for this exact backend/URL/key.
+                choices, delay = previous, MODEL_CHOICES_RETRY
+            with _model_choices_condition:
+                _model_choices_cache[key] = (choices, time.monotonic() + delay)
+                # Avoid retaining unbounded endpoints/credentials during churn.
+                while len(_model_choices_cache) > 32:
+                    del _model_choices_cache[next(iter(_model_choices_cache))]
+    finally:
+        with _model_choices_condition:
+            _model_choices_running = False
+            _model_choices_condition.notify_all()
+
+
+def server_model_choices():
+    """Return a cached snapshot with zero caller-thread network IO.
+
+    Schedule one daemon discovery when due. Config changes while it is busy
+    are isolated immediately and retried on a later schema call."""
+    global _model_choices_running, _model_choices_thread
+    try:
+        keys = _server_choice_keys(workflow_server_settings())
+    except ForgeError:
+        return []
+    with _model_choices_condition:
+        out = _cached_server_choices(keys)
+        if not _model_choices_running and any(
+                time.monotonic() >= _model_choices_cache.get(key, ([], 0))[1] for key in keys):
+            _model_choices_running = True
+            try:
+                _model_choices_thread = threading.Thread(
+                    target=_discover_server_choices, args=(keys,),
+                    name="dasiwa-server-models", daemon=True)
+                _model_choices_thread.start()
+            except Exception:
+                _model_choices_thread = None
+                _model_choices_running = False
+                _model_choices_condition.notify_all()
+        return out
+
+
+def refresh_server_model_choices():
+    """Blocking forced refresh for Forge's off-thread models route, not schemas.
+
+    Bypass TTL/retry and return choices after discovery (LIST_TIMEOUT per
+    backend). Serialize with other discovery without holding a lock during IO.
+    If another discovery stays busy beyond the bounded wait, return the cache.
+    Transient errors retain each backend's last good results for this config.
+    """
+    global _model_choices_running
+    try:
+        keys = _server_choice_keys(workflow_server_settings())
+    except ForgeError:
+        return []
+    with _model_choices_condition:
+        if not _model_choices_condition.wait_for(
+                lambda: not _model_choices_running, timeout=2 * LIST_TIMEOUT + 1):
+            return _cached_server_choices(keys)
+        _model_choices_running = True
+    _discover_server_choices(keys, force=True)
+    with _model_choices_condition:
+        return _cached_server_choices(keys)
+
+
+def parse_server_choice(choice):
+    """(backend, model id) for an 'Ollama: ' or 'Server: ' entry, else None."""
+    for prefix, backend in SERVER_CHOICE_PREFIXES.items():
+        if str(choice or "").startswith(prefix):
+            return backend, choice[len(prefix):]
+    return None
 
 
 def _is_this_machine(url):
@@ -128,9 +276,9 @@ class Ollama:
     def __init__(self, base):
         self.base = base
 
-    def models(self):
+    def models(self, timeout=10):
         out = []
-        for m in _http(self.base + "/api/tags").get("models", []):
+        for m in _http(self.base + "/api/tags", timeout=timeout).get("models", []):
             details = m.get("details") or {}
             # Embedding models (nomic-embed-text and the like: BERT family)
             # cannot write, so they are not offered.
@@ -218,9 +366,9 @@ class OpenAICompatible:
         # LM Studio with authentication on, or a hosted OpenAI-compatible API.
         self.headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
-    def models(self):
+    def models(self, timeout=10):
         return [{"id": f"openai:{m['id']}", "label": m["id"]}
-                for m in _http(self.api + "/models", headers=self.headers).get("data", [])]
+                for m in _http(self.api + "/models", timeout=timeout, headers=self.headers).get("data", [])]
 
     def can_see(self, name):
         # No standard capability endpoint; the request itself is the test.
@@ -484,7 +632,9 @@ def run_workflow_server(config, system, user, images, max_tokens,
     kind = config["backend"]
     if kind == "openai":
         if not settings["openai_url"]:
-            raise ValueError("Set DASIWA_LLM_OPENAI_URL in the ComfyUI service environment")
+            raise ValueError("Set DASIWA_LLM_OPENAI_URL in the ComfyUI service environment. "
+                             "Single-user operators may opt into ComfyUI Settings > DaSiWa > LLM servers "
+                             "with DASIWA_LLM_ALLOW_SETTINGS=1; settings fallback is disabled in multi-user mode.")
         server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
     elif kind == "ollama_server":
         server = Ollama(settings["ollama_url"])

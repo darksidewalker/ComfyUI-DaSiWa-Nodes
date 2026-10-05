@@ -11,15 +11,19 @@ import { forgeReferences, labelRole, refPromptFields, referenceSnapshot, referen
 
 // Server addresses live in ComfyUI Settings, never in the workflow, so a
 // downloaded workflow cannot point this machine at a server of its choosing.
+// Shared by the Director's Forge and the LLM nodes (nodes/llm_backends.py
+// reads the same IDs from the settings file); the IDs predate the sharing.
 const SETTING_OLLAMA = "DaSiWa.H3Forge.OllamaURL";
 const SETTING_OPENAI = "DaSiWa.H3Forge.OpenAIURL";
 const SETTING_OPENAI_KEY = "DaSiWa.H3Forge.OpenAIKey";
+const SECTION = "LLM servers";
+const SHARED = " Used by the H3 Director's Forge and the DaSiWa LLM nodes; press R after changing it to refresh their model lists.";
 app.registerExtension({
   name: "DaSiWa.H3Forge",
   settings: [
-    { id: SETTING_OLLAMA, category: ["DaSiWa", "H3 Forge", "Ollama address"], name: "Ollama address", type: "text", defaultValue: "", tooltip: "Leave empty for Ollama on this computer (http://127.0.0.1:11434). Set it to use Ollama on another machine." },
-    { id: SETTING_OPENAI, category: ["DaSiWa", "H3 Forge", "OpenAI-compatible server"], name: "OpenAI-compatible server address", type: "text", defaultValue: "", tooltip: "Optional: a llama.cpp server, llama-swap, LM Studio or koboldcpp, e.g. http://127.0.0.1:8080. Empty = off." },
-    { id: SETTING_OPENAI_KEY, category: ["DaSiWa", "H3 Forge", "OpenAI-compatible API key"], name: "OpenAI-compatible API key", type: "text", defaultValue: "", tooltip: "Only if that server asks for one (llama-server --api-key, llama-swap apiKeys, LM Studio with authentication). Sent only to the address above. Stored in ComfyUI's settings file like every other setting." },
+    { id: SETTING_OLLAMA, category: ["DaSiWa", SECTION, "Ollama address"], name: "Ollama address", type: "text", defaultValue: "", tooltip: "Leave empty for Ollama on this computer (http://127.0.0.1:11434). Set it to use Ollama on another machine." + SHARED },
+    { id: SETTING_OPENAI, category: ["DaSiWa", SECTION, "OpenAI-compatible server"], name: "OpenAI-compatible server address", type: "text", defaultValue: "", tooltip: "Optional: a llama.cpp server, llama-swap, LM Studio or koboldcpp, e.g. http://127.0.0.1:8080. Empty = off." + SHARED },
+    { id: SETTING_OPENAI_KEY, category: ["DaSiWa", SECTION, "OpenAI-compatible API key"], name: "OpenAI-compatible API key", type: "text", defaultValue: "", tooltip: "Only if that server asks for one (llama-server --api-key, llama-swap apiKeys, LM Studio with authentication). Sent only to the address above. Stored in ComfyUI's settings file like every other setting." },
   ],
 });
 function settingValue(id) {
@@ -45,7 +49,9 @@ const PICTURE_WHO = {
   group: [["group-12", "1 + 2 (1 on the left)"], ["group-21", "2 + 1 (2 on the left)"], ["group-13", "1 + 3 (1 on the left)"], ["group-31", "3 + 1 (3 on the left)"],
     ["group-23", "2 + 3 (2 on the left)"], ["group-32", "3 + 2 (3 on the left)"], ["group-123", "1 + 2 + 3 (left to right)"]],
 };
-const pictureKind = label => label.startsWith("character-") ? "character" : label.startsWith("group-") ? "group" : label;
+// Keep aligned with nodes/h3_prompting.py EASY_ROLES.
+const EASY_ROLES = new Set([...PICTURE_WHO.character.map(([role]) => role), ...PICTURE_WHO.group.map(([role]) => role), "place", "style", "first-frame", "last-frame", "pose", "custom"]);
+const pictureKind = (label = "") => label.startsWith("character-") ? "character" : label.startsWith("group-") ? "group" : label;
 const INSTRUCTIONS_HINT = {
   pose: "Pose only; identity, clothes and background stay unchanged. Add details if needed.",
   custom: "Describe what to use from this image (required).",
@@ -141,7 +147,7 @@ async function open(node) {
   const prefs = remembered();
   const continuity = hook.continuity?.();
   let openedKey = hook.contextKey?.();
-  const compatible = entry => entry.mode === hook.mode() && !!entry.continuity === !!hook.continuity?.() && (!entry.contextKey || entry.contextKey === hook.contextKey?.()) && (!entry.forgeInputKey || entry.forgeInputKey === inputKey());
+  const compatible = entry => entry.mode === hook.mode() && !!entry.continuity === !!hook.continuity?.() && (!entry.contextKey || entry.contextKey === hook.contextKey?.()) && (!entry.forgeInputKey || entry.forgeInputKey === inputKey()) && !!entry.draftOptions?.see_pictures === effectiveSeePictures();
 
   const overlay = el("div", { className: "ds-forge-overlay" });
   const box = el("div", { className: "ds-forge" });
@@ -189,6 +195,20 @@ async function open(node) {
     // who is who and no picture goes to the model; H3 sees them itself.
   // Base-mode pictures are frames by definition and need no label.
   const labelled = mode === "REF2VA" && refs.some(r => r.kind === "image" && r.easy_role);
+  // Off by default: labels alone are what small models write well from.
+  const seePictures = el("input", { type: "checkbox", checked: !!prefs.see_pictures });
+  // Label editing remains available for mixed references, but easy drafting
+  // requires every reference to be an image with a backend-supported label.
+  const easyEligible = () => mode === "REF2VA" && !continuity && refs.length > 0 && refs.every(r => r.kind === "image" && EASY_ROLES.has(r.easy_role));
+  const effectiveSeePictures = () => easyEligible() && seePictures.checked;
+  const visionChoice = el("label", {}, seePictures, " Let the model see the pictures");
+  const visionHint = el("span", { className: "muted", textContent: "Off: the writer works from the labels alone, which any model can do. On: it also looks at the pictures to match their look and setting. Needs a vision model. Smaller models (9B and under) can get less accurate with pictures, mixing up who is who or describing looks the pictures already carry." });
+  const normalReferenceHint = el("span", { className: "muted", textContent: "These references use the normal reference path. Pictures are automatically sent to a model capable of seeing them; the labels-only vision choice does not apply." });
+  const syncVisionUI = () => {
+    visionChoice.hidden = visionHint.hidden = !easyEligible();
+    normalReferenceHint.hidden = !refs.length || !!continuity || easyEligible();
+  };
+  syncVisionUI();
   if (refs.length) {
     if (!continuity && labelled) brief.placeholder = 'Name the labels: "Character 1 sits on the bed in the place. Character 2 walks in and waves."';
     const list = el("div", { className: "refs" });
@@ -198,12 +218,13 @@ async function open(node) {
       const thumb = ref.kind === "image" && ref.path ? el("img", { src: viewUrl(ref.path) }) : el("span", { className: "muted", textContent: ref.saved_reference ? "saved" : ref.kind });
       let roleCell;
       let instructions = null;
-      if (ref.kind === "image" && mode === "REF2VA" && ref.item && ref.easy_role) {
+      if (ref.kind === "image" && mode === "REF2VA" && ref.item) {
         const save = value => {
           ref.easy_role = value;
           const role = labelRole(value);
           ref.role = role.forge_role; ref.subject_group = role.forge_subject_group;
           persistReference(ref, { forge_label: value, ...role });
+          syncVisionUI();
           if (instructions) instructions.placeholder = INSTRUCTIONS_HINT[value] || "What should this reference contribute? (optional)";
           node.graph?.setDirtyCanvas(true, true);
         };
@@ -257,6 +278,7 @@ async function open(node) {
         ? "Pictures with the same Character number are one character."
         : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". Image-only labelled drafts need no writer vision; mixed media and saved references use the full REF2VA path.' }));
     }
+    box.append(visionChoice, visionHint, normalReferenceHint);
   } else if (mode !== "T2VA" && !continuity) {
     box.append(el("div", { className: "muted", textContent: `${mode} expects pictures on the timeline; none are loaded, so the model writes from the idea alone.` }));
   }
@@ -316,7 +338,7 @@ async function open(node) {
     return JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r), ...(rows.some(Boolean) ? [rows] : [])]);
   };
   const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
-  const controls = [brief, modelSel, detail, creativity, shots, structured, ...referenceControls];
+  const controls = [brief, modelSel, detail, creativity, shots, structured, seePictures, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });
     shotBox.querySelectorAll("textarea").forEach(c => { c.disabled = disabled; });
@@ -328,6 +350,9 @@ async function open(node) {
     if (closed) return;
     brief.value = entry.brief || "";
     if (typeof entry.structured === "boolean") structured.checked = entry.structured;
+    // Missing vision options in old history always mean labels-only, even
+    // when the browser preference was saved as on by a later draft.
+    seePictures.checked = !!entry.draftOptions?.see_pictures;
     // Saved drafts are previews, not a source of identities for the next request.
     if (entry.draftOptions) {
       const { model, detail: level, creativity: preset, shots: count } = entry.draftOptions;
@@ -336,6 +361,8 @@ async function open(node) {
       // Drafts saved before the Shots control have none: they were Auto.
       const shotsValue = String(count ?? "Auto");
       if (Array.from(shots.options).some(o => o.value === shotsValue)) shots.value = shotsValue;
+      // Drafts saved before the vision choice were all written blind.
+      // Vision choice was restored above, including entries without options.
       shotTexts.set(node, Array.isArray(entry.draftOptions.shot_briefs) ? [...entry.draftOptions.shot_briefs] : []);
       renderShots();
       if (detail.oninput) detail.oninput();
@@ -429,6 +456,7 @@ async function open(node) {
   shots.addEventListener("change", () => { renderShots(); clearDraft(); });
   detail.addEventListener("input", clearDraft);
   structured.addEventListener("change", clearDraft);
+  seePictures.addEventListener("change", clearDraft);
   referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
   genBtn.onclick = async () => {
     if (closed) return;
@@ -440,10 +468,11 @@ async function open(node) {
     const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
     if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
     briefs.set(briefKey, text);
-    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value });
+    remember({ model: modelSel.value, creativity: creativity.value, detail: Number(detail.value), shots: shots.value, see_pictures: seePictures.checked });
     result = null; output.hidden = true; output.textContent = ""; renderHistory();
     applyBtn.disabled = true;
-    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows };
+    const easy = easyEligible();
+    const draftOptions = { model: modelSel.value, detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows, see_pictures: easy && seePictures.checked };
     const requestKey = openedKey, forgeInputKey = inputKey();
     const requestId = `forge-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     running = requestId; setControlsDisabled(true); renderHistory();
@@ -459,7 +488,7 @@ async function open(node) {
           request_id: requestId, brief: text, mode, duration: hook.duration(), model: modelSel.value,
           output_canvas: hook.outputCanvas?.() ?? null,
           detail: Number(detail.value), creativity: creativity.value, shots: shots.value, shot_briefs: rows,
-          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy: !continuity && labelled,
+          references: refs.map(({ item, ...r }) => r), settings: forgeSettings(), continuity, easy, see_pictures: easy && seePictures.checked,
           structured: !!continuity && mode === "REF2VA" && structured.checked, existing_definitions: definitions.value.trim(),
         }),
       });
@@ -472,7 +501,9 @@ async function open(node) {
       data.forgeInputKey = forgeInputKey; data.existing_definitions = definitions.value; data.reference_snapshot = referenceSnapshot(refs);
       const saved = saveForgeResult(node, data, text);
       showResult(saved);
-      const seen = data.easy ? " · picture labels used (no images sent to the writer)" : data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
+      const seen = data.easy ? (data.saw_images ? ` · picture labels used, and looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}`
+          : seePictures.checked && data.vision === false ? " · this model cannot see images, so it used the picture labels only"
+          : " · picture labels used (no images sent to the writer)") : data.saw_images ? ` · looked at ${data.saw_images} picture${data.saw_images === 1 ? "" : "s"}` : continuity ? " · text context only (no tail images)" : refs.some(r => r.kind === "image") && data.vision === false ? " · this model cannot see images, so it wrote from your idea only" : "";
       const warned = [...(data.warnings || []), ...(data.unloaded ? [] : ["WARNING: model still loaded"])];
       setStatus(`Done in ${data.stats.seconds}s${data.stats.output_tokens ? ` · ${data.stats.output_tokens} tokens` : ""}${seen}${warned.length ? " · " + warned.join(" · ") : " · model unloaded"}`, warned.length > 0);
     } catch (err) {

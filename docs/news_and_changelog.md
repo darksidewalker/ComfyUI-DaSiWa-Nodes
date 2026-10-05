@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-04**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-05**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Prompt Writer and opt-in Forge vision (10-05, 0.4.78):** Integrates PR #67 and #68 with editable model prompting guides, the simple LLM Prompt Writer and optional labelled REF2VA vision. Workflow Settings fallback requires operator opt-in and is disabled in multi-user mode; endpoint/key sources stay paired. Server model discovery is cached and off-thread. Numeric prompt weights and user prefixes are preserved. Forge vision uses a consistent output contract, warns on incomplete descriptions, and invalidates drafts when toggled; mixed references retain the normal path. Existing node IDs and old blind drafts remain compatible. [LLM guide →](llm_nodes.md)
 
 - **Shared LLM backend and model-aware rewriting (10-04, 0.4.77):** LLM Analyze adds PromptForge-backed H3, Wan 2.2, LTX, Krea2, Anima and Illustrious presets. Model loading, server transports and H3 prompt construction have node-independent owners shared with Director Forge. Operator-configured OpenAI-compatible/Ollama servers support workflow execution without storing endpoints or API keys in graphs; local GGUF vision messages also use shared construction. Existing node IDs, widgets, legacy presets, custom system instructions and optional text input remain compatible. Director settings, routes, reference handling and continuation behavior are unchanged. [LLM guide →](llm_nodes.md)
 

@@ -1,31 +1,124 @@
 """Prompt specifications and text composition (no inference ownership)."""
 
-import json
+import re
 from pathlib import Path
 
 from . import h3_prompting
 
-_BUNDLE_PATH = Path(__file__).resolve().parents[1] / "data" / "llm_prompt_presets.json"
+# The model presets are short hand-written guides, not copies of PromptForge's
+# prompts: purpose-first and editable as plain markdown in data/llm_skills/.
+# H3 is the exception and stays on the Director's data/h3_forge.json.
+_SKILLS_DIR = Path(__file__).resolve().parents[1] / "data" / "llm_skills"
+_SKILL_PRESETS = {
+    "promptforge_wan22": "wan",
+    "promptforge_ltx": "ltx",
+    "promptforge_krea2": "krea2",
+    "promptforge_anima": "anima",
+    "promptforge_illustrious": "illustrious",
+}
 
 
-def load_exported_presets():
-    with _BUNDLE_PATH.open(encoding="utf-8") as handle:
-        bundle = json.load(handle)
-    if bundle.get("schema_version") != 1:
-        raise ValueError("Unsupported LLM prompt preset bundle version")
-    return bundle["presets"]
+def load_skill(name):
+    """A guide's frontmatter (`key: value` lines between `---`) plus its body as the system prompt."""
+    text = (_SKILLS_DIR / f"{name}.md").read_text(encoding="utf-8").replace("\r\n", "\n")
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.DOTALL)
+    if not match:
+        raise ValueError(f"Skill {name}.md has no frontmatter")
+    meta = {}
+    for line in match.group(1).splitlines():
+        key, _, value = line.partition(":")
+        if value.strip():
+            meta[key.strip()] = value.strip()
+    if not meta.get("output"):
+        raise ValueError(f"Skill {name}.md does not name its output segment")
+    spec = {"model": name, "output": meta["output"], "segments": [meta["output"]],
+            "system": text[match.end():].strip()}
+    if meta.get("tag_style"):
+        spec["tag_style"] = meta["tag_style"]
+    return spec
+
+
+def preset_spec(preset):
+    return load_skill(_SKILL_PRESETS[preset])
 
 
 def exported_system(preset):
-    return load_exported_presets()[preset]["system"]
+    return preset_spec(preset)["system"]
+
+
+# Underscores between words, ported from PromptForge server/tagspacing.mjs.
+# "Letter or digit" is [^\W_] because Python's re has no \p{L}.
+_BETWEEN = re.compile(r"(?:(?<=[^\W_])|(?<=[)\\]))_(?=[^\W_]|[(\\])")
+_EMOTICON = re.compile(r"^\(?[\W_]?[^\W_]?_[^\W_]?[\W_]?\)?$")
+_SCORE = re.compile(r"^\(?score_\d", re.IGNORECASE)
+
+
+def space_underscores(text):
+    """Respell `best_quality` as `best quality`, tag by tag, for models that want spaces.
+
+    The model writes underscores from habit even when its prompt spells every
+    tag with spaces. Score tags (`score_7`) and emoticons (`o_o`, `^_^`) keep theirs.
+    """
+    pieces = []
+    for piece in str(text or "").split(","):
+        tag = piece.strip()
+        if "_" in tag and not _SCORE.match(tag) and not _EMOTICON.match(tag):
+            piece = _BETWEEN.sub(" ", piece)
+        pieces.append(piece)
+    return ",".join(pieces)
+
+
+_WEIGHT = re.compile(r":\s*[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?\s*$")
+
+
+def escape_literal_parens(text):
+    """`watercolor (medium)` becomes `watercolor \\(medium\\)`; `(rain:1.2)` stays a weight.
+
+    Ported from PromptForge server/parens.mjs. A tag model reads every bare
+    pair as a weight, so a disambiguated tag left bare steers nothing. Models
+    write them bare even when the guide shows them escaped.
+    """
+    src = str(text or "")
+    out, i = [], 0
+    while i < len(src):
+        ch = src[i]
+        if ch == "\\" and src[i + 1:i + 2] in ("(", ")"):
+            out.append(src[i:i + 2])
+            i += 2
+            continue
+        if ch != "(":
+            out.append(ch)
+            i += 1
+            continue
+        close, nested = i + 1, False
+        while close < len(src):
+            if src[close] == "\\" and src[close + 1:close + 2] in ("(", ")"):
+                close += 2
+                continue
+            if src[close] == ")":
+                break
+            if src[close] == "(":
+                nested = True
+            close += 1
+        inner = None if close >= len(src) else src[i + 1:close]
+        if inner is None or nested:
+            out.append(ch)
+            i += 1
+            continue
+        out.append(src[i:close + 1] if _WEIGHT.search(inner) else f"\\({inner}\\)")
+        i = close + 1
+    return "".join(out)
 
 
 def prompt_response(preset, raw):
-    spec = load_exported_presets()[preset]
+    spec = preset_spec(preset)
     segments = h3_prompting.parse_segments(raw, spec["segments"])
-    result = segments[spec["output"]].strip()
+    # Small models copy the code fence the guide's example sits in.
+    result = re.sub(r"^```\w*\s*|\s*```$", "", segments[spec["output"]].strip()).strip()
     if not result:
         raise ValueError("The model returned an empty prompt segment")
+    if spec.get("tag_style") == "space":
+        result = escape_literal_parens(space_underscores(result))
     return result
 
 
@@ -128,10 +221,7 @@ for _media in ("image", "video"):
         for _style in ("mixed", "tag", "natural"):
             _SYSTEM_PROMPT_PRESETS[f"caption_{_media}_{_detail}_{_style}"] = _caption_preset(_media, _detail, _style)
 
-_EXPORTED_PRESET_IDS = (
-    "promptforge_wan22", "promptforge_ltx", "promptforge_krea2",
-    "promptforge_anima", "promptforge_illustrious",
-)
+_EXPORTED_PRESET_IDS = tuple(_SKILL_PRESETS)
 _SYSTEM_PROMPT_PRESET_LABELS = list(_SYSTEM_PROMPT_PRESETS.keys()) + list(_EXPORTED_PRESET_IDS) + ["promptforge_h3"]
 
 

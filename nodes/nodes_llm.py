@@ -5,7 +5,7 @@ That makes the unload-after-run mode much more reliable because the graph cache
 does not hold a live reference to a very large model.
 """
 
-from .llm_backends import run_workflow_server, pil_images_b64
+from .llm_backends import run_workflow_server, pil_images_b64, parse_server_choice, server_model_choices
 
 from .llm_prompt_presets import (
     _BASE_OUTPUT_RULES,
@@ -66,7 +66,7 @@ class DaSiWa_LLMModelSelector:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": (_list_llm_models(), {"description": "Model folder under ComfyUI/models/llm. Use a full Hugging Face-style folder with config/tokenizer files."}),
+                "model": (_list_llm_models() + server_model_choices(), {"description": "Local model under ComfyUI/models/llm, or a cached 'Ollama:' / 'Server:' choice that sets its backend automatically. Workflow endpoints use the service environment; Settings require explicit operator opt-in. Discovery runs in the background; press R afterwards."}),
                 "custom_path": ("STRING", {"default": "", "description": "Optional absolute path, or relative path under ComfyUI/models/llm. Overrides model when set."}),
                 "backend": (["transformers", "llama_cpp", "ollama", "openai", "ollama_server"], {"default": "transformers", "description": "Transformers loads local model folders; llama.cpp loads local GGUFs; ollama is legacy loopback. openai/ollama_server use operator-configured endpoints."}),
                 "task": (["auto", "text", "vision"], {"default": "auto", "description": "Use vision when analyzing connected images/frame batches."}),
@@ -96,11 +96,21 @@ class DaSiWa_LLMModelSelector:
     FUNCTION = "select"
     CATEGORY = "DaSiWa/LLM"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, model):
+        # A server model saved in a workflow is checked when the node runs, so
+        # a stopped Ollama is a clear error rather than "value not in list".
+        return True
+
     def select(self, model, custom_path, backend, task, device, dtype, quantization, cache_mode,
                attention_implementation, kv_cache_implementation, kv_cache_quant_backend,
                kv_cache_nbits, kv_cache_residual_length, llama_n_ctx, llama_n_gpu_layers,
                llama_n_threads, llama_chat_format, ollama_model, ollama_timeout, server_model=""):
-        if backend in ("openai", "ollama_server"):
+        # An 'Ollama:' or 'Server:' entry in the model list picks its own backend.
+        chosen = None if str(custom_path or "").strip() else parse_server_choice(model)
+        if chosen:
+            backend, model_path = chosen
+        elif backend in ("openai", "ollama_server"):
             model_path = str(server_model or "").strip()
             if not model_path:
                 raise ValueError("Enter server_model for the selected server backend.")
