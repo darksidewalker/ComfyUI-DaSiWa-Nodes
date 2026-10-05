@@ -104,7 +104,8 @@ from .h3_prompting import (
     _alignment_line,
     simple_prompt,
 )
-from .llm_backends import IMAGE_MAX_EDGE, NUM_PREDICT, refresh_server_model_choices
+from .llm_backends import (IMAGE_MAX_EDGE, NUM_PREDICT, refresh_server_model_choices,
+                           check_fits, context_for, server_context_error)
 
 
 _REQUEST_LOCK = threading.RLock()
@@ -293,7 +294,9 @@ def _generate(body, input_directory, release_memory, stop):
             user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
                      "after existing ones; verify current media citations:\n" + existing_definitions)
         contract = easy_vision_spec(spec, attached_labels) if easy else spec
-        return backend.chat(name, contract["system"], user, with_images, sampling, num_ctx, timeout, stop)
+        ctx = context_for(num_ctx, with_images)
+        check_fits(kind, name, contract["system"], user, with_images, ctx, vision_box=see_pictures)
+        return backend.chat(name, contract["system"], user, with_images, sampling, ctx, timeout, stop)
 
     if kind != "local":
         _FORGE_LOADED.add((backend, name))
@@ -304,13 +307,18 @@ def _generate(body, input_directory, release_memory, stop):
         except urlerror.HTTPError as exc:
             if _key_refused(exc):
                 raise ForgeError("backend", KEY_REFUSED.format(where=backend.base, code=exc.code))
+            detail_text = exc.read().decode(errors="replace")
+            # Too long is not "cannot see": retrying without the pictures would
+            # quietly hand back a blind draft.
+            if server_context_error(detail_text):
+                raise server_context_error(detail_text)
             # An OpenAI-compatible server that cannot take images says so with
             # a 4xx; try once more with words only rather than failing.
             if images and sees is None and 400 <= exc.code < 500:
                 images, sees = [], False
                 raw, stats = run([])
             else:
-                raise ForgeError("backend", f"{kind} returned {exc.code}: {exc.read().decode(errors='replace')[:400]}")
+                raise ForgeError("backend", f"{kind} returned {exc.code}: {detail_text[:400]}")
     except ForgeError:
         raise
     except (urlerror.URLError, TimeoutError, OSError) as exc:
@@ -519,13 +527,17 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         if cancel is not None and cancel.is_set():
             raise ForgeError("cancelled", CANCELLED)
         try:
-            raw, stats = backend.chat(name, system, user, images,
-                                       sampling, bundle["context_length"], 600, cancel)
+            ctx = context_for(bundle["context_length"], images)
+            check_fits(kind, name, system, user, images, ctx)
+            raw, stats = backend.chat(name, system, user, images, sampling, ctx, 600, cancel)
         except urlerror.HTTPError as exc:
             if _key_refused(exc):
                 raise ForgeError("backend", KEY_REFUSED.format(where=backend.base, code=exc.code))
+            detail_text = exc.read().decode(errors="replace")
+            if server_context_error(detail_text):
+                raise server_context_error(detail_text)
             if not images or sees is not None or not 400 <= exc.code < 500:
-                raise
+                raise ForgeError("backend", f"{kind} returned {exc.code}: {detail_text[:400]}")
             images = []
             raw, stats = backend.chat(name, system,
                                        user + "\nNo images are available. Ignore attachment claims above; do not invent visual attributes. Use text context only.", images,
