@@ -51,41 +51,67 @@ def temporal_ranges(total_tokens, chunk_tokens, overlap_tokens):
 
 
 def plan_tiles(video_shape, target_width, target_height, memory_bytes,
-               model_bytes=0, text_tokens=0, ref_tokens=0):
-    """Plan B,C,T,H,W video on H3's 16px latent / 32px patch grid.
+               model_bytes=0, text_tokens=0, ref_tokens=0, *, streaming_weights=False,
+               reserved_bytes=0, audio_tokens=0, latent_element_size=2, enforce_budget=True,
+               spatial_tiling=True, temporal_chunking=True):
+    """Budget managed weight residency, full-window buffers and attention rows.
 
-    Budget reserves model weights, 35% runtime headroom, and 96KiB per
-    transformer row. Text/reference rows compete with target rows. Audio and
-    backend-specific attention workspaces can exceed this estimate.
+    Streaming reserves 40% of the pool for weights/casts rather than requiring
+    the complete checkpoint in VRAM. This is our throughput heuristic, not a
+    fixed residency requirement of ComfyUI's on-demand allocator.
     """
     if len(video_shape) != 5 or min(video_shape) <= 0:
         raise ValueError("Expected positive B,C,T,H,W video_shape")
     width, height = int(target_width), int(target_height)
     if width <= 0 or height <= 0 or width % 32 or height % 32:
         raise ValueError("Target dimensions must be positive multiples of 32")
-    if min(memory_bytes, model_bytes, text_tokens, ref_tokens) < 0:
+    if min(memory_bytes, model_bytes, text_tokens, ref_tokens, reserved_bytes, audio_tokens) < 0:
         raise ValueError("Memory and conditioning estimates must be nonnegative")
-    budget = max(0, int(memory_bytes) - int(model_bytes)) * 0.65
-    rows = max(1, int(budget / (96 * 1024)) - int(text_tokens) - int(ref_tokens))
+    pool = max(0, int(memory_bytes) - int(reserved_bytes))
+    weight_bytes = min(int(model_bytes), int(pool * 0.4)) if streaming_weights else int(model_bytes)
+    budget = max(0, pool - weight_bytes) * 0.65
     total = int(video_shape[2])
     period = len(FRAME_PER_TOKEN)
-    chunk = min(total, max(2 * period, min(30, total // period * period)))
+    chunk = min(total, max(2 * period, min(30, total // period * period))) if temporal_chunking else total
+    # Small canvases remain valid, but high-resolution jobs never degenerate
+    # into thousands of 64px model forwards. Shorten time before this floor.
+    min_w, min_h = (min(width, 512), min(height, 512)) if spatial_tiling else (width, height)
     tw, th = width, height
-    while (tw // 32) * (th // 32) * chunk > rows and max(tw, th) > 64:
-        if tw >= th and tw > 64:
-            tw = max(64, (tw // 64) * 32)
-        elif th > 64:
-            th = max(64, (th // 64) * 32)
-        else:
+
+    def target_rows(tokens):
+        # Full spatial window remains packed outside the tile wrapper. Account
+        # for sampler input/noise/masks/x0 and fp32 blending/division buffers.
+        elements = video_shape[0] * video_shape[1] * tokens * (height // 16) * (width // 16)
+        buffers = elements * (6 * latent_element_size + 8)
+        return int((budget - buffers) / (96 * 1024)) - int(text_tokens) - int(ref_tokens) - int(audio_tokens)
+
+    rows = target_rows(chunk)
+    while (tw // 32) * (th // 32) * chunk > rows:
+        if spatial_tiling and tw > min_w and (tw >= th or th <= min_h):
+            tw = max(min_w, (tw // 64) * 32)
+        elif spatial_tiling and th > min_h:
+            th = max(min_h, (th // 64) * 32)
+        elif temporal_chunking and chunk > 2 * period:
+            chunk -= period
+            rows = target_rows(chunk)
+        elif not enforce_budget:
             break
-    while chunk > 2 * period and (tw // 32) * (th // 32) * chunk > rows:
-        chunk -= period
-    overlap = min(max(32, math.ceil(min(tw, th) / 128) * 32), min(tw, th) - 32)
-    return dict(tile_width=tw, tile_height=th, overlap=overlap,
+        else:
+            raise MemoryError("H3 refinement budget cannot fit the minimum "
+                              f"{min_w}x{min_h}px window with {chunk} temporal tokens "
+                              f"(spatial_tiling={spatial_tiling}, temporal_chunking={temporal_chunking}). "
+                              "Enable tiling/chunking if disabled. "
+                              "Increase memory_budget_mb if capped, reduce references/target size, "
+                              "use a smaller diffusion model, or set denoise=0.")
+    overlap = min(max(32, math.ceil(min(tw, th) / 128) * 32), min(tw, th) - 32) if spatial_tiling else 0
+    mode = 'streamed' if streaming_weights else 'resident'
+    return dict(tile_width=tw, tile_height=th, overlap=overlap, target_rows=rows,
                 chunk_tokens=chunk, temporal_overlap_tokens=period if chunk < total else 0,
-                explanation=(f"Heuristic: {rows} target rows after weights, conditioning and 35% headroom; "
-                             f"{tw}x{th}px tiles, {chunk} temporal tokens. Native period={period}. "
-                             "Not a VRAM guarantee; audio, references and attention workspace still cost memory."))
+                explanation=(f"Heuristic: pool={pool / 1024**3:.2f}GiB, {mode} weight reserve="
+                             f"{weight_bytes / 1024**3:.2f}GiB; {rows} target rows after full-window buffers, "
+                             f"text/references/audio and 35% headroom; {tw}x{th}px tiles "
+                             f"(minimum {min_w}x{min_h}px), {chunk} temporal tokens. Native period={period}. "
+                             "Not a VRAM guarantee; attention workspace still costs memory."))
 
 
 def _resize_video(video, hw):

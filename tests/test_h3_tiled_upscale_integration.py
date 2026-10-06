@@ -52,6 +52,7 @@ class FakePatcher:
 
 @pytest.fixture
 def setup_node(monkeypatch):
+    monkeypatch.setattr(mm,'get_torch_device',lambda:torch.device('cpu'))
     monkeypatch.setattr(comfy.model_base,'MiniMaxH3',TestH3Base)
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:[])
     monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(tile_width=64,tile_height=64,overlap=32,
@@ -65,6 +66,53 @@ def setup_node(monkeypatch):
         return (torch.tensor([0.2,0.0]),)
     monkeypatch.setattr(BasicScheduler,'execute',schedule_test_double)
     return model
+
+
+@pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
+@pytest.mark.parametrize('denoise',[0,0.2])
+def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,spatial,temporal,denoise):
+    model=setup_node
+    name='test-upscaler.safetensors'
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:[name])
+    def plan(shape,*args,**kw):
+        assert kw['spatial_tiling'] is spatial
+        assert kw['temporal_chunking'] is temporal
+        return dict(tile_width=64,tile_height=64,overlap=32 if spatial else 0,
+                    chunk_tokens=10 if temporal else shape[2],
+                    temporal_overlap_tokens=5 if temporal else 0,explanation='TEST switch plan')
+    monkeypatch.setattr(helpers,'plan_tiles',plan)
+    lengths,closed,sampled=[],[],[]
+    class Backend:
+        temporal_halo=1
+        dtype=torch.float32
+        def __init__(self,*args,**kwargs): pass
+        def upscale(self,video,h,w):
+            lengths.append(video.shape[2])
+            return u.resize_video(video,h,w)
+        def close(self): closed.append(True)
+    monkeypatch.setattr(upscale,'H3LatentUpscaler',Backend)
+    monkeypatch.setattr(mm,'unload_model_and_clones',lambda *a,**k:None)
+    def sample(working,positive,negative,cfg,samples,*args):
+        assert ('model_function_wrapper' in working.model_options) is spatial
+        sampled.append(samples.tensors[0].shape[2])
+        return samples
+    monkeypatch.setattr(u,'sample_chunk',sample)
+    video=torch.randn(1,24,22,2,2)
+    audio=torch.randn(1,32,2,120)
+    output,report=u.DaSiWaH3TiledUpscale().upscale(model,[],
+        {'samples':NestedTensor((video,audio))},upscale_model=name,denoise=denoise,
+        sampler=object(),spatial_tiling=spatial,temporal_chunking=temporal)
+    assert closed==[True]
+    assert len(lengths)>1 if temporal else lengths==[22]
+    assert len(sampled)==(len(lengths) if denoise else 0)
+    assert output['samples'].tensors[1] is audio
+    assert output['samples'].tensors[0].shape==(1,24,22,4,4)
+    assert f"spatial_tiling={'on' if spatial else 'off'}" in report
+    assert f"temporal_chunking={'on' if temporal else 'off'}" in report
+    schema=u.DaSiWaH3TiledUpscale.INPUT_TYPES()['optional']
+    assert list(schema)[-2:]==['spatial_tiling','temporal_chunking']
+    assert schema['spatial_tiling'][1]['default'] is True
+    assert schema['temporal_chunking'][1]['default'] is True
 
 
 def test_full_node_multichunk_path_preserves_audio_and_upstream_model(setup_node,monkeypatch):

@@ -77,6 +77,8 @@ Optional:
 | `upscale_precision` | combo | `auto` (default), `bf16`, `fp16`, `fp32`. Learned latent-upscaler only. |
 | `continuity_soft_refine` | BOOLEAN | Default **off**. Active Continuity only. |
 | `continuity_mask_strength` | FLOAT | Default **1.0**, range 0–1, step 0.05. Used only with soft refine on an active continuation. |
+| `spatial_tiling` | BOOLEAN | Default **on**. Spatial diffusion tiles; off uses the full target canvas. |
+| `temporal_chunking` | BOOLEAN | Default **on**. Temporal windows for learned upscale and diffusion; off uses the full video. |
 
 Outputs: `latent` (`LATENT`, native packed H3 video/audio for the existing decode path) and `plan` (`STRING`, diagnostic report of the actual selected settings; it need not be connected).
 
@@ -115,6 +117,10 @@ Existing workflow node IDs are preserved; only the visible display name changes.
 
 ## Controls
 
+- `spatial_tiling`: default **on**, controls spatial diffusion only. Off bypasses the tiled wrapper and refines the full canvas for each temporal window.
+- `temporal_chunking`: default **on**, controls temporal windows in both learned latent upscale and diffusion. Off processes the full video in each pass, without temporal stitching.
+- The switches are independent: both on = tiled windows; only spatial on = full-duration tiles; only temporal on = full-canvas windows; both off = full-canvas/full-duration processing. Off is never silently re-enabled. The planner can only reduce enabled dimensions and rejects an insufficient estimated refinement budget. Disabling either can increase peak memory; old workflows default to both on.
+
 - `continuity_soft_refine`: opt-in, default **off**. Only active continuation with `continuity_context` and diffusion refinement uses it. A globally indexed smoothstep mask ramps video refine strength across the existing source-tail overlap, reaching full strength at the new section. It does not extend the overlap, touch audio, or perform RGB color matching.
 - `continuity_mask_strength`: 0–1, default **1**. 0 reproduces the hard mask; 1 applies the full ramp; intermediate values mix hard and smooth masks. Start at 1 and compare against off using the same latent/seed. A minimal overlap offers fewer temporal tokens for smoothing. Without active continuation, or at `denoise = 0`, the feature has no effect. The plan report shows `soft_refine_mask=off` or the active strength. This may reduce refinement-induced light/color steps but cannot guarantee a flicker-free join.
 - `scale`: defaults to 2×, derived from the actual input latent canvas, not unrelated Director widgets. Target dimensions are always source dimensions × factor, rounded to the required 32-pixel grid; there are no exact-size overrides. Neither target dimension may shrink.
@@ -123,7 +129,8 @@ Existing workflow node IDs are preserved; only the visible display name changes.
 - `upscale_precision`: `auto`, `bf16`, `fp16`, or `fp32` for the learned latent-upscaler only. Auto uses ComfyUI hardware/backend policy and global precision flags (including force-fp16), with FP32 on CPU. Explicit modes cast weights and computation to the selected dtype without silently falling back; unsupported operations may fail on your backend. The incoming diffusion model and VAE are unchanged; interpolation does not use this setting. The plan reports the actual learned-upscaler dtype.
 - `cfg`: defaults to 1. Values other than 1 require `negative` conditioning.
 - `sampler_name` and `scheduler`: native sampler/schedule selections (defaults `euler`, `simple`). Optional connected `sampler` and `noise` objects override the internal equivalents. Sigmas are always generated internally from this node's scheduler, steps and denoise; there is no external `sigmas` input. The same sampler can be shared with the initial render without reusing its full-denoise schedule.
-- `memory_budget_mb`: 0 uses automatic device-memory estimation. A nonzero value caps the planning budget, not the allocator. Tile and temporal choices are conservative heuristics, not proof of optimal performance or an OOM guarantee.
+- `memory_budget_mb`: 0 uses free device memory plus reclaimable ComfyUI-managed weight residency on the same device (clones are counted once). A nonzero value caps that total planning pool, not the allocator. ComfyUI's configured VRAM reservation is deducted. Dynamic and normal/low-VRAM offloading reserve up to 40% of the remaining pool for weight streaming/casts instead of requiring the full checkpoint in VRAM; this 40% is a node throughput heuristic, not an aimdo residency rule. Full-resident loading budgets the complete model. Audio/text/references, full-window sampler/blending buffers and 35% runtime headroom also consume the budget. Other applications' VRAM is never counted as reclaimable.
+- Spatial tiles have a **512×512 pixel minimum**, or the actual canvas dimension when smaller. The planner first reduces oversized tiles, then shortens native-phase-aligned temporal windows rather than shrinking below this floor. If the minimum still does not fit the estimate, refinement fails early with an actionable budget error instead of silently scheduling thousands of tiny tiles. `denoise=0` does not require a viable diffusion budget. These estimates are not a performance or OOM guarantee.
 
 The learned H3 checkpoint selector uses ComfyUI's `latent_upscale_models` catalog and safetensors files. There are no unsafe pickle checkpoints or global GPU model caches.
 

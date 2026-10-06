@@ -121,7 +121,7 @@ def encode_endpoints(conditioning, vae, first, last, width, height, last_frame_i
     return result, f'{count} endpoint keyframes VAE-encoded at {width}x{height}'
 
 
-def conditioning_token_counts(conditioning):
+def conditioning_token_counts(conditioning, spatial_latent_hw=None):
     text, refs = 0, 0
     for tokens, md in conditioning:
         if isinstance(tokens, torch.Tensor) and tokens.ndim >= 2:
@@ -139,9 +139,33 @@ def conditioning_token_counts(conditioning):
         for kf in md.get('minimax_keyframes', []):
             value = kf.get('latent')
             if isinstance(value, torch.Tensor):
-                current += value.shape[2] * math.ceil(value.shape[-2] / 2) * math.ceil(value.shape[-1] / 2)
+                h, w = spatial_latent_hw if spatial_latent_hw is not None else value.shape[-2:]
+                current += value.shape[2] * math.ceil(h / 2) * math.ceil(w / 2)
+            audio = kf.get('audio_latent')
+            if isinstance(audio, torch.Tensor):
+                current += audio.shape[-1] * audio.shape[-2]
         refs = max(refs, current)
     return text, refs
+
+
+def refinement_memory_budget(model, device, memory_budget_mb):
+    import comfy.model_management as mm
+    available = int(mm.get_free_memory(device))
+    if device.type == 'cpu':
+        # Host weights are not reclaimable: CPU inference still needs them.
+        return (min(available, memory_budget_mb * 1024**2) if memory_budget_mb else available), False, 0
+    seen = set()
+    # ComfyUI may evict VAE/CLIP/other managed weights, and aimdo can reclaim
+    # dynamic residency on demand. Never count unrelated CUDA allocations.
+    dependencies = {id(p.model) for p in model.model_patches_models()}
+    for patcher in [model, *mm.loaded_models()]:
+        identity = id(patcher.model)
+        if identity not in seen and identity not in dependencies and patcher.current_loaded_device() == device:
+            available += int(patcher.loaded_size())
+            seen.add(identity)
+    budget = min(available, memory_budget_mb * 1024**2) if memory_budget_mb else available
+    streaming = model.is_dynamic() or mm.vram_state in (mm.VRAMState.NORMAL_VRAM, mm.VRAMState.LOW_VRAM, mm.VRAMState.NO_VRAM)
+    return budget, streaming, int(mm.extra_reserved_memory())
 
 
 def sample_chunk(model, positive, negative, cfg, samples, mask, noise_tensor, sampler, sigmas, seed):
@@ -199,6 +223,10 @@ class DaSiWaH3TiledUpscale:
                 'tooltip': 'Active Continuity only: smoothly introduce video refinement over the source-tail overlap. Not RGB color matching.'}),
             'continuity_mask_strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 1.0, 'step': 0.05,
                 'tooltip': '0: original hard mask. 1: full smoothstep ramp over the existing Continuity overlap. Ignored unless soft refine is enabled and Continuity is active.'}),
+            'spatial_tiling': ('BOOLEAN', {'default': True,
+                'tooltip': 'Split diffusion into spatial tiles. Off uses the full target canvas; never re-enabled automatically.'}),
+            'temporal_chunking': ('BOOLEAN', {'default': True,
+                'tooltip': 'Split learned upscale and diffusion into temporal windows. Off processes the complete video in each pass.'}),
         }}
 
     @torch.inference_mode()
@@ -207,7 +235,8 @@ class DaSiWaH3TiledUpscale:
                 negative=None, cfg=1.0,
                 sampler_name='euler', scheduler='simple', memory_budget_mb=0,
                 sampler=None, noise=None, upscale_precision='auto', continuity_context=None,
-                continuity_soft_refine=False, continuity_mask_strength=1.0):
+                continuity_soft_refine=False, continuity_mask_strength=1.0,
+                spatial_tiling=True, temporal_chunking=True):
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -247,17 +276,19 @@ class DaSiWaH3TiledUpscale:
         if director_guide is not None and director_guide.get('mode') == 'Image Inpaint':
             raise ValueError('H3 Tiled Upscale handles video modes, not Image Inpaint.')
         device = mm.get_torch_device()
-        free = int(mm.get_free_memory(device))
-        # Recover only this model's already-resident allocation for the total
-        # budget; subtracting its full weight size from free VRAM again would
-        # count a loaded model twice.
-        resident = int(model.loaded_size()) if model.current_loaded_device() == device else 0
-        available = free + resident
-        budget = min(available, memory_budget_mb * 1024**2) if memory_budget_mb else available
-        model_bytes = int(model.model_size())
-        text_tokens, ref_tokens = conditioning_token_counts(conditioning)
+        budget, streaming_weights, reserved = refinement_memory_budget(model, device, memory_budget_mb)
+        model_bytes = int(model.model_size()) if device.type != 'cpu' else 0
+        text_tokens, ref_tokens = conditioning_token_counts(conditioning, (height // 16, width // 16))
+        if negative is not None:
+            nt, nr = conditioning_token_counts(negative, (height // 16, width // 16))
+            text_tokens, ref_tokens = max(text_tokens, nt), max(ref_tokens, nr)
         plan = plan_tiles(video.shape, width, height, budget, model_bytes=model_bytes,
-                          text_tokens=text_tokens, ref_tokens=ref_tokens)
+                          text_tokens=text_tokens, ref_tokens=ref_tokens,
+                          streaming_weights=streaming_weights,
+                          reserved_bytes=reserved + audio.numel() * (6 * audio.element_size() + 8),
+                          audio_tokens=audio.shape[-2] * audio.shape[-1],
+                          latent_element_size=video.element_size(), enforce_budget=denoise > 0,
+                          spatial_tiling=spatial_tiling, temporal_chunking=temporal_chunking)
         ranges = temporal_ranges(video.shape[2], plan['chunk_tokens'], plan['temporal_overlap_tokens'])
         # CPU staging is bounded by the complete output+noise, not constant-memory
         # streaming. Refuse an unsafe host allocation instead of relying on OOM.
@@ -309,6 +340,8 @@ class DaSiWaH3TiledUpscale:
         report = (f"{video.shape[-1]*16}x{video.shape[-2]*16} → {width}x{height}; "
                   f"upscale={selected}; precision={actual_precision}; tile={plan['tile_width']}x{plan['tile_height']}px; "
                   f"overlap={plan['overlap']}px; temporal={len(ranges)} chunks; "
+                  f"spatial_tiling={'on' if spatial_tiling else 'off'}; "
+                  f"temporal_chunking={'on' if temporal_chunking else 'off'}; "
                   f"audio=original; {endpoint_info}; {plan['explanation']}")
         if continuity is not None:
             report += '; ' + continuity['explanation']
@@ -334,7 +367,8 @@ class DaSiWaH3TiledUpscale:
         if not getattr(full_noise, 'is_nested', False) or len(full_noise.tensors) != 2:
             raise ValueError('The supplied NOISE must generate native video+audio nested tensors.')
         working = model.clone()
-        working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap']))
+        if spatial_tiling:
+            working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap']))
         completed = None
         try:
             for start, end in ranges:

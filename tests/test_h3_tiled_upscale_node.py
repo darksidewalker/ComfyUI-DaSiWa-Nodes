@@ -90,6 +90,37 @@ def test_attention_budget_counts_refs_and_keyframes():
     cond=[[torch.zeros(1,12,8),{'minimax_refs':[{'latent':torch.zeros(1,24,2,4,6)}],
                                'minimax_keyframes':[{'latent':torch.zeros(1,24,1,4,6)}]}]]
     assert u.conditioning_token_counts(cond)==(12,18)
+    # References stay native; keyframes are resized to the final target grid.
+    assert u.conditioning_token_counts(cond,(8,12))==(12,36)
+
+
+def test_budget_recovers_managed_residency_once_and_respects_cap(monkeypatch):
+    import comfy.model_management as mm
+    device = torch.device('cuda:0')
+    class Patcher:
+        def __init__(self, size, dev=device, model=None, dynamic=True):
+            self.model = model if model is not None else object()
+            self.size, self.dev, self.dynamic = size, dev, dynamic
+        def loaded_size(self): return self.size
+        def current_loaded_device(self): return self.dev
+        def is_dynamic(self): return self.dynamic
+        def model_patches_models(self): return []
+    model = Patcher(20 * 1024**3)
+    clone = Patcher(20 * 1024**3, model=model.model)
+    vae = Patcher(3 * 1024**3)
+    other_gpu = Patcher(8 * 1024**3, torch.device('cuda:1'))
+    monkeypatch.setattr(mm,'get_free_memory',lambda d: 5 * 1024**3)
+    monkeypatch.setattr(mm,'loaded_models',lambda: [model, clone, vae, other_gpu])
+    monkeypatch.setattr(mm,'extra_reserved_memory',lambda: 400 * 1024**2)
+    pool, streamed, reserved = u.refinement_memory_budget(model,device,0)
+    assert (pool, streamed, reserved) == (28 * 1024**3, True, 400 * 1024**2)
+    assert u.refinement_memory_budget(model,device,8192)[0] == 8 * 1024**3
+    monkeypatch.setattr(mm,'vram_state',mm.VRAMState.HIGH_VRAM)
+    model.dynamic = False
+    assert not u.refinement_memory_budget(model,device,0)[1]
+    monkeypatch.setattr(mm,'vram_state',mm.VRAMState.NORMAL_VRAM)
+    assert u.refinement_memory_budget(model,device,0)[1]
+    assert u.refinement_memory_budget(model,torch.device('cpu'),0) == (5 * 1024**3,False,0)
 
 
 def test_closing_image_does_not_replace_intermediate_single_frame_guides():

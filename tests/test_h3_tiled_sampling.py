@@ -32,7 +32,7 @@ def test_temporal_ranges_cover_native_phases(total):
 
 def test_planner_validation_and_budget_response():
     generous = h3.plan_tiles((1, 24, 60, 32, 32), 1024, 768, 24 * 1024**3)
-    small = h3.plan_tiles((1, 24, 60, 32, 32), 1024, 768, 1024**3, model_bytes=900 * 1024**2, text_tokens=100)
+    small = h3.plan_tiles((1, 24, 60, 32, 32), 1024, 768, 2 * 1024**3, model_bytes=900 * 1024**2, text_tokens=100)
     assert small["tile_width"] * small["tile_height"] <= generous["tile_width"] * generous["tile_height"]
     for plan in (small, generous):
         assert plan["tile_width"] % 32 == plan["tile_height"] % 32 == plan["overlap"] % 32 == 0
@@ -43,6 +43,70 @@ def test_planner_validation_and_budget_response():
         h3.plan_tiles((1, 24, 5, 4, 4), 99, 128, 10000)
     with pytest.raises(ValueError):
         h3.temporal_ranges(20, 5, 1)
+
+
+def test_streamed_bf16_model_larger_than_vram_gets_usable_tiles():
+    plan = h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 30 * 1024**3,
+                         model_bytes=38444 * 1024**2, text_tokens=512, ref_tokens=6300,
+                         streaming_weights=True, reserved_bytes=400 * 1024**2,
+                         audio_tokens=400)
+    assert min(plan['tile_width'], plan['tile_height']) >= 512
+    assert plan['tile_width'] * plan['tile_height'] * plan['chunk_tokens'] // 1024 <= plan['target_rows']
+    assert 'streamed' in plan['explanation']
+    capped = h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 8 * 1024**3,
+                           model_bytes=38444 * 1024**2, text_tokens=512, ref_tokens=6300,
+                           streaming_weights=True, reserved_bytes=400 * 1024**2,
+                           audio_tokens=400)
+    assert capped['tile_width'] * capped['tile_height'] <= plan['tile_width'] * plan['tile_height']
+
+
+def test_impossible_budget_does_not_silently_plan_thousands_of_tiny_tiles():
+    with pytest.raises(MemoryError, match='H3 refinement'):
+        h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 32 * 1024**3,
+                      model_bytes=38444 * 1024**2)
+
+
+def test_audio_and_full_canvas_buffers_compete_with_attention_rows():
+    kw = dict(model_bytes=38 * 1024**3, streaming_weights=True)
+    quiet = h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 30 * 1024**3, **kw)
+    audio = h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 30 * 1024**3,
+                         audio_tokens=20000, **kw)
+    assert audio['target_rows'] < quiet['target_rows']
+    assert audio['tile_width'] * audio['tile_height'] <= quiet['tile_width'] * quiet['tile_height']
+
+
+@pytest.mark.parametrize('width,height', [(2240,2880), (3840,2176), (7680,4320), (256,1024), (32,32)])
+def test_minimum_tiles_cover_large_and_small_canvases(width, height):
+    plan = h3.plan_tiles((1,24,35,16,16), width, height, 12 * 1024**3,
+                         model_bytes=38 * 1024**3, streaming_weights=True)
+    assert plan['tile_width'] >= min(width,512)
+    assert plan['tile_height'] >= min(height,512)
+    rows = plan['tile_width'] // 32 * (plan['tile_height'] // 32) * plan['chunk_tokens']
+    assert rows <= plan['target_rows']
+
+
+def test_minimum_tile_reduces_temporal_window_before_failing():
+    plan = h3.plan_tiles((1,24,35,16,16), 2240, 2880, 1024**3, streaming_weights=True)
+    assert plan['tile_width'] == plan['tile_height'] == 512
+    assert plan['chunk_tokens'] < 30
+    h3.temporal_ranges(35,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
+    with pytest.raises(MemoryError):
+        h3.plan_tiles((1,24,35,16,16), 2240, 2880, 1024**2)
+    h3.plan_tiles((1,24,35,16,16), 2240, 2880, 1024**2, enforce_budget=False)
+
+
+@pytest.mark.parametrize('spatial,temporal', [(True,True),(False,True),(True,False),(False,False)])
+def test_planner_switches_are_independent_and_never_reenabled(spatial,temporal):
+    plan=h3.plan_tiles((1,24,60,32,32),1024,1024,16*1024**3,
+                       spatial_tiling=spatial,temporal_chunking=temporal)
+    if not spatial:
+        assert (plan['tile_width'],plan['tile_height'],plan['overlap'])==(1024,1024,0)
+    if not temporal:
+        assert plan['chunk_tokens']==60
+        assert plan['temporal_overlap_tokens']==0
+    with pytest.raises(MemoryError):
+        h3.plan_tiles((1,24,60,32,32),1024,1024,1024,
+                      spatial_tiling=spatial,temporal_chunking=temporal)
 
 
 def test_resize_retains_channel_time_order():
