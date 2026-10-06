@@ -4,7 +4,7 @@ Run local Transformers, llama.cpp GGUF, loopback Ollama, or operator-configured 
 
 ## Nodes
 
-### DaSiWa LLM Prompt Writer
+### LLM Prompt Writer
 
 The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
 

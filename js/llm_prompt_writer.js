@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 
-// DaSiWa LLM Prompt Writer: start_with is one small fixed box, the idea box
+// LLM Prompt Writer: start_with is one small fixed box, the idea box
 // is about two and a half times it and takes any extra height the node gets.
 const START_WITH_HEIGHT = 56;
 // Widget heights include about 20 px of padding, so 56 and 110 draw text

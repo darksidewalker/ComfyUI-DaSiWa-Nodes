@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-10-06**. Older history lives in the 
 
 ## News
 
+- **Prompt Writer rename (10-06, 0.5.1):** The LLM Prompt Writer node is now displayed as **LLM Prompt Writer** without the DaSiWa prefix. The saved node ID `DaSiWa_LLMPromptWriter` and all interfaces are unchanged, so existing workflows keep loading.
+
 - **MiniMaxH3 Enhanced Upscale release (10-06, 0.5.0):** Publishes the single-node learned latent upscale/interpolation and internally scheduled per-step tiled refinement. Includes hardware-aware precision selection, factor-only sizing, original audio preservation, optional Director endpoint re-encoding, cumulative-timeline Continuity integration and default-off soft refine mask with adjustable strength. Consistent MiniMaxH3 display names preserve legacy node IDs. README diagrams, checkpoint/imported-video hints, CLI plan reporting and upstream credits are included. Native CPU sampling and tensor contracts are tested; pretrained visual seam quality is not guaranteed. [Usage and limits →](minimax_h3_tiled_upscale.md)
 
 - **Continuity soft refine (0.4.84):** Optional default-off smoothstep video mask with 0–1 strength ramps refinement over the existing Continuity source-tail overlap. Global indexing preserves the mask across temporal windows; old prefix/audio stay protected. No RGB color matching or guaranteed flicker correction.
@@ -114,6 +116,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.1 | 10-06 | LLM Prompt Writer display-name rename; saved node IDs unchanged |
 | 0.5.0 | 10-06 | MiniMaxH3 Enhanced Upscale: learned/interpolation upscale, tiled refinement, Director/Continuity integration, opt-in soft mask, CLI plan and usage diagrams |
 | 0.4.83 | 10-06 | Consistent MiniMaxH3 display names; README upscale, Director and checkpoint/video Continuity diagrams and usage hints |
 | 0.4.76 | 10-04 | H3 Forge picture labels, per-shot descriptions and typed REF2VA validation; reviewed compatibility and prompt-repair fixes (#65) |

@@ -1,4 +1,4 @@
-"""DaSiWa LLM Prompt Writer: the few choices most people need, on top of the advanced nodes.
+"""LLM Prompt Writer: the few choices most people need, on top of the advanced nodes.
 
 Builds the same config the Model Selector would, with its defaults, and runs the
 Analyze node's code path, so every backend, unload rule and picture handling
@@ -172,7 +172,7 @@ def simple_config(model, keep_loaded):
 
 class DaSiWa_LLMPromptWriter:
     DESCRIPTION = (
-        "DaSiWa LLM Prompt Writer: type an idea, pick the image or video model it is for, and get "
+        "LLM Prompt Writer: type an idea, pick the image or video model it is for, and get "
         "a prompt written in that model's style. For every setting, use the Advanced LLM nodes."
     )
 

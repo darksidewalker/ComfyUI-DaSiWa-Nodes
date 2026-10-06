@@ -75,7 +75,7 @@ if __package__:
         "DaSiWa_WildcardPresetPromptBuilder": "DaSiWa Wildcard & Preset Prompt Builder",
         "DaSiWa_LLMModelSelector": "DaSiWa LLM Model Selector (Advanced)",
         "DaSiWa_LLMAnalyze": "DaSiWa LLM Analyze (Advanced)",
-        "DaSiWa_LLMPromptWriter": "DaSiWa LLM Prompt Writer",
+        "DaSiWa_LLMPromptWriter": "LLM Prompt Writer",
         "DaSiWa_EnhancedVideoCombine": "DaSiWa Enhanced Video Combine",
         "DaSiWa_SeamlessLoop": "Seamless Loop",
         "DaSiWa_InpaintCropPrep": "DaSiWa Inpaint Crop Prep",
