@@ -98,6 +98,13 @@ def test_one_picture_costs_only_its_own_room(monkeypatch, tmp_path):
     assert sent == [{"images": 1, "num_ctx": 18432}]
 
 
+def test_a_server_keeps_its_own_context(monkeypatch, tmp_path):
+    for kind, name in (("openai", "m"), ("local", "Qwen3-VL-8B")):
+        body, sent = _labelled(monkeypatch, tmp_path, 9, kind=kind, name=name)
+        forge._generate(body, str(tmp_path), None, None)
+        assert sent == [{"images": 9, "num_ctx": 16384}]
+
+
 def test_a_draft_that_cannot_fit_stops_before_loading(monkeypatch, tmp_path):
     body, sent = _labelled(monkeypatch, tmp_path, 9, kind="ollama", name="qwen3-vl:8b")
     monkeypatch.setattr(forge, "context_for", lambda num_ctx, images: num_ctx)  # as if the room were not added

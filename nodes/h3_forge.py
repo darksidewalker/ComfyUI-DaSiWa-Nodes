@@ -105,7 +105,7 @@ from .h3_prompting import (
     simple_prompt,
 )
 from .llm_backends import (IMAGE_MAX_EDGE, NUM_PREDICT, refresh_server_model_choices,
-                           check_fits, context_for, server_context_error)
+                           check_fits, context_for, server_context_error, sets_its_context)
 
 
 _REQUEST_LOCK = threading.RLock()
@@ -294,7 +294,8 @@ def _generate(body, input_directory, release_memory, stop):
             user += ("\n\nApproved existing definitions: preserve explicit Subject IDs and allocate new IDs "
                      "after existing ones; verify current media citations:\n" + existing_definitions)
         contract = easy_vision_spec(spec, attached_labels) if easy else spec
-        ctx = context_for(num_ctx, with_images)
+        # Only where the context is ours to set; a server keeps its own.
+        ctx = context_for(num_ctx, with_images) if sets_its_context(kind, name) else num_ctx
         check_fits(kind, name, contract["system"], user, with_images, ctx, vision_box=see_pictures)
         if ctx != num_ctx:
             log_dasiwa("H3 Forge", f"{len(with_images)} picture(s): asking for {ctx:,} tokens of context")
@@ -529,7 +530,8 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         if cancel is not None and cancel.is_set():
             raise ForgeError("cancelled", CANCELLED)
         try:
-            ctx = context_for(bundle["context_length"], images)
+            ctx = (context_for(bundle["context_length"], images) if sets_its_context(kind, name)
+                   else bundle["context_length"])
             check_fits(kind, name, system, user, images, ctx)
             raw, stats = backend.chat(name, system, user, images, sampling, ctx, 600, cancel)
         except urlerror.HTTPError as exc:

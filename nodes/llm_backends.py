@@ -73,7 +73,7 @@ def sets_its_context(kind, name):
 
 def too_long(need, num_ctx, pictures, vision_box=False):
     advice = ("untick 'Let the model see the pictures', or use fewer pictures" if vision_box and pictures
-              else "use fewer pictures" if pictures else "shorten the idea or the existing definitions")
+              else "use fewer pictures" if pictures else "shorten the idea, the current draft or the existing definitions")
     what = f"the instructions and {pictures} picture{'' if pictures == 1 else 's'}" if pictures else "the instructions"
     return ForgeError("too_long", f"This draft does not fit: {what} need about {need:,} tokens with room for the reply, "
                                   f"and the model gets {num_ctx:,}. To fix it, {advice}.")
