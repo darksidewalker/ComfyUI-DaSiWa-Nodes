@@ -146,3 +146,12 @@ def test_llama_cpp_failures_are_said_plainly():
     assert err.code == "memory" and "untick" in err.message
     assert backends.local_context_error(ValueError("something else"), 16384, 0) is None
     assert backends.server_context_error("model not found") is None
+
+
+def test_transformers_memory_names_no_context():
+    oom = RuntimeError("CUDA out of memory. Tried to allocate 10.25 GiB.")
+    err = backends.local_context_error(oom, 16384, 9, gguf=False)
+    assert err.code == "memory" and "9 pictures" in err.message and "untick" in err.message
+    assert "context" not in err.message and "16,384" not in err.message
+    # llama.cpp wording means nothing to a transformers model.
+    assert backends.local_context_error(RuntimeError("llama_decode returned 1"), 16384, 3, gguf=False) is None

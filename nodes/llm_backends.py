@@ -97,13 +97,24 @@ def server_context_error(body_text):
     return None
 
 
-def local_context_error(exc, num_ctx, pictures):
+def local_context_error(exc, num_ctx, pictures, gguf=True):
     """llama.cpp's own failures, said plainly: out of context, or out of memory.
 
     Out of context reads "llama_decode returned 1" while the text is read and
     "Failed to evaluate chunk: error code 1" while a picture is (llama-cpp-
-    python 0.3.36, measured on 0.4.78 with nine pictures at 16,384)."""
+    python 0.3.36, measured on 0.4.78 with nine pictures at 16,384).
+
+    A transformers model has no context to set; it runs out of memory on the
+    pictures themselves (a 4B on a 32 GB V100 with nine square pictures:
+    SDPA asks for another 10 GiB), so that message names no context size."""
     text = str(exc)
+    if not gguf:
+        if "out of memory" in text.lower():
+            return ForgeError("memory", "Not enough GPU memory for this model"
+                                        + (f" with {pictures} picture{'' if pictures == 1 else 's'}. Use fewer pictures, "
+                                           "untick 'Let the model see the pictures', or pick a GGUF or smaller model."
+                                           if pictures else ". Pick a smaller model."))
+        return None
     if "llama_decode" in text or "evaluate chunk" in text:
         return ForgeError("too_long", f"The model ran out of room ({num_ctx:,} tokens) while reading the instructions"
                                       f"{' and pictures' if pictures else ''}. "
@@ -704,7 +715,7 @@ class Local:
         except ForgeError:
             raise
         except Exception as exc:
-            mapped = local_context_error(exc, num_ctx, len(images_b64 or ()))
+            mapped = local_context_error(exc, num_ctx, len(images_b64 or ()), gguf)
             if mapped:
                 raise mapped from None
             raise
