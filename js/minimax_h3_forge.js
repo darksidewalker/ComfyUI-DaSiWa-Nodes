@@ -186,7 +186,7 @@ async function open(node) {
       if (hook.contextKey?.() !== openedKey) { hook.setStatus("Director changed. Reopen Forge.", true); return; }
       briefs.set(briefKey, brief.value); hook.setUseReferences(e.target.checked); void open(node);
     } });
-    box.append(el("label", {}, includeReferences, " Include timeline references"));
+    box.append(el("label", { title: "Apply the currently enabled timeline reference media and RefMods during the extension. References are taken from the Director, not restored from the checkpoint. REF2VA only; start/end images in other modes are not reused." }, includeReferences, " Use REF2VA references and RefMods"));
   }
   // REF2VA pictures: one label each - Character 1-4, several characters in
     // one picture, Place, Style, First or Last frame, Pose, Custom. Pictures
@@ -289,7 +289,7 @@ async function open(node) {
   const structured = el("input", { type: "checkbox", checked: !!continuity && mode === "REF2VA" && (continuity.use_references || !!refPromptFields(hook.currentPrompt?.())) });
   if (continuity && mode === "REF2VA") {
     box.append(el("label", {}, structured, " Structured REF2VA draft"));
-    box.append(el("span", { className: "muted", textContent: continuity.use_references ? "Timeline references are included in both Forge and video generation. Existing identities are carried forward; new subjects are defined for review." : "Timeline references are off. Enable Include timeline references above to introduce a character or scene reference; this also enables them for video generation." }));
+    box.append(el("span", { className: "muted", textContent: continuity.use_references ? "Timeline reference media and RefMods are enabled for the extension. Existing identities are carried forward; new subjects are defined for review." : "Timeline reference media and RefMods are off. Enable Use REF2VA references and RefMods above to apply the Director's current references during the extension; they are not restored from the checkpoint." }));
   }
   const modelSel = el("select");
   const detail = el("input", { type: "range", min: 1, max: 10, step: 1 });
