@@ -72,11 +72,12 @@ body:
         - "Seamless Loop"
         - "DaSiWa Inpaint Crop Prep"
         - "DaSiWa Inpaint Composite"
-        - "MiniMax H3 Director"
-        - "MiniMax H3 Director Guide"
-        - "H3 Continuity • Append & Stage"
-        - "H3 Continuity • Publish Export"
-        - "MiniMax H3 Cache"
+        - "MiniMaxH3 Director"
+        - "MiniMaxH3 Director Guide"
+        - "MiniMaxH3 Continuity • Append & Stage"
+        - "MiniMaxH3 Continuity • Publish Export"
+        - "MiniMaxH3 Cache"
+        - "MiniMaxH3 Enhanced Upscale"
         - "Other / general"
     validations:
       required: true
