@@ -39,58 +39,14 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 Available in **0.5.0**; existing saved/API node IDs remain compatible.
 
-One node replaces the H3 latent-upscale, temporal-parameter and per-step spatial-diffusion chain. Tile size, overlap and temporal windows are planned internally; learned safetensors upscaling or interpolation is built in and the original audio stream is preserved. No auxiliary parameter nodes and no dependency on the bbaudio pack.
+- One node replaces the H3 latent-upscale, temporal-parameter and per-step spatial-diffusion chain — no auxiliary parameter nodes, no dependency on the bbaudio pack.
+- Tile size, overlap and temporal windows are planned internally from the incoming latent and device memory.
+- Learned safetensors upscaling from `models/latent_upscale_models/`, or `interpolation`; no automatic choice, no fallback.
+- Factor-only scaling (default **2.0**), refinement defaults CFG 1, 1 step, denoise 0.2 (`0` skips refinement). Native packed video/audio `LATENT` output; the original audio stream is returned unchanged.
+- Optional Director guide + H3 video VAE re-encode endpoint images at the enlarged resolution; works without a Director.
+- Continuity: keep Append & Stage before the upscaler and feed it the cumulative latent.
 
-#### Basic wiring
-
-Solid lines are the core path; dashed lines are optional.
-
-```mermaid
-flowchart LR
-    M["H3 MODEL<br>(unwrapped)"] -->|model| U["MiniMaxH3 Enhanced Upscale"]
-    C["Conditioning from the initial render"] -->|conditioning| U
-    L["Completed video+audio LATENT<br>Sampler output, or Append &amp; Stage<br>cumulative_latent with Continuity"] -->|latent| U
-    U -->|latent| D["Split AV latent and decode<br>H3 video/audio VAEs"]
-    D --> E["Video export with audio"]
-    U -.->|plan — diagnostic, may stay unconnected| N["Log / note"]
-    DG["MiniMaxH3 Director"] -.->|guide → director_guide| U
-    V["H3 video VAE"] -.->|vae| U
-    SI["Original start image"] -.->|start_image| U
-    NEG["Negative conditioning"] -.->|negative — required when cfg ≠ 1| U
-    SM["Sampler object"] -.->|sampler| U
-    NO["Noise object"] -.->|noise| U
-    GC["Director Guide<br>continuity_context"] -.->|continuity_context| U
-```
-
-Defaults: **scale 2.0**, a learned checkpoint from `models/latent_upscale_models/` or `interpolation` (no automatic choice, no fallback), CFG 1, 1 step, denoise 0.2 (`0` skips refinement), Euler/simple. Refinement sigmas are generated internally; audio is returned unchanged. `scale` applies to the actual input latent and rounds to the required 32-pixel grid. The Director is optional: its guide plus the matching video VAE re-encode endpoint images at the enlarged resolution.
-
-#### Continuity: assemble first, upscale once
-
-```mermaid
-flowchart TD
-    D["MiniMaxH3 Director<br>pinned source and added Duration"] -->|guide| G["MiniMaxH3 Director Guide"]
-    G -->|positive and fresh latent| S["Sampler"]
-    S -->|output to sampled| A["MiniMaxH3 Continuity<br>Append & Stage"]
-    G -->|continuity_context to context| A
-    A -->|cumulative_latent to latent| U["MiniMaxH3 Enhanced Upscale"]
-    G -->|continuity_context| U
-    G -->|positive to conditioning| U
-    M["H3 MODEL"] --> S
-    M -->|model| U
-    U -->|latent| X["AV decode and video export"]
-    A -->|ticket| P["MiniMaxH3 Continuity<br>Publish Export"]
-    X -->|actual exporter filename| P
-```
-
-**Keep Append & Stage before the upscaler.** Connect the same Director Guide `continuity_context` to Append & Stage and the upscaler. The upscaler expects the **cumulative** latent, not just the new sampling window. The entire video is enlarged; the upscaled source-tail overlap and new section are refined together, and the older prefix is excluded from continuation-prompt diffusion. Source-resolution checkpoints remain owned by Append & Stage.
-
-Continuity runs at native **24 fps** and starts from a saved H3 checkpoint (**∞ Save new takes**, then select it) or an ordinary video (**Choose start video…**, both H3 video and audio VAEs connected). Selecting a source activates continuation; **Use latest output** is what advances it. For an already-large imported video use **`scale = 1`** to refine without enlarging again. Normal upscale needs no Continuity context.
-
-**Naming compatibility:** registered display names use `MiniMaxH3 …`. Existing internal node IDs, sockets and widget order are unchanged, so old saved/API workflows remain valid. User-assigned titles in saved workflows may still display their old text.
-
-[Upscaler connections, checkpoint selection and limits →](docs/minimax_h3_tiled_upscale.md) · [Continuity setup, source import and timing →](docs/h3_continuity.md)
-
-Ideas and reference code: [bbaudio's UltimateUpscale](https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale) and [LBH-123-AI's H3 latent upscaler](https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler). [Credits and licensing →](docs/minimax_h3_tiled_upscale.md#credits-and-reference-implementations) · [Continuity light/color comparison hints →](docs/minimax_h3_tiled_upscale.md#continuity-lightcolor-flicker-comparison-hints)
+[Upscaler wiring, sockets, checkpoint selection and limits →](docs/minimax_h3_tiled_upscale.md) · [Continuity setup, source import and timing →](docs/h3_continuity.md)
 
 ---
 
