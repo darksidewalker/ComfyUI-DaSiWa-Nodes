@@ -37,9 +37,8 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 ### 🔍 MiniMaxH3 Enhanced Upscale
 
-Available in **0.5.0**; existing saved/API node IDs remain compatible.
+One node that upscales a completed MiniMax H3 video/audio latent and refines it with per-step diffusion, keeping the original audio.
 
-- One node replaces the H3 latent-upscale, temporal-parameter and per-step spatial-diffusion chain — no auxiliary parameter nodes, no dependency on the bbaudio pack.
 - Tile size, overlap and temporal windows are planned internally from the incoming latent and device memory.
 - Learned safetensors upscaling from `models/latent_upscale_models/`, or `interpolation`; no automatic choice, no fallback.
 - Factor-only scaling (default **2.0**), refinement defaults CFG 1, 1 step, denoise 0.2 (`0` skips refinement). Native packed video/audio `LATENT` output; the original audio stream is returned unchanged.
