@@ -1,4 +1,4 @@
-# H3 Director Continuity
+# MiniMaxH3 Director Continuity
 
 The Director owns the controls. Selecting a video or checkpoint automatically shows **Continuity Active**. The actual model mode stays selected; there is no Continue pseudo-mode. The existing **Duration** input controls newly added seconds. Checkpoint capture for new takes is opt-in; saved workflows retain their capture preference.
 

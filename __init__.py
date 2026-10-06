@@ -19,6 +19,7 @@ if __package__:
     from .nodes.h3_continuity import routes as continuity_routes
     continuity_routes.register_routes(__import__("server").PromptServer.instance)
     from .nodes.nodes_minimax_h3_cache import MiniMaxH3Cache
+    from .nodes.nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
 
     from .nodes import nodes_system_monitor
     from .nodes import input_images  # registers /dasiwa/input-images route
@@ -54,6 +55,7 @@ if __package__:
         "DaSiWaH3ContinuityAppend": DaSiWaH3ContinuityAppend,
         "DaSiWaH3ContinuityPublish": DaSiWaH3ContinuityPublish,
         "MiniMaxH3Cache": MiniMaxH3Cache,
+        "DaSiWaH3TiledUpscale": DaSiWaH3TiledUpscale,
 
     }
 
@@ -78,11 +80,12 @@ if __package__:
         "DaSiWa_SeamlessLoop": "Seamless Loop",
         "DaSiWa_InpaintCropPrep": "DaSiWa Inpaint Crop Prep",
         "DaSiWa_InpaintComposite": "DaSiWa Inpaint Composite",
-        "MiniMaxH3Director": "MiniMax H3 Director",
-        "MiniMaxH3DirectorGuide": "MiniMax H3 Director Guide",
-        "DaSiWaH3ContinuityAppend": "H3 Continuity • Append & Stage",
-        "DaSiWaH3ContinuityPublish": "H3 Continuity • Publish Export",
-        "MiniMaxH3Cache": "MiniMax H3 Cache",
+        "MiniMaxH3Director": "MiniMaxH3 Director",
+        "MiniMaxH3DirectorGuide": "MiniMaxH3 Director Guide",
+        "DaSiWaH3ContinuityAppend": "MiniMaxH3 Continuity • Append & Stage",
+        "DaSiWaH3ContinuityPublish": "MiniMaxH3 Continuity • Publish Export",
+        "MiniMaxH3Cache": "MiniMaxH3 Cache",
+        "DaSiWaH3TiledUpscale": "MiniMaxH3 Enhanced Upscale",
 
     }
     log_startup_summary(len(NODE_CLASS_MAPPINGS))

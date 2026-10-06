@@ -1,6 +1,6 @@
-# MiniMax H3 Cache
+# MiniMaxH3 Cache
 
-`MiniMax H3 Cache` is an approximate, model-scoped acceleration node for ComfyUI's native MiniMax H3 diffusion model. It caches the residual produced by the complete H3 transformer block stack, and reuses that residual when the sampled audio/video-token feature signature changes little enough.
+`MiniMaxH3 Cache` is an approximate, model-scoped acceleration node for ComfyUI's native MiniMax H3 diffusion model. It caches the residual produced by the complete H3 transformer block stack, and reuses that residual when the sampled audio/video-token feature signature changes little enough.
 
 ## Wiring
 

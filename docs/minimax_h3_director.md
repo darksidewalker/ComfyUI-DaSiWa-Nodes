@@ -1,4 +1,4 @@
-# MiniMax H3 Director
+# MiniMaxH3 Director
 
 Build an H3 video in one place: arrange references on a timeline, trim them, write a prompt, and choose a canvas. **Director** prepares the inputs; **Director Guide** checks them and calls ComfyUI's native H3 nodes. You do not wire the native image-to-video or reference-to-video nodes separately.
 
@@ -7,7 +7,7 @@ Build an H3 video in one place: arrange references on a timeline, trim them, wri
 ## Start here
 
 1. Install the pack's dependencies (`pip install -r requirements.txt` in ComfyUI's Python environment), restart ComfyUI, and use a ComfyUI build with native MiniMax H3 support.
-2. Add **MiniMax H3 Director** and **MiniMax H3 Director Guide** from `DaSiWa/MiniMax H3`.
+2. Add **MiniMaxH3 Director** and **MiniMaxH3 Director Guide** from `DaSiWa/MiniMax H3`.
 3. Pick a mode, add media to the appropriate lane, set Duration and canvas, and write a prompt. Connect the matching model to Director, and CLIP and visual VAE to Guide. REF2VA also needs an audio VAE.
 4. Connect Guide's conditioning and latent to your normal sampler/decode/export path. The Director forwards the selected model to that sampler path.
 

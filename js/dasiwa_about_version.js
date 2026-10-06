@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 
-const DASIWA_VERSION = "0.4.77";
+const DASIWA_VERSION = "0.5.0";
 
 app.registerExtension({
     name: "DaSiWa.AboutVersion",

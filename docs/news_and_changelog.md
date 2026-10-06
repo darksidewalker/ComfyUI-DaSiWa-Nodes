@@ -2,9 +2,21 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-05**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-06**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **MiniMaxH3 Enhanced Upscale release (10-06, 0.5.0):** Publishes the single-node learned latent upscale/interpolation and internally scheduled per-step tiled refinement. Includes hardware-aware precision selection, factor-only sizing, original audio preservation, optional Director endpoint re-encoding, cumulative-timeline Continuity integration and default-off soft refine mask with adjustable strength. Consistent MiniMaxH3 display names preserve legacy node IDs. README diagrams, checkpoint/imported-video hints, CLI plan reporting and upstream credits are included. Native CPU sampling and tensor contracts are tested; pretrained visual seam quality is not guaranteed. [Usage and limits →](minimax_h3_tiled_upscale.md)
+
+- **Continuity soft refine (0.4.84):** Optional default-off smoothstep video mask with 0–1 strength ramps refinement over the existing Continuity source-tail overlap. Global indexing preserves the mask across temporal windows; old prefix/audio stay protected. No RGB color matching or guaranteed flicker correction.
+
+- **MiniMaxH3 naming and workflow guide (0.4.83):** Consistent MiniMaxH3 display names for Director, Guide, Cache, Enhanced Upscale and Continuity companions, preserving all saved/API node IDs and interfaces. README adds Mermaid views for standalone upscale, Director integration, Continuity assembly and checkpoint/imported-video source choices, with resolution and usage hints.
+
+- **H3 Enhanced Upscale (0.4.82):** Renamed the visible node without changing its saved-workflow ID. Optional Continuity context aligns native AV tail conditioning with Append & Stage’s cumulative timeline. The entire clip is upscaled; diffusion refinement is limited to the source-tail overlap and continuation, leaving earlier scenes out of the continuation prompt. Audio, duration and source-resolution checkpoint ownership are preserved.
+
+- **H3 Upscale controls (0.4.81):** Factor-only sizing replaces exact width/height overrides. Learned-upscaler precision can be selected as auto, BF16, FP16 or FP32; auto follows the ComfyUI device/backend policy, and the plan reports the actual dtype. Removed the external sigma input so the node always owns its refine schedule, defaulting to CFG 1, 1 step and denoise 0.2.
+
+- **H3 Tiled Upscale (0.4.80):** One standalone node combines H3 learned latent upscale/interpolation with model-scoped per-step spatial diffusion and phase-aligned temporal windows. Conservative planning derives tile/chunk geometry from latent, target canvas, conditioning and device memory. Optional Director endpoint images + video VAE are re-encoded at target size; input audio is returned unchanged. No bbaudio runtime dependency, extra parameter nodes or workflow rewrites. Full-model visual quality remains subject to comparison renders. [Wiring and limits →](minimax_h3_tiled_upscale.md)
 
 - **Prompt Writer and opt-in Forge vision (10-05, 0.4.78):** Integrates PR #67 and #68 with editable model prompting guides, the simple LLM Prompt Writer and optional labelled REF2VA vision. Workflow Settings fallback requires operator opt-in and is disabled in multi-user mode; endpoint/key sources stay paired. Server model discovery is cached and off-thread. Numeric prompt weights and user prefixes are preserved. Forge vision uses a consistent output contract, warns on incomplete descriptions, and invalidates drafts when toggled; mixed references retain the normal path. Existing node IDs and old blind drafts remain compatible. [LLM guide →](llm_nodes.md)
 
@@ -102,6 +114,8 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.0 | 10-06 | MiniMaxH3 Enhanced Upscale: learned/interpolation upscale, tiled refinement, Director/Continuity integration, opt-in soft mask, CLI plan and usage diagrams |
+| 0.4.83 | 10-06 | Consistent MiniMaxH3 display names; README upscale, Director and checkpoint/video Continuity diagrams and usage hints |
 | 0.4.76 | 10-04 | H3 Forge picture labels, per-shot descriptions and typed REF2VA validation; reviewed compatibility and prompt-repair fixes (#65) |
 | 0.4.75 | 10-03 | Fix H3 Continuity checkpoint collisions on consecutive runs with cached Guide outputs (#64) |
 | 0.4.74 | 10-03 | Restore wildcard picker selections after workflow/image loading (#62); allow native audio-lock latent paths with H3 Continuity capture (#58) |

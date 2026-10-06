@@ -75,4 +75,4 @@ class DaSiWaH3ContinuityPublish:
 
 
 NODE_CLASS_MAPPINGS = {cls.__name__: cls for cls in (DaSiWaH3ContinuityAppend, DaSiWaH3ContinuityPublish)}
-NODE_DISPLAY_NAME_MAPPINGS = {"DaSiWaH3ContinuityAppend": "H3 Continuity • Append & Stage", "DaSiWaH3ContinuityPublish": "H3 Continuity • Publish Export"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DaSiWaH3ContinuityAppend": "MiniMaxH3 Continuity • Append & Stage", "DaSiWaH3ContinuityPublish": "MiniMaxH3 Continuity • Publish Export"}

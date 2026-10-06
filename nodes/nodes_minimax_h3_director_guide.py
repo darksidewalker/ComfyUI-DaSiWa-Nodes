@@ -254,4 +254,4 @@ class MiniMaxH3DirectorGuide:
 
 
 NODE_CLASS_MAPPINGS = {"MiniMaxH3DirectorGuide": MiniMaxH3DirectorGuide}
-NODE_DISPLAY_NAME_MAPPINGS = {"MiniMaxH3DirectorGuide": "MiniMax H3 Director Guide"}
+NODE_DISPLAY_NAME_MAPPINGS = {"MiniMaxH3DirectorGuide": "MiniMaxH3 Director Guide"}
