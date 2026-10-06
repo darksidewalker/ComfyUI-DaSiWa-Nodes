@@ -37,16 +37,16 @@ def test_each_picture_adds_its_own_room():
     assert backends.CONTEXT_PER_PICTURE > backends.image_tokens(SQUARE)
 
 
-def test_only_contexts_we_set_are_checked():
+def test_only_contexts_we_set_are_checked(monkeypatch):
     huge = "x" * 400000
     for kind, name in (("openai", "m"), ("local", "Qwen3-VL-8B")):
         backends.check_fits(kind, name, huge, "", [], 16384)  # server's own limit / transformers: no estimate
+    warnings = []
+    monkeypatch.setattr(backends, "log_dasiwa", lambda tag, message: warnings.append(message))
     for kind, name in (("local", "q.gguf"), ("ollama", "qwen3.5:9b")):
-        with pytest.raises(backends.ForgeError) as err:
-            backends.check_fits(kind, name, huge, "", [SQUARE], 32768, vision_box=True)
-        assert err.value.code == "too_long"
-        assert "the instructions and 1 picture need about" in err.value.message
-        assert "untick 'Let the model see the pictures'" in err.value.message
+        backends.check_fits(kind, name, huge, "", [SQUARE], 32768)
+    assert len(warnings) == 2
+    assert all("estimate" in warning.lower() for warning in warnings)
 
 
 def pic(n, path):
@@ -105,14 +105,11 @@ def test_a_server_keeps_its_own_context(monkeypatch, tmp_path):
         assert sent == [{"images": 9, "num_ctx": 16384}]
 
 
-def test_a_draft_that_cannot_fit_stops_before_loading(monkeypatch, tmp_path):
+def test_approximate_overflow_does_not_block_backend(monkeypatch, tmp_path):
     body, sent = _labelled(monkeypatch, tmp_path, 9, kind="ollama", name="qwen3-vl:8b")
-    monkeypatch.setattr(forge, "context_for", lambda num_ctx, images: num_ctx)  # as if the room were not added
-    with pytest.raises(backends.ForgeError) as err:
-        forge._generate(body, str(tmp_path), None, None)
-    assert err.value.code == "too_long" and "9 pictures" in err.value.message
-    assert "the model gets 16,384" in err.value.message and "untick" in err.value.message
-    assert sent == []
+    monkeypatch.setattr(forge, "context_for", lambda num_ctx, images: num_ctx)
+    forge._generate(body, str(tmp_path), None, None)
+    assert sent == [{"images": 9, "num_ctx": 16384}]
 
 
 def test_server_context_refusal_is_not_retried_blind(monkeypatch, tmp_path):
@@ -146,6 +143,82 @@ def test_llama_cpp_failures_are_said_plainly():
     assert err.code == "memory" and "untick" in err.message
     assert backends.local_context_error(ValueError("something else"), 16384, 0) is None
     assert backends.server_context_error("model not found") is None
+
+
+@pytest.mark.parametrize("message", [
+    "llama_decode returned -1", "llama_decode returned 2",
+    "llama_decode returned 10", "Failed to evaluate chunk: error code -3",
+])
+def test_unknown_decode_failures_are_preserved(message):
+    assert backends.local_context_error(RuntimeError(message), 32768, 9) is None
+
+
+def test_decode_oom_takes_priority():
+    error = backends.local_context_error(
+        RuntimeError("llama_decode returned -2: out of memory"), 32768, 9)
+    assert error is not None and error.code == "memory"
+
+
+@pytest.mark.parametrize("message", [
+    "invalid context size: must be positive",
+    "Failed to allocate KV cache for context size 32768: out of memory",
+    "context length configuration is unsupported",
+])
+def test_server_non_overflow_context_errors_are_preserved(message):
+    assert backends.server_context_error(message) is None
+
+
+def test_continuity_estimate_is_advisory(monkeypatch, tmp_path):
+    calls = []
+
+    class Backend:
+        base = "http://127.0.0.1:11434"
+        def models(self):
+            return [{"id": "ollama:test"}]
+        def can_see(self, name):
+            return False
+        def chat(self, name, system, user, images, sampling, context, *rest):
+            calls.append(context)
+            return "Continue the action.", {}
+        def unload(self, name):
+            return True
+
+    monkeypatch.setattr(forge, "backends", lambda settings: {"ollama": Backend()})
+    result = forge.generate_continuity_draft(
+        {"prompt": " scene" * 4000}, " scene" * 2000, str(tmp_path),
+        "ollama:test", {}, current_prompt=" scene" * 2000,
+        existing_definitions=" scene" * 2000)
+    assert calls == [16384]
+    assert result["prompt"] == "Continue the action."
+
+
+@pytest.mark.parametrize("message, expected", [
+    ("llama_decode returned 1", "too_long"),
+    ("llama_decode returned -2: out of memory", "memory"),
+    ("llama_decode returned -1", None),
+])
+def test_local_chat_maps_errors_and_releases_memory(monkeypatch, message, expected):
+    from types import SimpleNamespace
+    released = []
+
+    def fail(*args, **kwargs):
+        raise RuntimeError(message)
+
+    runtime = SimpleNamespace(
+        _resolve_model_path=lambda *args, **kwargs: "model.gguf",
+        _messages_for_llama_cpp=lambda *args, **kwargs: [],
+        _load_llama_cpp_model=fail,
+        _release_all_model_memory=lambda: released.append(True))
+    backend = backends.Local()
+    monkeypatch.setattr(backend, "_llm", lambda: runtime)
+    monkeypatch.setattr(backends, "_half_dtype", lambda: "float16")
+    with pytest.raises(backends.ForgeError if expected else RuntimeError) as error:
+        backend.chat("model.gguf", "system", "user", [], {}, 16384, 600)
+    if expected:
+        assert error.value.code == expected
+    else:
+        assert str(error.value) == message
+    assert released == [True]
 
 
 def test_transformers_memory_names_no_context():

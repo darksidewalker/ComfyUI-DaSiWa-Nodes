@@ -30,13 +30,14 @@ class ForgeError(Exception):
 # context is ours to set (a local GGUF, Ollama) each picture adds its own room
 # on top of the default, so one picture costs a little and nine reach 32,768;
 # a square one really takes ~1,090 tokens, so each has room to spare. The
-# request is still measured first so it fails with a message that says what
-# to do. An OpenAI-compatible server's context is its own; a context error
-# from one is translated, never retried without the pictures.
+# request is estimated first for an advisory warning, not a hard refusal:
+# only the selected tokenizer/backend can establish its actual token count.
+# An OpenAI-compatible server's context is its own; a context error from one
+# is translated, never retried without the pictures.
 CONTEXT_PER_PICTURE = 1820
 CONTEXT_STEP = 256
-# Room left for the answer; an H3 draft is usually 1-2k tokens.
-REPLY_ROOM = 2048
+# Include the full requested answer budget in the advisory estimate.
+REPLY_ROOM = NUM_PREDICT
 # Estimates, not a tokenizer: about 3.8 characters per token for this
 # English/markdown text, and Qwen-VL's one token per 32x32 pixels after the
 # Forge's own resize (other vision models use as many or fewer).
@@ -71,26 +72,23 @@ def sets_its_context(kind, name):
     return kind == "ollama" or (kind == "local" and str(name).lower().endswith(".gguf"))
 
 
-def too_long(need, num_ctx, pictures, vision_box=False):
-    advice = ("untick 'Let the model see the pictures', or use fewer pictures" if vision_box and pictures
-              else "use fewer pictures" if pictures else "shorten the idea, the current draft or the existing definitions")
-    what = f"the instructions and {pictures} picture{'' if pictures == 1 else 's'}" if pictures else "the instructions"
-    return ForgeError("too_long", f"This draft does not fit: {what} need about {need:,} tokens with room for the reply, "
-                                  f"and the model gets {num_ctx:,}. To fix it, {advice}.")
-
-
-def check_fits(kind, name, system, user, images_b64, num_ctx, vision_box=False):
+def check_fits(kind, name, system, user, images_b64, num_ctx):
+    """Warn about estimated overflow; never reject on a character heuristic."""
     if not sets_its_context(kind, name):
         return
     need = estimate_tokens(system, user, images_b64) + REPLY_ROOM
     if need > num_ctx:
-        raise too_long(need, num_ctx, len(images_b64 or ()), vision_box)
+        log_dasiwa("H3 Forge", f"Approximate token estimate {need:,} (including reply) exceeds "
+                   f"{num_ctx:,} context; continuing because actual token usage depends on the model. "
+                   "If the backend runs out of room, shorten the text or use fewer pictures.")
 
 
 def server_context_error(body_text):
     """A context-size refusal from llama-server, llama-swap or LM Studio, or None."""
     text = str(body_text or "").lower()
-    if "context" in text and any(w in text for w in ("exceed", "too long", "too many tokens", "context length", "context size")):
+    if any(w in text for w in ("out of memory", "failed to allocate")):
+        return None
+    if "context" in text and any(w in text for w in ("exceed", "too long", "too many tokens")):
         return ForgeError("too_long", "The model server refused this draft as longer than its context size. Use fewer "
                                       "pictures, or raise the server's context (llama-server -c / --ctx-size, or the "
                                       "model's context length in LM Studio).")
@@ -115,15 +113,15 @@ def local_context_error(exc, num_ctx, pictures, gguf=True):
                                            "untick 'Let the model see the pictures', or pick a GGUF or smaller model."
                                            if pictures else ". Pick a smaller model."))
         return None
-    if "llama_decode" in text or "evaluate chunk" in text:
-        return ForgeError("too_long", f"The model ran out of room ({num_ctx:,} tokens) while reading the instructions"
-                                      f"{' and pictures' if pictures else ''}. "
-                                      f"{'Use fewer pictures.' if pictures else 'Shorten the idea.'}")
     if "llama_context" in text or "out of memory" in text.lower() or "failed to allocate" in text.lower():
-        return ForgeError("memory", f"Not enough GPU memory to load this model with {num_ctx:,} tokens of context"
+        return ForgeError("memory", f"Not enough GPU memory to run this model with {num_ctx:,} tokens of context"
                                     f"{' for the pictures' if pictures else ''}. "
                                     + ("Pictures need the larger context; draft without them (untick 'Let the model "
                                        "see the pictures') or pick a smaller model." if pictures else "Pick a smaller model."))
+    if re.search(r"(?:llama_decode returned|Failed to evaluate chunk: error code)\s+1\b", text):
+        return ForgeError("too_long", f"The model ran out of room ({num_ctx:,} tokens) while reading the instructions"
+                                      f"{' and pictures' if pictures else ''}. "
+                                      f"{'Use fewer pictures.' if pictures else 'Shorten the idea.'}")
     return None
 
 
