@@ -95,6 +95,15 @@ export function pictureButtons(item) {
   return { picture_kinds: kinds, who, ...(axis ? { who_axis: axis } : {}) };
 }
 
+// I2VA / FL2VA / L2VA: a frame picture has no label, only who is in it, so
+// the brief's "Character 1" can say which person in the frame that is.
+export function frameWho(item) {
+  const who = String(item.forge_who || "").split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 32);
+  if (!who.length) return {};
+  const axis = item.forge_who_axis === "y" || item.forge_who_axis === "z" ? item.forge_who_axis : "";
+  return { who, ...(axis ? { who_axis: axis } : {}) };
+}
+
 export function forgeReferences(items, mode, legacyGroups = {}) {
   const order = { image: 0, video: 1, audio: 2 };
   const sorted = items.filter(item => item.enabled !== false && item.value != null && order[item.type] !== undefined)
@@ -105,7 +114,7 @@ export function forgeReferences(items, mode, legacyGroups = {}) {
       const common = { item, instructions: String(item.forge_instructions || ""), keep: String(item.forge_keep || ""), drop: String(item.forge_drop || "") };
       if (item.type === "image") {
         const role = mode === "REF2VA" && IMAGE_ROLES.includes(item.forge_role) ? item.forge_role : mode === "REF2VA" ? "subject" : "keyframe";
-        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "", ...(labels[item.id] ? { easy_role: labels[item.id], ...pictureButtons(item) } : {}) };
+        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "", ...(labels[item.id] ? { easy_role: labels[item.id], ...pictureButtons(item) } : mode !== "REF2VA" ? frameWho(item) : {}) };
       }
       if (item.type === "audio") return { ...common, kind: "audio", duration_seconds: item.duration };
       return { ...common, kind: "video", role: "motion", stream: item.media_mode === "audio" ? "audio" : item.media_mode === "video_audio" || item.audio != null ? "both" : "video", duration_seconds: item.duration };

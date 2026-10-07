@@ -321,6 +321,42 @@ async function open(node) {
         }
         paint();
         roleCell = el("span", { className: "pick" }, kindButtons, whoButtons, axisButtons);
+      } else if (ref.kind === "image" && BASE_ROLE[mode] && ref.item && !ref.saved_reference) {
+        // A frame in I2VA / FL2VA / L2VA: who is in it, so the idea's
+        // "Character 1" can say which person in the frame that is (a
+        // piggyback: tap the one carrying, then the one carried, front to back).
+        let who = Array.isArray(ref.who) ? [...ref.who] : [], axis = ref.who_axis || "";
+        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in this frame. Tap in order: left to right, unless the order below says otherwise. In the idea, write \"Character 1\"." });
+        whoButtons.setAttribute("aria-label", `${name} who is in it`);
+        const axisButtons = el("span", { className: "who-axis", role: "group", title: "Which way the tap order runs." });
+        axisButtons.setAttribute("aria-label", `${name} order`);
+        const save = () => {
+          if (who.length < 2) axis = "";
+          if (who.length) ref.who = [...who]; else delete ref.who;
+          if (axis) ref.who_axis = axis; else delete ref.who_axis;
+          persistReference(ref, { forge_who: who.join(","), forge_who_axis: axis });
+          paint();
+          node.graph?.setDirtyCanvas(true, true);
+        };
+        const paint = () => {
+          const most = Math.max(4, refs.filter(r => r.kind === "image").length, ...who);
+          whoButtons.replaceChildren(el("span", { className: "who-label", textContent: "Who" }), ...Array.from({ length: Math.min(most, 32) }, (_, i) => {
+            const n = i + 1, at = who.indexOf(n);
+            const b = el("button", { type: "button", textContent: String(n), onclick: () => { who = at >= 0 ? who.filter(x => x !== n) : [...who, n]; save(); } });
+            b.setAttribute("aria-pressed", String(at >= 0));
+            b.dataset.order = who.length > 1 && at >= 0 ? String(at + 1) : "";
+            return b;
+          }));
+          for (const b of axisButtons.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.axis === axis));
+          axisButtons.hidden = who.length < 2;
+        };
+        for (const [value, text] of [["", "left → right"], ["y", "top → bottom"], ["z", "front → back"]]) {
+          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = value; save(); } });
+          b.dataset.axis = value;
+          axisButtons.append(b);
+        }
+        paint();
+        roleCell = el("span", { className: "pick" }, el("span", { className: "muted", textContent: BASE_ROLE[mode] }), whoButtons, axisButtons);
       } else {
         roleCell = el("span", { className: "muted", textContent: ref.saved_reference ? "saved reference" : ref.kind === "image" ? BASE_ROLE[mode] || "frame" : ref.kind === "video" ? `motion · ${ref.stream}` : "voice" });
       }

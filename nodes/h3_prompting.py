@@ -239,6 +239,8 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
     nothing."""
     if cast is not None:
         brief = easy_brief(brief, cast)
+    else:
+        brief = framed_brief(brief, references, mode)
     lines = [f'Brief: "{str(brief).strip()}"']
     settings = [f"Creativity: {title_case(creativity)}", f"Mode: {mode}"]
     if duration:
@@ -464,8 +466,24 @@ def describe_targets(cast, attached_labels=None):
     def attached(numbers):
         return visible is None or any(f"<Picture {n}>" in visible for n in numbers)
 
-    out = [(s["tag"], *_DESCRIBE[s["kind"]]) for s in cast["subjects"]
-           if s["kind"] in _DESCRIBE and attached(s["pictures"] + [p["picture"] for p in s.get("placements", [])])]
+    # Which of several people in a picture this one is, and whom to leave out.
+    # Front and back are spelt by the camera: in a piggyback the one carried
+    # sits higher in the frame, and told only "the one in front" a reader
+    # described the more prominent person behind (PromptForge, 6 Oct 2026).
+    def only(s):
+        shared = [p for p in s.get("placements", []) if attached([p["picture"]])]
+        notes = []
+        for p in shared:
+            others = [o["position"] for c in cast["subjects"] for o in c.get("placements", [])
+                      if o["picture"] == p["picture"] and c is not s]
+            not_them = " or ".join(f"the one {describe_where(o)}" for o in others)
+            notes.append(f" In <Picture {p['picture']}> it is ONLY the one {describe_where(p['position'])}"
+                         f"{', not ' + not_them if not_them else ''}; every detail must belong to that person.")
+        return "".join(notes)
+    out = [(s["tag"], what, about + (only(s) if s["kind"] == "character" else ""))
+           for s in cast["subjects"] if s["kind"] in _DESCRIBE
+           and attached(s["pictures"] + [p["picture"] for p in s.get("placements", [])])
+           for what, about in [_DESCRIBE[s["kind"]]]]
     out += [(f"<Picture {f['picture']}>", f"the {f['which']} frame", _DESCRIBE_FRAME)
             for f in cast["frames"] if attached([f["picture"]])]
     out += [(f"<Picture {u['picture']}>", "a pose", _DESCRIBE_POSE)
@@ -545,6 +563,15 @@ def place_word(position):
     return f"{'in' if 'middle' in position else 'at' if ('top' in position or 'bottom' in position) else 'on'} the {position}"
 
 
+def describe_where(position):
+    """Where to look, for a description: front and back by the camera."""
+    if position == "front":
+        return "in front, nearest the camera"
+    if position == "back":
+        return "behind, further from the camera than the other"
+    return place_word(position)
+
+
 def _easy_role(ref):
     role = ref.get("easy_role")
     return role if role in EASY_ROLES else "character-1"
@@ -577,6 +604,35 @@ def picture_who(ref):
         if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 32 and n not in out:
             out.append(n)
     return out
+
+
+def framed_brief(brief, references, mode):
+    """I2VA, FL2VA and L2VA: "Character 1" becomes who the frame's Who's in it
+    buttons say that is - "the character in front in the first frame".
+
+    Those modes have no Subject definitions, so without this the names reach
+    the writer as bare words and it guesses which person is which. In a
+    piggyback, front to back, the one carried sits higher in the frame and was
+    taken for the one in front (PromptForge, 6 Oct 2026). Names no frame
+    places are left as written."""
+    if mode not in ("I2VA", "FL2VA", "L2VA"):
+        return brief
+    phrase = {}
+    for i, ref in enumerate(_images(references)):
+        given = ref.get("who") if isinstance(ref.get("who"), list) else []
+        who = []
+        for n in given:
+            if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 32 and n not in who:
+                who.append(n)
+        which = "last" if mode == "L2VA" or (mode == "FL2VA" and i == 1) else "first"
+        places = _places(len(who), ref) if len(who) > 1 else ()
+        for j, n in enumerate(who):
+            where = f"{place_word(places[j])} " if j < len(places) else ""
+            phrase.setdefault(n, f"the character {where}in the {which} frame")
+    if not phrase:
+        return brief
+    return re.sub(r"\b(?:character|char)\s*#?\s*(\d+)\b",
+                  lambda m: phrase.get(int(m.group(1)), m.group(0)), str(brief), flags=re.I)
 
 
 def easy_cast(references):

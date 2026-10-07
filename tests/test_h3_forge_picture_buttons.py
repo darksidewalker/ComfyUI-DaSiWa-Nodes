@@ -71,3 +71,36 @@ def test_pose_and_custom_stand_alone():
 def test_who_is_bounded_and_deduplicated():
     assert hp.picture_who(pic("character-1", picture_kinds=["character"], who=[2, 2, 0, 40, True, "3", 5])) == [2, 5]
     assert hp.picture_who(pic("group-123")) == [1, 2, 3]
+
+
+# -- a frame's people, by name (I2VA / FL2VA / L2VA) --------------------------
+
+def frame(path, who=None, axis=None):
+    return {"kind": "image", "role": "keyframe", "path": path, **({"who": who} if who else {}), **({"who_axis": axis} if axis else {})}
+
+
+def test_i2va_piggyback_names_who_is_in_front():
+    # The test that found it: a man carrying a woman on his back, tapped
+    # front to back as 1 then 2.
+    brief = "Character 1 jogs down the beach while Character 2 laughs and holds on."
+    out = hp.framed_brief(brief, [frame("f.png", [1, 2], "z")], "I2VA")
+    assert out == "the character in front in the first frame jogs down the beach while the character behind in the first frame laughs and holds on."
+    assert out in hp.build_user_message(hp.load_bundle(), brief, "I2VA", 5, 5, "Balanced", [frame("f.png", [1, 2], "z")], False)
+
+
+def test_fl2va_and_l2va_name_the_right_frame():
+    assert hp.framed_brief("Character 1 waves.", [frame("a.png"), frame("b.png", [1])], "FL2VA") == "the character in the last frame waves."
+    assert hp.framed_brief("Character 2 sits.", [frame("a.png", [1, 2])], "L2VA") == "the character on the right in the last frame sits."
+
+
+def test_unplaced_names_and_other_modes_are_left_alone():
+    assert hp.framed_brief("Character 3 waits.", [frame("a.png", [1, 2])], "I2VA") == "Character 3 waits."
+    assert hp.framed_brief("Character 1 waits.", [frame("a.png")], "I2VA") == "Character 1 waits."
+    assert hp.framed_brief("Character 1 waits.", [frame("a.png", [1])], "T2VA") == "Character 1 waits."
+
+
+def test_a_seeing_writer_is_told_which_person_to_describe():
+    cast = hp.easy_cast([pic("character-1", picture_kinds=["character"], who=[2, 1], who_axis="z")])
+    rules = dict((tag, rule) for tag, _, rule in hp.describe_targets(cast))
+    assert "it is ONLY the one behind, further from the camera than the other, not the one in front, nearest the camera" in rules["<Subject 1>"]
+    assert "it is ONLY the one in front, nearest the camera, not the one behind" in rules["<Subject 2>"]
