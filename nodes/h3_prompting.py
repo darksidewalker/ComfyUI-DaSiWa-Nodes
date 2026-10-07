@@ -480,29 +480,30 @@ def easy_vision_spec(spec, attached_labels):
     system = spec["system"]
     # Replace the blind rule itself, rather than appending an instruction that
     # contradicts it. Fail clearly if a future export changes this contract.
-    pattern = r"You have not seen the pictures,.*?Never name a medium yourself[^\n]*"
+    # "yourself" since PromptForge's 6 Oct 2026 export; both forms are accepted
+    # so an older bundle still works.
+    pattern = r"You have not seen the pictures(?: yourself)?,.*?Never name a medium yourself[^\n]*"
+    # The reference guide asks each shot to establish "subject appearance and
+    # position, environment and lighting", so a writer that sees the pictures
+    # keeps its shots consistent with Descriptions rather than leaving looks out.
     system, count = re.subn(pattern, (
         "You can see only the attached pictures listed in the message. Use visible evidence "
         "for composition, spatial relationships, lighting and the overall style sentence, "
         "including the medium when visible. Do not infer visual attributes from unattached "
-        "pictures. Keep character appearance out of the other segments: record it only in "
-        "Descriptions. If no visible source establishes a look, use the brief or say the "
-        "video keeps the look of the reference pictures."
+        "pictures. Record each target's appearance in Descriptions, and in the shots keep "
+        "everyone looking as those Descriptions say. If no visible source establishes a look, "
+        "use the brief or say the video keeps the look of the reference pictures."
     ), system, count=1, flags=re.S)
     if count != 1:
         raise ForgeError("bad_contract", "The labelled Forge system prompt's blind rule has changed.")
     system = system.replace(
-        "Nothing about\nhow they look — the pictures carry that —",
-        "Nothing about\nhow they look — visible appearance belongs only in Descriptions —"
-    )
-    system = system.replace(
         "Do not write Retention analysis. The app writes it from your shots.",
-        "Do not write Retention analysis. The app writes it from your shots and Descriptions.\n\n"
+        "Do not write Retention analysis. The app writes it from your shots.\n\n"
         "**Descriptions.** After Music, write one line for each target requested in the message: "
         "its exact tag, a colon, and one or two sentences from attached pictures only. "
         "Follow each target's role; do not invent unseen details or describe unrequested targets. "
         "Describe only what is visible, with no mood words. The app folds these lines into "
-        "Retention analysis (pose lines into Subject definitions), not an extra final field. "
+        "Subject definitions, not an extra final field. "
         "If no targets are requested, write N/A."
     )
     labels = [*spec["segments"], DESCRIBE_SEGMENT]
@@ -532,10 +533,14 @@ def easy_cast(references):
     A picture with no label at all (a saved reference) keeps its own
     reference line.
     """
-    chars, place, style, frames, uses = {}, {"pictures": [], "refs": []}, {"pictures": [], "refs": []}, [], []
+    chars, frames, uses = {}, [], []
+    # `ref_pictures[i]` is the picture `refs[i]` came from, so a typed note can
+    # say which picture it is about.
+    place = {"pictures": [], "refs": [], "ref_pictures": []}
+    style = {"pictures": [], "refs": [], "ref_pictures": []}
 
     def char(num):
-        return chars.setdefault(num, {"pictures": [], "placements": [], "refs": []})
+        return chars.setdefault(num, {"pictures": [], "placements": [], "refs": [], "ref_pictures": []})
 
     for n, ref in enumerate(_images(references), 1):
         if not ref.get("easy_role"):
@@ -549,6 +554,7 @@ def easy_cast(references):
             for num, position in zip(nums, _POSITIONS[len(nums)]):
                 char(num)["placements"].append({"picture": n, "position": position})
                 char(num)["refs"].append(ref)
+                char(num)["ref_pictures"].append(n)
             continue
         if role.startswith("character-"):
             entry = char(int(role.rsplit("-", 1)[1]))
@@ -559,7 +565,8 @@ def easy_cast(references):
             continue
         entry["pictures"].append(n)
         entry["refs"].append(ref)
-    subjects = [{"kind": "character", "name": f"Character {num}", "number": num, **chars[num]} for num in sorted(chars)]
+        entry["ref_pictures"].append(n)
+    subjects =[{"kind": "character", "name": f"Character {num}", "number": num, **chars[num]} for num in sorted(chars)]
     if place["pictures"]:
         subjects.append({"kind": "place", "name": "the place", **place})
     if style["pictures"]:
@@ -628,7 +635,8 @@ def easy_lines(cast, sees_pictures=False):
     if sees_pictures:
         lines[-1] = ("Cast (fixed). The person labelled every picture, and Subject definitions are already written from those labels. "
                      "Use exactly these subjects: add none, merge none, split none. "
-                     "Describe visible reference appearance only in Descriptions; use attached sources only.")
+                     "Record visible reference appearance in Descriptions and keep the shots consistent with it; "
+                     "use attached sources only.")
     for s in cast["subjects"]:
         tail = _tail(s["refs"])
         pics = _picture_list(s["pictures"])
@@ -700,23 +708,109 @@ _MEDIUM = re.compile(r"\b(live[- ]action|photo-?real\w*|realistic|anime|cartoon|
                      r"watercolou?r|oil painting|claymation|stop[- ]motion|cel[- ]shad\w*|film grain|cinematic)\b", re.I)
 
 
+_OPENER = re.compile(r"^\s*keeps the look of the reference pictures\s*[,.;:—–-]?\s*", re.I)
+
+
 def keep_reference_look(description, brief):
-    """The style line names no medium the idea did not: it says the pictures' look."""
+    """The style line names no medium the idea did not: it says the pictures' look.
+
+    Only the clauses that guess go: "Cinematic 2D animation, soft twilight
+    lighting" keeps the light. Replacing the whole sentence lost the lighting
+    a 27B had written along with its guess (PromptForge, 6 Oct 2026).
+    """
     text = str(description or "")
     head, sep, rest = text.partition("[Shot")
-    found = {m.lower() for m in _MEDIUM.findall(head)}
     asked = {m.lower() for m in _MEDIUM.findall(str(brief or ""))}
-    if not sep or not head.strip() or not (found - asked):
+
+    def guesses(part):
+        return any(m.lower() not in asked for m in _MEDIUM.findall(part))
+    if not sep or not head.strip() or not guesses(head):
         return text
-    return "Keeps the look of the reference pictures.\n\n" + sep + rest
+    kept = [p.strip().rstrip(". ") for p in re.split(r"[,;]", _OPENER.sub("", head))]
+    kept = ", ".join(p for p in kept if p and not guesses(p))
+    return f"Keeps the look of the reference pictures{', ' + kept if kept else ''}.\n\n" + sep + rest
+
+
+def _typed_notes(pairs):
+    """What the person typed on these pictures, as one clause: "from <Picture 2>,
+    keep: a braided bun; from <Picture 3>, leave out: the hat". Instructions
+    ("What should this reference contribute?") count as keep."""
+    def clean(value):
+        return re.sub(r"[.;,\s]+$", "", str(value or "").strip())
+    parts = []
+    for picture, ref in pairs:
+        for key, word in (("instructions", "keep"), ("keep", "keep"), ("drop", "leave out")):
+            value = clean(ref.get(key))
+            part = f"from <Picture {picture}>, {word}: {value}"
+            if value and part not in parts:
+                parts.append(part)
+    return "; ".join(parts)
+
+
+_KEEP_LINE = re.compile(r"^\s*(?:[-*•]\s*)?keeps?\s+(<(?:Subject|Picture) \d+>)\s*[:—–-]\s*(.+)$", re.I | re.M)
+
+
+def keep_lines(body):
+    """The writer's Keep lines, by tag: "Keep <Subject 1>: the haircut from
+    <Picture 2>". Its reading of a typed note, which is often an instruction
+    ("reference for her haircut") rather than the thing kept."""
+    out = {}
+    for m in _KEEP_LINE.finditer(str(body or "")):
+        phrase = re.sub(r"^keep(?:s|ing)?\s*:?\s*", "", m.group(2).strip(), flags=re.I)
+        phrase = re.sub(r"[.;,\s]+$", "", phrase)
+        if phrase and len(phrase) <= 500:
+            out[m.group(1)] = phrase
+    return out
+
+
+def _cap(text):
+    return text[:1].upper() + text[1:] if text else text
+
+
+def fix_picture_citations(cast, segments, written=("Subject definitions", "Retention analysis")):
+    """<Picture N> in what the model wrote is for a frame (or a Pose/Custom
+    picture, which has no subject) only: the guide gives everything else a
+    <Subject N>. A 9B wrote "The shot begins from <Picture 3>" for the place
+    picture, which tells H3 to open on it (PromptForge, 6 Oct 2026). The
+    subject a picture belongs to replaces it; a picture of several subjects is
+    not guessed. Returns the warnings."""
+    standalone = {f["picture"] for f in cast["frames"]} | {u["picture"] for u in cast["uses"]}
+    owners = {}
+    for s in cast["subjects"]:
+        for n in dict.fromkeys([*s["pictures"], *(p["picture"] for p in s.get("placements", []))]):
+            owners.setdefault(n, []).append(s["tag"])
+    swapped, shared = {}, []
+
+    def fix(m):
+        n = int(m.group(1))
+        tags = owners.get(n)
+        if n in standalone or not tags:
+            return m.group(0)
+        if len(tags) > 1:
+            if n not in shared:
+                shared.append(n)
+            return m.group(0)
+        swapped[n] = tags[0]
+        return tags[0]
+    for label in list(segments):
+        if label not in written and isinstance(segments[label], str):
+            segments[label] = re.sub(r"<Picture (\d+)>", fix, segments[label])
+    return ([f"<Picture {n}> is not a first or last frame, but the draft cited it like one; it now says {tag}, the subject it shows."
+             for n, tag in swapped.items()]
+            + [f"<Picture {n}> is not a first or last frame, but the draft cites it. It shows more than one subject, so it was left as written; check that line."
+               for n in shared])
 
 
 def easy_segments(cast, segments, description_targets=None):
     """Subject definitions and Retention analysis written in code, into the
-    parsed segments. Returns the warnings (a character no shot names)."""
-    acting = _acting(segments.get("Subject definitions"))
+    parsed segments, in the reference guide's shape: the definition says what
+    the subject looks like (from Descriptions, when the writer saw the
+    pictures), Retention says what is kept. A typed note on a picture makes its
+    subject partially_preserved, in the writer's reading of the note when it
+    gave one (a Keep line). Returns the warnings."""
+    keeps = keep_lines(segments.get("Subject definitions"))
     # Written only when the writer saw the pictures: one or two sentences per
-    # labelled picture, added to its retention line (a pose's to its definition).
+    # labelled picture, folded into its Subject definition.
     description_body = segments.pop(DESCRIBE_SEGMENT, "")
     descriptions = {tag: _sentence(line) for tag, line in _acting(description_body, _DESCRIBE_LABEL).items()
                     if not re.fullmatch(r"N/A[.!]?", line.strip(), re.I)}
@@ -733,6 +827,21 @@ def easy_segments(cast, segments, description_targets=None):
 
     def described(tag):
         return f" As the pictures show: {descriptions[tag]}" if descriptions.get(tag) else ""
+
+    def note_for(tag, pairs):
+        # The writer's reading of a typed note, when it gave one; the note as
+        # typed otherwise. Only where something was typed: the writer never
+        # gets to make a subject partial on its own.
+        typed = _typed_notes(pairs)
+        return keeps.get(tag, typed) if typed else ""
+
+    def define(head, tag, notes, fallback):
+        look = descriptions.get(tag, "")
+        return " ".join(x for x in (f"{head}{'.' if look or notes else fallback}", look, notes and f"{_cap(notes)}.") if x)
+
+    def kept(notes, stock):
+        return f"partially_preserved — {notes}." if notes else f"fully_preserved — {stock}"
+
     shots = _shots(_bare(segments.get("Detailed description"), ["Detailed description", "integrated_multimodal_description"]))
     every = sorted(shots)
     last = every[-1] if every else None
@@ -740,38 +849,39 @@ def easy_segments(cast, segments, description_targets=None):
     for s in cast["subjects"]:
         pics = _picture_list(s["pictures"])
         cited = [n for n in every if s["tag"] in shots[n]]
+        notes = note_for(s["tag"], list(zip(s.get("ref_pictures", []), s["refs"])))
         if s["kind"] == "character":
-            act = _sentence(acting.get(s["tag"]))
-            definitions.append(f"{s['tag']} is the character {_shown_in(s)}; keep their appearance exactly as the pictures show."
-                               + (f" In this scene: {act}" if act else ""))
+            definitions.append(define(f"{s['tag']} is the character {_shown_in(s)}", s["tag"], notes,
+                                      "; keep their appearance exactly as the pictures show."))
             if every and not cited:
                 warnings.append(f"{s['name']} ({s['tag']}) is never named in a shot. Check detailed_description, or say in the idea what {s['name']} does.")
             where = _span(cited) or (_span(every) if every else "every shot")
-            retention.append(f"{s['tag']} (appears in {where}): fully_preserved — hold the same face, hair, build and outfit as its Subject definition in every shot."
-                             + described(s["tag"]))
+            retention.append(f"{s['tag']} (appears in {where}): " + kept(notes, "their face, hair, build and outfit are retained in every shot."))
         elif s["kind"] == "place":
-            definitions.append(f"{s['tag']} is the place in {pics}, where the video happens; keep it as the picture shows.")
-            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): fully_preserved — hold the same layout, landmarks, light and time of day."
-                             + described(s["tag"]))
+            definitions.append(define(f"{s['tag']} is the place in {pics}, where the video happens", s["tag"], notes,
+                                      "; keep it as the picture shows."))
+            retention.append(f"{s['tag']} (appears in {_span(every) if every else 'every shot'}): "
+                             + kept(notes, "its layout, landmarks, light and time of day are retained."))
         else:
-            definitions.append(f"{s['tag']} is the rendering style of {pics}, applied to the whole video and not its content.")
-            retention.append(f"{s['tag']} (applies to every shot): fully_preserved — hold the same rendering throughout." + described(s["tag"]))
+            definitions.append(define(f"{s['tag']} is the rendering style of {pics}, applied to the whole video and not its content",
+                                      s["tag"], notes, "."))
+            retention.append(f"{s['tag']} (applies to every shot): " + kept(notes, "its rendering is retained throughout."))
     for f in cast["frames"]:
         shot = "[Shot 1]" if f["which"] == "first" else (f"[Shot {last}]" if last else "the final shot")
         tag = f"<Picture {f['picture']}>"
-        definitions.append(f"{tag} is the {f['which']} frame of {shot}.")
-        retention.append(f"{tag} ({shot} {f['which']} frame): fully_preserved — the "
-                         f"{'opening' if f['which'] == 'first' else 'closing'} composition, lighting and subject positions." + described(tag))
+        notes = note_for(tag, [(f["picture"], f["ref"])])
+        definitions.append(define(f"{tag} is the {f['which']} frame of {shot}", tag, notes, "."))
+        retention.append(f"{tag} ({shot} {f['which']} frame): " + kept(
+            notes, f"the {'opening' if f['which'] == 'first' else 'closing'} composition, lighting and subject positions are retained."))
     for u in cast["uses"]:
-        said = _sentence(str(u["ref"].get("instructions") or "").strip())
-        said = said[:1].upper() + said[1:]
+        said = _cap(_sentence(str(u["ref"].get("instructions") or "").strip()))
         definitions.append((f"<Picture {u['picture']}> gives the pose only: stance, limb position and gesture, "
                             "not identity, clothing or background." + (f" {said}" if said else "")
                             + described(f"<Picture {u['picture']}>"))
                            if u["which"] == "pose" else f"<Picture {u['picture']}>: {said}")
     segments["Subject definitions"] = "\n\n".join(definitions)
     segments["Retention analysis"] = "\n".join(retention)
-    return warnings
+    return warnings + fix_picture_citations(cast, segments)
 
 
 def music_request_warning(bundle, brief, segments):

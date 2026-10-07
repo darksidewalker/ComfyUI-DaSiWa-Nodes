@@ -78,7 +78,10 @@ def test_seeing_writer_is_asked_for_a_description_of_each_by_kind(monkeypatch, t
     assert "Descriptions" not in sent[0]["user"]
 
 
-def test_descriptions_join_retention_and_the_pose_line():
+def test_descriptions_join_the_definitions_and_the_pose_line():
+    # The reference guide's shape: "<Subject 1> is the young woman in
+    # <Picture 1>, with long dark hair..." - the look is in the definition;
+    # Retention says what is retained.
     from nodes import h3_prompting as hp
     cast = hp.easy_cast(ALL_KINDS)
     segments = {
@@ -91,17 +94,21 @@ def test_descriptions_join_retention_and_the_pose_line():
                          "<Picture 5>: Standing with one hand raised to shade the eyes, facing left."),
     }
     hp.easy_segments(cast, segments)
+    defs = segments["Subject definitions"].split("\n\n")
+    assert defs[0].endswith("<Picture 1>. A woman with short silver hair in a lavender scarf.")
+    assert defs[1].endswith("where the video happens. A lavender field under a low evening sun.")
+    assert defs[2].endswith("not its content. Soft watercolour with thin ink lines.")
+    assert defs[3] == "<Picture 4> is the first frame of [Shot 1]. <Subject 1> stands left of a stone bridge, seen from the waist up."
+    assert defs[4].endswith("As the pictures show: Standing with one hand raised to shade the eyes, facing left.")
     ret = segments["Retention analysis"].splitlines()
-    assert ret[0].endswith("in every shot. As the pictures show: A woman with short silver hair in a lavender scarf.")
-    assert ret[1].endswith("time of day. As the pictures show: A lavender field under a low evening sun.")
-    assert ret[2].endswith("throughout. As the pictures show: Soft watercolour with thin ink lines.")
-    assert ret[3].endswith("subject positions. As the pictures show: <Subject 1> stands left of a stone bridge, seen from the waist up.")
-    assert segments["Subject definitions"].endswith("As the pictures show: Standing with one hand raised to shade the eyes, facing left.")
+    assert ret[0] == "<Subject 1> (appears in [Shot 1]): fully_preserved — their face, hair, build and outfit are retained in every shot."
+    assert "As the pictures show" not in segments["Retention analysis"]
     assert "Descriptions" not in segments
-    # Blind runs write none, and every line is exactly as before.
+    # Blind runs write none: each definition keeps its stock wording.
     segments = {"Subject definitions": "<Subject 1>: waves", "Detailed description": "[Shot 1] <Subject 1> waves."}
     hp.easy_segments(cast, segments)
     assert "As the pictures show" not in segments["Retention analysis"] + segments["Subject definitions"]
+    assert "keep their appearance exactly as the pictures show." in segments["Subject definitions"]
 
 
 def test_acting_lines_run_into_one_paragraph_are_split():
