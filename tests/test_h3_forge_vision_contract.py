@@ -73,8 +73,9 @@ def test_actual_chat_receives_coherent_vision_contract(monkeypatch, tmp_path):
     assert "Never name a medium yourself" not in system
     assert "6. `Descriptions`" in system.split("## Segments to emit")[-1]
     assert "never describe how anyone or anything looks" not in user
-    assert "Silver hair and a blue coat." in result["fields"]["ref"]["retention_analysis"]
-    assert "A stone courtyard." in result["fields"]["ref"]["retention_analysis"]
+    # The reference guide's shape: the definition says what the subject looks like.
+    assert "Silver hair and a blue coat." in result["fields"]["ref"]["subject_definitions"]
+    assert "A stone courtyard." in result["fields"]["ref"]["subject_definitions"]
     assert "Watercolour" in result["fields"]["ref"]["detailed_description"]
     assert set(result["fields"]["ref"]) == {key for _, key in hp._REF_FIELDS}
     assert "Descriptions" not in result["simple_prompt"]
@@ -95,7 +96,7 @@ def test_incomplete_descriptions_warn_without_losing_base_fields(monkeypatch, tm
     assert len(result["fields"]["ref"]) == 6
     assert result["fields"]["ref"]["summary"]
     if descriptions and "Silver hair" in descriptions:
-        assert "Silver hair." in result["fields"]["ref"]["retention_analysis"]
+        assert "Silver hair." in result["fields"]["ref"]["subject_definitions"]
 
 
 def test_partial_attachments_request_only_visible_targets(monkeypatch, tmp_path):
@@ -163,7 +164,7 @@ def test_frame_style_pose_descriptions_fold_into_six_fields(monkeypatch, tmp_pat
     result, _ = run(monkeypatch, tmp_path, references=refs, descriptions=descriptions)
     ref = result["fields"]["ref"]
     for phrase in ("Watercolour with ink lines.", "A wide courtyard opening.", "A close view of the doorway."):
-        assert phrase in ref["retention_analysis"]
+        assert phrase in ref["subject_definitions"]
     assert "One arm raised, facing left." in ref["subject_definitions"]
     assert not result["warnings"]
     assert len(ref) == 6
