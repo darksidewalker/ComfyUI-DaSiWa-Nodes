@@ -82,6 +82,19 @@ function pictureLabels(images) {
   }));
 }
 
+// What the Forge's picture buttons said beyond the single label: kinds that
+// combine ("character,place"), who is in it in tap order ("2,1") and which
+// way that order runs ("y" top to bottom, "z" front to back). Sent only when
+// set, so a picture labelled before the buttons sends exactly what it did.
+const BUTTON_KINDS = ["character", "place", "style", "first-frame", "last-frame", "pose", "custom"];
+export function pictureButtons(item) {
+  const kinds = String(item.forge_kinds || "").split(",").filter(k => BUTTON_KINDS.includes(k));
+  if (!kinds.length) return {};
+  const who = String(item.forge_who || "").split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 32);
+  const axis = item.forge_who_axis === "y" || item.forge_who_axis === "z" ? item.forge_who_axis : "";
+  return { picture_kinds: kinds, who, ...(axis ? { who_axis: axis } : {}) };
+}
+
 export function forgeReferences(items, mode, legacyGroups = {}) {
   const order = { image: 0, video: 1, audio: 2 };
   const sorted = items.filter(item => item.enabled !== false && item.value != null && order[item.type] !== undefined)
@@ -92,7 +105,7 @@ export function forgeReferences(items, mode, legacyGroups = {}) {
       const common = { item, instructions: String(item.forge_instructions || ""), keep: String(item.forge_keep || ""), drop: String(item.forge_drop || "") };
       if (item.type === "image") {
         const role = mode === "REF2VA" && IMAGE_ROLES.includes(item.forge_role) ? item.forge_role : mode === "REF2VA" ? "subject" : "keyframe";
-        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "", ...(labels[item.id] ? { easy_role: labels[item.id] } : {}) };
+        return { ...common, kind: "image", path: typeof item.value === "string" ? item.value : undefined, role, subject_group: role === "subject" ? String(item.forge_subject_group ?? legacyGroups[item.id] ?? "") : "", ...(labels[item.id] ? { easy_role: labels[item.id], ...pictureButtons(item) } : {}) };
       }
       if (item.type === "audio") return { ...common, kind: "audio", duration_seconds: item.duration };
       return { ...common, kind: "video", role: "motion", stream: item.media_mode === "audio" ? "audio" : item.media_mode === "video_audio" || item.audio != null ? "both" : "video", duration_seconds: item.duration };

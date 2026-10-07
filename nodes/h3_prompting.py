@@ -514,7 +514,35 @@ def easy_vision_spec(spec, attached_labels):
     return {**spec, "system": system, "segments": labels}
 
 
-_POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right")}
+# Who stands where in a picture of several characters, in the order they were
+# tapped: left to right by default, or top to bottom ("y": one on a balcony
+# above another) or front to back ("z": a piggyback, someone looking over a
+# shoulder), as the panel's order buttons say.
+_POSITIONS = {2: ("left", "right"), 3: ("left", "middle", "right"),
+              4: ("far left", "middle left", "middle right", "far right")}
+_POSITIONS_Y = {2: ("top", "bottom"), 3: ("top", "middle", "bottom"),
+                4: ("very top", "upper middle", "lower middle", "very bottom")}
+_POSITIONS_Z = {2: ("front", "back"), 3: ("front", "middle row", "back"),
+                4: ("front", "second row", "third row", "back")}
+# What a picture can be. Character, Place, Style and the frames combine
+# ("Characters 1 + 2 and the place behind them"); Pose and Custom stand alone.
+PICTURE_KINDS = ("character", "place", "style", "first-frame", "last-frame", "pose", "custom")
+
+
+def _places(count, ref):
+    axis = ref.get("who_axis")
+    return (_POSITIONS_Y if axis == "y" else _POSITIONS_Z if axis == "z" else _POSITIONS).get(count, ())
+
+
+def place_word(position):
+    """"on the left", "in the middle", "at the top", "in front", "behind"."""
+    if position == "front":
+        return "in front"
+    if position == "back":
+        return "behind"
+    if position.endswith("row"):
+        return f"in the {position}"
+    return f"{'in' if 'middle' in position else 'at' if ('top' in position or 'bottom' in position) else 'on'} the {position}"
 
 
 def _easy_role(ref):
@@ -522,16 +550,50 @@ def _easy_role(ref):
     return role if role in EASY_ROLES else "character-1"
 
 
+def picture_kinds(ref):
+    """What a picture is, as kinds in PICTURE_KINDS order: from the panel's
+    buttons (`picture_kinds`), else from its single label."""
+    given = ref.get("picture_kinds")
+    kinds = {k for k in given if k in PICTURE_KINDS} if isinstance(given, list) else set()
+    if not kinds:
+        role = _easy_role(ref)
+        kinds = {"character" if role.startswith(("character-", "group-")) else role}
+    for alone in ("pose", "custom"):
+        if alone in kinds:
+            return [alone]
+    return [k for k in PICTURE_KINDS if k in kinds]
+
+
+def picture_who(ref):
+    """Who is in a picture, in tap order: the panel's buttons (`who`), else
+    the single label's numbers ("character-2", "group-21")."""
+    role = _easy_role(ref)
+    from_label = ([int(role.rsplit("-", 1)[1])] if role.startswith("character-")
+                  else [int(d) for d in role.split("-", 1)[1]] if role.startswith("group-") else [])
+    given = ref.get("who")
+    nums = given if isinstance(given, list) and (isinstance(ref.get("picture_kinds"), list) or not from_label) else from_label
+    out = []
+    for n in nums:
+        if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 32 and n not in out:
+            out.append(n)
+    return out
+
+
 def easy_cast(references):
     """Subjects numbered characters first, then the place, then the style.
 
-    Returns {"subjects": [{tag, kind, name, number, pictures, placements, refs}],
-    "frames": [{picture, which, ref}], "uses": [{picture, which, ref}]};
+    Returns {"subjects": [{tag, kind, name, number, pictures, placements, in_frames, refs}],
+    "frames": [{picture, which, ref, who}], "uses": [{picture, which, ref}]};
     picture numbers count images only. A character's `pictures` are its own;
-    `placements` are group pictures it shares, as [{picture, position}].
+    `placements` are pictures it shares with other characters, as
+    [{picture, position}]; `in_frames` are first or last frames it stands in.
     `uses` are Pose and Custom pictures: no subject, only what they lend.
     A picture with no label at all (a saved reference) keeps its own
     reference line.
+
+    A picture can be several kinds at once (`picture_kinds`): Characters 1 + 2
+    and the place behind them, a character who is also the first frame. Its
+    typed notes belong to its first kind; the others take the picture whole.
     """
     chars, frames, uses = {}, [], []
     # `ref_pictures[i]` is the picture `refs[i]` came from, so a typed note can
@@ -540,32 +602,47 @@ def easy_cast(references):
     style = {"pictures": [], "refs": [], "ref_pictures": []}
 
     def char(num):
-        return chars.setdefault(num, {"pictures": [], "placements": [], "refs": [], "ref_pictures": []})
+        return chars.setdefault(num, {"pictures": [], "placements": [], "in_frames": [], "refs": [], "ref_pictures": []})
 
     for n, ref in enumerate(_images(references), 1):
-        if not ref.get("easy_role"):
+        if not ref.get("easy_role") and not isinstance(ref.get("picture_kinds"), list):
             continue
-        role = _easy_role(ref)
-        if role in ("pose", "custom"):
-            uses.append({"picture": n, "which": role, "ref": ref})
+        kinds, tapped = picture_kinds(ref), picture_who(ref)
+        if kinds[0] in ("pose", "custom"):
+            uses.append({"picture": n, "which": kinds[0], "ref": ref})
             continue
-        if role.startswith("group-"):
-            nums = [int(d) for d in role.split("-", 1)[1]]
-            for num, position in zip(nums, _POSITIONS[len(nums)]):
-                char(num)["placements"].append({"picture": n, "position": position})
-                char(num)["refs"].append(ref)
-                char(num)["ref_pictures"].append(n)
-            continue
-        if role.startswith("character-"):
-            entry = char(int(role.rsplit("-", 1)[1]))
-        elif role in ("place", "style"):
-            entry = place if role == "place" else style
-        else:
-            frames.append({"picture": n, "which": "first" if role == "first-frame" else "last", "ref": ref})
-            continue
-        entry["pictures"].append(n)
-        entry["refs"].append(ref)
-        entry["ref_pictures"].append(n)
+        plain = {**ref, "instructions": "", "keep": "", "drop": ""}
+
+        def own(kind):
+            return ref if kinds[0] == kind else plain
+        if "character" in kinds:
+            if len(tapped) == 1:
+                entry = char(tapped[0])
+                entry["pictures"].append(n)
+                entry["refs"].append(ref)
+                entry["ref_pictures"].append(n)
+            else:
+                for num, position in zip(tapped, _places(len(tapped), ref)):
+                    char(num)["placements"].append({"picture": n, "position": position})
+                    char(num)["refs"].append(ref)
+                    char(num)["ref_pictures"].append(n)
+        for kind, entry in (("place", place), ("style", style)):
+            if kind in kinds:
+                entry["pictures"].append(n)
+                entry["refs"].append(own(kind))
+                entry["ref_pictures"].append(n)
+        for which in ("first", "last"):
+            if f"{which}-frame" in kinds:
+                # A character picture that is also a frame already names its
+                # people as that picture; they are not placed in it twice.
+                frames.append({"picture": n, "which": which, "ref": own(f"{which}-frame"),
+                               "who": [] if "character" in kinds else tapped})
+    # Who stands in a first or last frame, from its Who's in it buttons.
+    for f in frames:
+        places = _places(len(f["who"]), f["ref"]) if len(f["who"]) > 1 else ()
+        for i, num in enumerate(f["who"]):
+            char(num)["in_frames"].append({"picture": f["picture"], "which": f["which"],
+                                           **({"position": places[i]} if i < len(places) else {})})
     subjects =[{"kind": "character", "name": f"Character {num}", "number": num, **chars[num]} for num in sorted(chars)]
     if place["pictures"]:
         subjects.append({"kind": "place", "name": "the place", **place})
@@ -585,11 +662,14 @@ def _picture_list(pictures):
 
 
 def _shown_in(s):
-    """Where a subject is shown: "in <Picture 1>, and on the left in <Picture 3>"."""
+    """Where a subject is shown: "in <Picture 1>, and on the left in <Picture 3>
+    and in front in the first frame <Picture 4>"."""
     own = f"in {_picture_list(s['pictures'])}" if s["pictures"] else ""
-    shared = _join_and([f"{'in' if p['position'] == 'middle' else 'on'} the {p['position']} in <Picture {p['picture']}>"
-                        for p in s.get("placements", [])])
-    return f"{own}, and {shared}" if own and shared else own or shared
+    shared = _join_and([f"{place_word(p['position'])} in <Picture {p['picture']}>" for p in s.get("placements", [])])
+    framed = _join_and([f"{place_word(f['position']) + ' in' if f.get('position') else 'in'} the {f['which']} frame <Picture {f['picture']}>"
+                        for f in s.get("in_frames", [])])
+    rest = _join_and([x for x in (shared, framed) if x])
+    return f"{own}, and {rest}" if own and rest else own or rest
 
 
 def easy_brief(brief, cast):

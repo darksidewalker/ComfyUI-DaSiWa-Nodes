@@ -39,11 +39,15 @@ const briefs = new Map(); // node id -> last brief, for a reroll after closing
 const shotTexts = new WeakMap(); // node -> what was typed in each shot box
 const HISTORY_KEY = "dasiwaH3ForgeHistory";
 const GROUPS_KEY = "dasiwaH3ForgeSubjectGroups";
-// A REF2VA picture's label is picked in two steps: what it is, then - for
-// characters only - which one, or which ones left to right. The saved value
-// is one string ("character-2", "group-21", "place"), which is what the
-// server reads.
-const PICTURE_KINDS = [["character", "Character"], ["group", "Several characters"], ["place", "Place"], ["style", "Style"], ["first-frame", "First frame"], ["last-frame", "Last frame"], ["pose", "Pose"], ["custom", "Custom"]];
+// A REF2VA picture's label: what it is, as buttons that combine (Character,
+// Place, Style and the frames; Pose and Custom stand alone), and who is in it,
+// numbers tapped in order. The saved forge_label is still one string
+// ("character-2", "group-21", "place"), the first kind, which older readers
+// understand; forge_kinds / forge_who / forge_who_axis carry the rest only
+// when that one string cannot say it.
+const KIND_BUTTONS = [["character", "Character"], ["place", "Place"], ["style", "Style"], ["first-frame", "First frame"], ["last-frame", "Last frame"], ["pose", "Pose"], ["custom", "Custom"]];
+const KIND_ORDER = KIND_BUTTONS.map(([k]) => k);
+const ALONE_KINDS = new Set(["pose", "custom"]);
 const PICTURE_WHO = {
   character: Array.from({ length: 32 }, (_, i) => [`character-${i + 1}`, `Character ${i + 1}`]),
   group: [["group-12", "1 + 2 (1 on the left)"], ["group-21", "2 + 1 (2 on the left)"], ["group-13", "1 + 3 (1 on the left)"], ["group-31", "3 + 1 (3 on the left)"],
@@ -51,7 +55,30 @@ const PICTURE_WHO = {
 };
 // Keep aligned with nodes/h3_prompting.py EASY_ROLES.
 const EASY_ROLES = new Set([...PICTURE_WHO.character.map(([role]) => role), ...PICTURE_WHO.group.map(([role]) => role), "place", "style", "first-frame", "last-frame", "pose", "custom"]);
-const pictureKind = (label = "") => label.startsWith("character-") ? "character" : label.startsWith("group-") ? "group" : label;
+const pictureKind = (label = "") => label.startsWith("character-") || label.startsWith("group-") ? "character" : label;
+const GROUP_LABELS = new Set(PICTURE_WHO.group.map(([value]) => value));
+// A reference's kinds and people: the buttons' own values, else its label.
+function kindsOf(ref) {
+  return Array.isArray(ref.picture_kinds) && ref.picture_kinds.length ? ref.picture_kinds : [pictureKind(ref.easy_role || "character-1")];
+}
+function whoOf(ref) {
+  if (Array.isArray(ref.who)) return ref.who;
+  const label = ref.easy_role || "";
+  return label.startsWith("character-") ? [Number(label.slice(10))] : label.startsWith("group-") ? [...label.slice(6)].map(Number) : [];
+}
+// The single label for the first kind: a character's number, or a listed
+// group when the order is left to right.
+function primaryLabel(kinds, who, axis) {
+  if (kinds[0] !== "character") return kinds[0];
+  const group = `group-${who.join("")}`;
+  return who.length > 1 && !axis && GROUP_LABELS.has(group) ? group : `character-${who[0] || 1}`;
+}
+// True when that label alone says everything the buttons do.
+function describesAlone(label, kinds, who, axis) {
+  if (kinds.length !== 1 || axis) return false;
+  if (kinds[0] === "character") return who.length === 1 ? label === `character-${who[0]}` : label === `group-${who.join("")}`;
+  return !who.length;
+}
 const INSTRUCTIONS_HINT = {
   pose: "Pose only; identity, clothes and background stay unchanged. Add details if needed.",
   custom: "Describe what to use from this image (required).",
@@ -111,8 +138,13 @@ function installStyles() {
   .ds-forge .status.error{color:#ff8a8a}
   .ds-forge .muted{color:#8fa3b2;font-size:12px}
   .ds-forge .refs{display:flex;flex-direction:column;gap:6px}
-  .ds-forge .ref{display:grid;grid-template-columns:48px 80px minmax(130px,auto) 1fr;gap:8px;align-items:center}
-  .ds-forge .pick{display:flex;flex-direction:column;gap:4px}
+  .ds-forge .ref{display:grid;grid-template-columns:48px 70px minmax(190px,250px) 1fr;gap:8px;align-items:center}
+  .ds-forge .pick{display:flex;flex-direction:column;gap:5px}
+  .ds-forge .kinds,.ds-forge .who,.ds-forge .who-axis{display:flex;flex-wrap:wrap;gap:3px;align-items:center}
+  .ds-forge .kinds button,.ds-forge .who button,.ds-forge .who-axis button{padding:2px 8px;font-size:11px;border-radius:999px;position:relative}
+  .ds-forge .kinds button[aria-pressed=true],.ds-forge .who button[aria-pressed=true],.ds-forge .who-axis button[aria-pressed=true]{background:rgba(151,91,255,.3);border-color:rgba(177,128,255,.8);color:#fff}
+  .ds-forge .who button[data-order]:not([data-order=""])::after{content:attr(data-order);position:absolute;top:-6px;right:-5px;font-size:9px;line-height:12px;min-width:12px;border-radius:999px;background:#b180ff;color:#0d1217;text-align:center}
+  .ds-forge .who-label{font-size:10px;color:#8fa3b2;margin-right:2px}
   .ds-forge .ref-notes textarea{min-height:48px;font-size:12px}
   .ds-forge .ref-notes details{font-size:11px;color:#9fb3c2}
   .ds-forge .ref-notes details input{margin-top:4px}
@@ -219,40 +251,76 @@ async function open(node) {
       let roleCell;
       let instructions = null;
       if (ref.kind === "image" && mode === "REF2VA" && ref.item) {
-        const save = value => {
-          ref.easy_role = value;
-          const role = labelRole(value);
+        // What the picture is (kinds that combine: Characters 1 + 2 and the
+        // place behind them) and who is in it, tapped in order. A picture the
+        // old single label still describes is saved as that label alone, so
+        // drafts made before the buttons keep matching.
+        let kinds = kindsOf(ref), who = whoOf(ref), axis = ref.who_axis || "";
+        const takesWho = () => kinds.some(k => k === "character" || k.endsWith("-frame"));
+        const kindButtons = el("span", { className: "kinds", role: "group", title: "What this picture is. Character, Place, Style and the frames combine; Pose and Custom stand alone." });
+        kindButtons.setAttribute("aria-label", `${name} is`);
+        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in it. Tap in order: left to right, unless the order below says otherwise. Pictures with the same Character number are one character." });
+        whoButtons.setAttribute("aria-label", `${name} who is in it`);
+        const axisButtons = el("span", { className: "who-axis", role: "group", title: "Which way the tap order runs." });
+        axisButtons.setAttribute("aria-label", `${name} order`);
+        const paint = () => {
+          for (const b of kindButtons.querySelectorAll("button")) b.setAttribute("aria-pressed", String(kinds.includes(b.dataset.kind)));
+          const most = Math.max(4, refs.filter(r => r.kind === "image").length, ...refs.flatMap(r => whoOf(r)), ...who);
+          whoButtons.replaceChildren(el("span", { className: "who-label", textContent: "Who" }), ...Array.from({ length: Math.min(most, 32) }, (_, i) => {
+            const n = i + 1, at = who.indexOf(n);
+            const b = el("button", { type: "button", textContent: String(n), onclick: () => tapWho(n) });
+            b.setAttribute("aria-pressed", String(at >= 0));
+            b.dataset.order = who.length > 1 && at >= 0 ? String(at + 1) : "";
+            return b;
+          }));
+          whoButtons.hidden = !takesWho();
+          for (const b of axisButtons.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.axis === axis));
+          axisButtons.hidden = !takesWho() || who.length < 2;
+        };
+        const save = () => {
+          const label = primaryLabel(kinds, who, axis);
+          const simple = describesAlone(label, kinds, who, axis);
+          ref.easy_role = label;
+          if (simple) { delete ref.picture_kinds; delete ref.who; delete ref.who_axis; }
+          else { ref.picture_kinds = [...kinds]; ref.who = [...who]; if (axis) ref.who_axis = axis; else delete ref.who_axis; }
+          const role = labelRole(label);
           ref.role = role.forge_role; ref.subject_group = role.forge_subject_group;
-          persistReference(ref, { forge_label: value, ...role });
+          persistReference(ref, { forge_label: label, ...role, forge_kinds: simple ? "" : kinds.join(","), forge_who: simple ? "" : who.join(","), forge_who_axis: simple ? "" : axis });
+          paint();
           syncVisionUI();
-          if (instructions) instructions.placeholder = INSTRUCTIONS_HINT[value] || "What should this reference contribute? (optional)";
+          if (instructions) instructions.placeholder = INSTRUCTIONS_HINT[label] || "What should this reference contribute? (optional)";
           node.graph?.setDirtyCanvas(true, true);
         };
-        const kindSel = el("select", { title: "What this picture is." });
-        kindSel.setAttribute("aria-label", `${name} label`);
-        for (const [value, label] of PICTURE_KINDS) kindSel.append(el("option", { value, textContent: label, selected: pictureKind(ref.easy_role) === value }));
-        const whoSel = el("select", { title: "Which character. Pictures with the same Character number are one character." });
-        whoSel.setAttribute("aria-label", `${name} character`);
-        const fillWho = () => {
-          const kind = pictureKind(ref.easy_role);
-          const maxCharacter = Math.max(4, refs.filter(r => r.kind === "image").length, ...refs.map(r => Number(r.easy_role?.match(/^character-(\d+)$/)?.[1]) || 0));
-          const choices = kind === "character" ? PICTURE_WHO.character.slice(0, maxCharacter) : PICTURE_WHO[kind];
-          whoSel.replaceChildren(...(choices || []).map(([value, label]) => el("option", { value, textContent: label, selected: value === ref.easy_role })));
-          whoSel.hidden = !choices;
-        };
-        // Switching to Character picks a number no other picture uses.
+        // Character picks a number no other picture uses.
         const freeCharacter = () => {
-          const used = new Set(refs.filter(r => r !== ref && r.easy_role?.startsWith("character-")).map(r => r.easy_role));
-          return PICTURE_WHO.character.find(([value]) => !used.has(value))?.[0] || "character-1";
+          const used = new Set(refs.filter(r => r !== ref && kindsOf(r).includes("character")).flatMap(r => whoOf(r)));
+          let n = 1; while (used.has(n) && n < 32) n += 1; return n;
         };
-        kindSel.onchange = e => {
-          const kind = e.target.value;
-          save(kind === "character" ? freeCharacter() : PICTURE_WHO[kind]?.[0][0] || kind);
-          fillWho();
+        const tapKind = k => {
+          if (ALONE_KINDS.has(k)) kinds = [k];
+          else if (kinds.includes(k)) { if (kinds.length === 1) return; kinds = kinds.filter(x => x !== k); }
+          else kinds = KIND_ORDER.filter(x => x === k || (kinds.includes(x) && !ALONE_KINDS.has(x)));
+          if (kinds.includes("character") && !who.length) who = [freeCharacter()];
+          if (!takesWho()) { who = []; axis = ""; }
+          save();
         };
-        whoSel.onchange = e => save(e.target.value);
-        fillWho();
-        roleCell = el("span", { className: "pick" }, kindSel, whoSel);
+        // A tap adds that number at the end; a second tap takes it out. A
+        // character picture always shows somebody, so its last one stays.
+        const tapWho = n => {
+          if (who.includes(n)) { if (kinds.includes("character") && who.length === 1) return; who = who.filter(x => x !== n); }
+          else who = [...who, n];
+          if (who.length < 2) axis = "";
+          save();
+        };
+        for (const [k, text] of KIND_BUTTONS) kindButtons.append(el("button", { type: "button", textContent: text, onclick: () => tapKind(k) }));
+        kindButtons.querySelectorAll("button").forEach((b, i) => { b.dataset.kind = KIND_BUTTONS[i][0]; });
+        for (const [value, text] of [["", "left → right"], ["y", "top → bottom"], ["z", "front → back"]]) {
+          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = value; save(); } });
+          b.dataset.axis = value;
+          axisButtons.append(b);
+        }
+        paint();
+        roleCell = el("span", { className: "pick" }, kindButtons, whoButtons, axisButtons);
       } else {
         roleCell = el("span", { className: "muted", textContent: ref.saved_reference ? "saved reference" : ref.kind === "image" ? BASE_ROLE[mode] || "frame" : ref.kind === "video" ? `motion · ${ref.stream}` : "voice" });
       }
@@ -276,7 +344,7 @@ async function open(node) {
     if (labelled) {
       box.append(el("span", { className: "muted", textContent: continuity
         ? "Pictures with the same Character number are one character."
-        : 'Pictures with the same Character number are one character. A picture with two or three of them: pick "Several characters" and who stands where, left to right. In the idea, write "Character 1", "Character 2" and "the place". Image-only labelled drafts need no writer vision; mixed media and saved references use the full REF2VA path.' }));
+        : 'Pictures with the same Character number are one character. A picture with several people: tap each number in order, left to right (or pick top to bottom, front to back). A picture can be more than one thing: Character and Place for people with the background behind them, or a character who is also the first frame. In the idea, write "Character 1", "Character 2" and "the place". Image-only labelled drafts need no writer vision; mixed media and saved references use the full REF2VA path.' }));
     }
     box.append(visionChoice, visionHint, normalReferenceHint);
   } else if (mode !== "T2VA" && !continuity) {
@@ -337,7 +405,7 @@ async function open(node) {
     const rows = shotRows().map(r => r.trim());
     return JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r), ...(rows.some(Boolean) ? [rows] : [])]);
   };
-  const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea"));
+  const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea, .refs .pick button"));
   const controls = [brief, modelSel, detail, creativity, shots, structured, seePictures, ...referenceControls];
   const setControlsDisabled = disabled => {
     controls.forEach(c => { c.disabled = disabled; });

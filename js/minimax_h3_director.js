@@ -581,7 +581,7 @@ function install(node) {
   }
   const forgeContextKey = () => JSON.stringify([mode(), Number(node.widgets?.find(w => w.name === "duration")?.value), continuityContext(), activePrompt(),
     Number(widthWidget?.value), Number(heightWidget?.value), Number(node.widgets?.find(w => w.name === "frame_rate")?.value), ["external_width_overwrite", "external_height_overwrite"].map(name => externalCanvasInput(name)?.link ?? null),
-    state.items.map(({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group, forge_label }) => ({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group, forge_label })), state.refmods || [], node.properties?.dasiwaH3ForgeSubjectGroups || {}, builderState.ref]);
+    state.items.map(({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group, forge_label, forge_kinds, forge_who, forge_who_axis }) => ({ id, type, value, enabled, slot, audioSlot, start, duration, trim_start, trim_end, media_mode, prompt, order, forge_role, forge_instructions, forge_keep, forge_drop, forge_subject_group, forge_label, forge_kinds, forge_who, forge_who_axis })), state.refmods || [], node.properties?.dasiwaH3ForgeSubjectGroups || {}, builderState.ref]);
   async function refreshContinuity() {
     const session = state.continuity?.session;
     if (!session || continuityLoading || nodeRemoved) return;
@@ -1209,7 +1209,7 @@ function install(node) {
   // --- Reference-pack save/load ---
   const REFERENCE_PACK_MARKER = "dasiwa_minimax_h3_reference_pack";
   const VALID_MODES = ["T2VA", "I2VA", "FL2VA", "L2VA", "REF2VA", "Image Inpaint"];
-  const PORTABLE_ITEM_KEYS = ["type", "value", "media_mode", "audioSlot", "trim_start", "trim_end", "duration", "source_duration", "source_width", "source_height", "forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group", "forge_label"];
+  const PORTABLE_ITEM_KEYS = ["type", "value", "media_mode", "audioSlot", "trim_start", "trim_end", "duration", "source_duration", "source_width", "source_height", "forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group", "forge_label", "forge_kinds", "forge_who", "forge_who_axis"];
   const toPortableItem = item => { const out = {}; for (const key of PORTABLE_ITEM_KEYS) if (item[key] !== undefined) out[key] = item[key]; return out; };
   const countOf = (items, type) => items.filter(i => i.type === type).length;
   // Counts by which lane an item actually occupies (accounting for A-mode and
@@ -1904,6 +1904,9 @@ function install(node) {
       const item = state.items.find(i => i.id === id);
       if (!item) return false;
       for (const key of ["forge_role", "forge_instructions", "forge_keep", "forge_drop", "forge_subject_group", "forge_label"]) if (typeof patch[key] === "string") item[key] = patch[key];
+      // The picture buttons' extras: empty means the single label says it all,
+      // and is removed rather than stored, so the item reads as it always did.
+      for (const key of ["forge_kinds", "forge_who", "forge_who_axis"]) if (typeof patch[key] === "string") { if (patch[key]) item[key] = patch[key]; else delete item[key]; }
       emit(); return true;
     },
     existingDefinitions: () => isContinuing() ? node.__dasiwaH3Continuity.existingDefinitions() : { text: "", warning: "" },
