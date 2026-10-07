@@ -1,4 +1,5 @@
 if __package__:
+    from server import PromptServer
     from .nodes.nodes_scaling import DaSiWa_ResolutionScaleCalculator, DaSiWa_TorchResize
     from .nodes.nodes_status_switch import DaSiWa_NodeStatusSwitch
     from .nodes.nodes_rtx_upscaler_refiner import DaSiWa_RTX_UpscalerRefiner
@@ -17,7 +18,7 @@ if __package__:
     from .nodes.nodes_minimax_h3_director_guide import MiniMaxH3DirectorGuide
     from .nodes.h3_continuity.nodes import DaSiWaH3ContinuityAppend, DaSiWaH3ContinuityPublish
     from .nodes.h3_continuity import routes as continuity_routes
-    continuity_routes.register_routes(__import__("server").PromptServer.instance)
+    continuity_routes.register_routes(PromptServer.instance)
     from .nodes.nodes_minimax_h3_cache import MiniMaxH3Cache
     from .nodes.nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
 
@@ -26,7 +27,7 @@ if __package__:
     from .nodes import input_images  # registers /dasiwa/input-images route
     from .nodes import h3_forge  # registers /dasiwa/h3/forge routes
     from .nodes import refmod_library
-    refmod_library.register_routes(__import__("server").PromptServer.instance)
+    refmod_library.register_routes(PromptServer.instance)
     from .nodes import lora_info  # registers /dasiwa/ltx2/lorainfo + /dasiwa/ltx2/loraimg
     from .nodes.helper_logging import log_startup_summary
 

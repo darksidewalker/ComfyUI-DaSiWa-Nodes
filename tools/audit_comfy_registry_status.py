@@ -17,9 +17,12 @@ def _finding_counts(status_reason):
         return {}
     try:
         reason = json.loads(status_reason)
-        history = reason.get("statusHistory", [])
-        message = history[-1].get("message", "") if history else ""
-        findings = json.loads(message)
+        if isinstance(reason, list):
+            findings = reason
+        else:
+            history = reason.get("statusHistory", [])
+            message = history[-1].get("message", "") if history else ""
+            findings = json.loads(message)
     except (IndexError, json.JSONDecodeError, TypeError, AttributeError):
         return {}
     if not isinstance(findings, list):

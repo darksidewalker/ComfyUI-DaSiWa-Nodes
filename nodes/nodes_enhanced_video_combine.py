@@ -55,9 +55,12 @@ def _preview_source_path(filename, subfolder, output_type):
     output_dir = folder_paths.get_directory_by_type("output")
     if not output_dir:
         return None
-    root = os.path.abspath(output_dir)
-    candidate = os.path.abspath(os.path.join(root, subfolder, filename))
-    if os.path.commonpath((candidate, root)) != root or not os.path.isfile(candidate):
+    try:
+        root = os.path.realpath(output_dir)
+        candidate = os.path.realpath(os.path.join(root, subfolder, filename))
+        if os.path.commonpath((candidate, root)) != root or not os.path.isfile(candidate):
+            return None
+    except (OSError, ValueError):
         return None
     return candidate
 

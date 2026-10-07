@@ -404,7 +404,16 @@ class MiniMaxH3Director:
         guide["frame_rate"] = frame_rate
         normalize_guide(guide)
         selected_model = ref2va_model if mode == "REF2VA" else fl2va_model
-        log_dasiwa("MiniMax H3 Director", f"mode={mode}; requested_model={'ref2va_model' if mode == 'REF2VA' else 'fl2va_model'}; passed_model={_describe_model(selected_model)}; canvas={width}x{height}; frames={length}; fps={frame_rate}; refs=images:{len(ref_images)},videos:{len(ref_videos)},video_audio:{len(ref_video_audios)},audio:{len(ref_audios)}; timeline_items={len(items)}")
+        log_dasiwa(
+            "MiniMax H3 Director",
+            f"mode={mode}; "
+            f"requested_model={'ref2va_model' if mode == 'REF2VA' else 'fl2va_model'}; "
+            f"passed_model={_describe_model(selected_model)}; "
+            f"canvas={width}x{height}; frames={length}; fps={frame_rate}; "
+            f"refs=images:{len(ref_images)},videos:{len(ref_videos)},"
+            f"video_audio:{len(ref_video_audios)},audio:{len(ref_audios)}; "
+            f"timeline_items={len(items)}",
+        )
         return guide, length, resolved, int(width), int(height), selected_model, mode in BASE_MODES or mode == "Image Inpaint", mode == "Image Inpaint", frame_rate
 
 

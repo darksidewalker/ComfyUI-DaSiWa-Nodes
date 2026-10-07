@@ -8,6 +8,7 @@ Civitai lookup by sha256, cached next to the nodepack in lorainfo/<sha256>.json.
 import hashlib
 import json
 import os
+from pathlib import Path, PureWindowsPath
 
 import folder_paths
 import aiohttp
@@ -191,11 +192,40 @@ def fetch_civitai(url: str):
         return None
 
 
-def _local_image_url(lora_name: str, path: str):
-    """URL of a sidecar image next to the LoRA, or None."""
+def _inside_lora_roots(path):
+    """Resolve symlinks before checking the operator-configured LoRA roots."""
+    try:
+        target = Path(path).resolve()
+        return any(target.is_relative_to(Path(root).resolve())
+                   for root in folder_paths.get_folder_paths("loras"))
+    except (OSError, ValueError, RuntimeError):
+        return False
+
+
+def _lora_path(lora_name):
+    if not isinstance(lora_name, str) or not lora_name or "\x00" in lora_name:
+        return None
+    relative = PureWindowsPath(lora_name)
+    if relative.drive or relative.root or ".." in relative.parts:
+        return None
+    path = folder_paths.get_full_path("loras", lora_name)
+    return path if path and _inside_lora_roots(path) and os.path.isfile(path) else None
+
+
+def _local_image_path(path):
+    if not path or not _inside_lora_roots(path):
+        return None
     for ext in ("jpg", "jpeg", "png", "webp"):
-        if os.path.isfile(f"{os.path.splitext(path)[0]}.{ext}"):
-            return f"/dasiwa/ltx2/loraimg?lora={lora_name}"
+        candidate = f"{os.path.splitext(path)[0]}.{ext}"
+        if _inside_lora_roots(candidate) and os.path.isfile(candidate):
+            return os.path.realpath(candidate)
+    return None
+
+
+def _local_image_url(lora_name: str, path: str):
+    """URL of a bounded sidecar image next to the LoRA, or None."""
+    if _local_image_path(path):
+        return f"/dasiwa/ltx2/loraimg?lora={lora_name}"
     return None
 
 
@@ -206,8 +236,8 @@ async def lora_info(request):
     import asyncio
     lora_name = request.rel_url.query.get("lora", "")
     refresh = request.rel_url.query.get("refresh") in ("1", "true")
-    path = folder_paths.get_full_path("loras", lora_name)
-    if not path or not os.path.isfile(path):
+    path = _lora_path(lora_name)
+    if path is None:
         return aiohttp.web.json_response({"status": 404, "error": "LoRA not found"}, status=404)
 
     sha = sha256_file(path)
@@ -270,10 +300,7 @@ async def lora_info(request):
 async def lora_img(request):
     """Sidecar image next to the LoRA file (same basename, .jpg/.png/.jpeg/.webp)."""
     lora_name = request.rel_url.query.get("lora", "")
-    path = folder_paths.get_full_path("loras", lora_name)
-    for ext in ("jpg", "jpeg", "png", "webp"):
-        try_path = f"{os.path.splitext(path)[0]}.{ext}" if path else None
-        if try_path and os.path.isfile(try_path):
-            from aiohttp.web import FileResponse  # lazy: test stubs aiohttp.web
-            return FileResponse(try_path)
+    path = _local_image_path(_lora_path(lora_name))
+    if path:
+        return aiohttp.web.FileResponse(path)
     return aiohttp.web.json_response({"status": 404, "error": "no image next to LoRA"}, status=404)

@@ -22,7 +22,9 @@ import json
 import math
 import os
 import re
+import subprocess
 import threading
+import time
 from functools import wraps
 from urllib import error as urlerror
 from urllib import parse as urlparse
@@ -302,7 +304,7 @@ def _generate(body, input_directory, release_memory, stop):
 
     if kind != "local":
         _FORGE_LOADED.add((backend, name))
-    started = __import__("time").time()
+    started = time.time()
     try:
         try:
             raw, stats = run(images)
@@ -332,7 +334,7 @@ def _generate(body, input_directory, release_memory, stop):
         if unloaded:
             _FORGE_LOADED.discard((backend, name))
 
-    stats["seconds"] = round(__import__("time").time() - started, 1)
+    stats["seconds"] = round(time.time() - started, 1)
     # Parse the required base first. Optional vision enrichment warns rather
     # than discarding an otherwise usable legacy/model response.
     segments = parse_segments(raw, spec["segments"])
@@ -503,7 +505,7 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         from .h3_continuity.media import ensure_tail_thumbnails
         try:
             filenames = ensure_tail_thumbnails(metadata, directory)
-        except (OSError, ValueError, RuntimeError, __import__("subprocess").SubprocessError) as exc:
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             filenames = []
             warnings.append(f"Tail frames unavailable; text context only: {exc}")
         root = os.path.realpath(directory)
@@ -524,7 +526,7 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         release_memory()
     if kind != "local":
         _FORGE_LOADED.add((backend, name))
-    started = __import__("time").time()
+    started = time.time()
     try:
         if cancel is not None and cancel.is_set():
             raise ForgeError("cancelled", CANCELLED)
@@ -551,7 +553,7 @@ def generate_continuity_draft(metadata, idea, directory, model, settings,
         unloaded = backend.unload(name) if kind != "local" else True
         if unloaded:
             _FORGE_LOADED.discard((backend, name))
-    stats["seconds"] = round(__import__("time").time() - started, 1)
+    stats["seconds"] = round(time.time() - started, 1)
     prompt = _THINK.sub("", str(raw or "")).strip()
     prompt = re.sub(r"^```[^\n]*\n|\n```$", "", prompt).strip()
     fields = {}

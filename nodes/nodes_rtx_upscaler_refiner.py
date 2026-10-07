@@ -23,8 +23,7 @@ except ImportError:
 # Optional: ComfyUI model_management for soft-empty-cache
 _model_management = None
 try:
-    import importlib
-    _model_management = importlib.import_module("model_management")
+    from comfy import model_management as _model_management
 except Exception:
     pass
 

@@ -4,6 +4,7 @@ import base64
 import io
 import json
 import os
+import random
 import re
 import threading
 import time
@@ -682,7 +683,7 @@ class Local:
                         max_tokens=NUM_PREDICT, temperature=temperature, top_p=top_p, stream=True,
                         # llama-cpp-python samples with a fixed seed unless given
                         # one, so Regenerate would return the same draft every time.
-                        seed=__import__("random").randrange(2**31)):
+                        seed=random.randrange(2**31)):
                     if cancel is not None and cancel.is_set():
                         raise ForgeError("cancelled", CANCELLED)
                     parts.append(((chunk.get("choices") or [{}])[0].get("delta") or {}).get("content") or "")
