@@ -22,6 +22,7 @@ if __package__:
     from .nodes.nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
 
     from .nodes import nodes_system_monitor
+    from .nodes import about  # registers /dasiwa/version route
     from .nodes import input_images  # registers /dasiwa/input-images route
     from .nodes import h3_forge  # registers /dasiwa/h3/forge routes
     from .nodes import refmod_library
