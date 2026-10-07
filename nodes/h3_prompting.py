@@ -471,18 +471,19 @@ def describe_targets(cast, attached_labels=None):
     # sits higher in the frame, and told only "the one in front" a reader
     # described the more prominent person behind (PromptForge, 6 Oct 2026).
     def only(s):
-        shared = [p for p in s.get("placements", []) if attached([p["picture"]])]
+        shared = [p for p in [*s.get("placements", []), *s.get("in_frames", [])]
+                  if p.get("position") and attached([p["picture"]])]
         notes = []
         for p in shared:
-            others = [o["position"] for c in cast["subjects"] for o in c.get("placements", [])
-                      if o["picture"] == p["picture"] and c is not s]
+            others = [o["position"] for c in cast["subjects"] for o in [*c.get("placements", []), *c.get("in_frames", [])]
+                      if o["picture"] == p["picture"] and c is not s and o.get("position")]
             not_them = " or ".join(f"the one {describe_where(o)}" for o in others)
             notes.append(f" In <Picture {p['picture']}> it is ONLY the one {describe_where(p['position'])}"
                          f"{', not ' + not_them if not_them else ''}; every detail must belong to that person.")
         return "".join(notes)
     out = [(s["tag"], what, about + (only(s) if s["kind"] == "character" else ""))
            for s in cast["subjects"] if s["kind"] in _DESCRIBE
-           and attached(s["pictures"] + [p["picture"] for p in s.get("placements", [])])
+           and attached(s["pictures"] + [p["picture"] for p in [*s.get("placements", []), *s.get("in_frames", [])]])
            for what, about in [_DESCRIBE[s["kind"]]]]
     out += [(f"<Picture {f['picture']}>", f"the {f['which']} frame", _DESCRIBE_FRAME)
             for f in cast["frames"] if attached([f["picture"]])]
@@ -549,11 +550,15 @@ PICTURE_KINDS = ("character", "place", "style", "first-frame", "last-frame", "po
 
 def _places(count, ref):
     axis = ref.get("who_axis")
-    return (_POSITIONS_Y if axis == "y" else _POSITIONS_Z if axis == "z" else _POSITIONS).get(count, ())
+    table = _POSITIONS_Y if axis == "y" else _POSITIONS_Z if axis == "z" else _POSITIONS
+    direction = "top to bottom" if axis == "y" else "front to back" if axis == "z" else "left to right"
+    return table.get(count, tuple(f"position {i + 1} of {count}, counting {direction}" for i in range(count)))
 
 
 def place_word(position):
     """"on the left", "in the middle", "at the top", "in front", "behind"."""
+    if position.startswith("position "):
+        return f"at {position}"
     if position == "front":
         return "in front"
     if position == "back":
@@ -603,7 +608,7 @@ def picture_who(ref):
     for n in nums:
         if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 32 and n not in out:
             out.append(n)
-    return out
+    return out or from_label
 
 
 def framed_brief(brief, references, mode):
@@ -930,7 +935,9 @@ def fix_picture_citations(cast, segments, written=("Subject definitions", "Reten
         return tags[0]
     for label in list(segments):
         if label not in written and isinstance(segments[label], str):
-            segments[label] = re.sub(r"<Picture (\d+)>", fix, segments[label])
+            parts = re.split(r"(<d>.*?</d>)", segments[label], flags=re.S)
+            segments[label] = "".join(part if i % 2 else re.sub(r"<Picture (\d+)>", fix, part)
+                                      for i, part in enumerate(parts))
     return ([f"<Picture {n}> is not a first or last frame, but the draft cited it like one; it now says {tag}, the subject it shows."
              for n, tag in swapped.items()]
             + [f"<Picture {n}> is not a first or last frame, but the draft cites it. It shows more than one subject, so it was left as written; check that line."
@@ -978,6 +985,7 @@ def easy_segments(cast, segments, description_targets=None):
     def kept(notes, stock):
         return f"partially_preserved — {notes}." if notes else f"fully_preserved — {stock}"
 
+    citation_warnings = fix_picture_citations(cast, segments)
     shots = _shots(_bare(segments.get("Detailed description"), ["Detailed description", "integrated_multimodal_description"]))
     every = sorted(shots)
     last = every[-1] if every else None
@@ -1017,7 +1025,7 @@ def easy_segments(cast, segments, description_targets=None):
                            if u["which"] == "pose" else f"<Picture {u['picture']}>: {said}")
     segments["Subject definitions"] = "\n\n".join(definitions)
     segments["Retention analysis"] = "\n".join(retention)
-    return warnings + fix_picture_citations(cast, segments)
+    return warnings + citation_warnings
 
 
 def music_request_warning(bundle, brief, segments):

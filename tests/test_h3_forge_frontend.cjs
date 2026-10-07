@@ -116,7 +116,25 @@ test('Director reference updates persist canonical state and portable packs', ()
   assert.equal(portable.forge_drop, 'clothes');
 });
 
-test('continuity reference switch gates Forge media without deleting timeline', () => {
+test('cleared picture extras stay absent through persistence and a legacy draft round trip', () => {
+  const item = { id: 'a', type: 'image', value: 'a.png', slot: 0, forge_label: 'character-1', forge_kinds: 'character,place', forge_who: '1' };
+  const { hook, state } = directorHook({ items: [item] });
+  const ref = hook.references()[0];
+  const source = fs.readFileSync(path.join(__dirname, '..', 'js', 'minimax_h3_forge.js'), 'utf8');
+  const start = source.indexOf('  const persistReference =');
+  const end = source.indexOf('  let includeReferences', start);
+  const ctx = vm.createContext({ hook, ref, patch: { forge_label: 'character-1', forge_kinds: '', forge_who: '', forge_who_axis: '' }, openedKey: hook.contextKey() });
+  vm.runInContext(source.slice(start, end) + '\npersistReference(ref, patch);', ctx);
+  assert.ok(!('forge_kinds' in state.items[0]));
+  assert.ok(!('forge_who' in ref.item));
+  const restored = directorHook({ items: JSON.parse(JSON.stringify(state.items)) });
+  assert.equal(hook.contextKey(), restored.hook.contextKey());
+  assert.equal(JSON.stringify(hook.references().map(({item, ...r}) => r)), JSON.stringify(restored.hook.references().map(({item, ...r}) => r)));
+  const entry = { mode: 'REF2VA', continuity: false, contextKey: hook.contextKey(), simple_prompt: 'Legacy draft', fields: { ref: {} } };
+  assert.equal(restored.hook.apply(entry), true);
+});
+
+test('continuity reference switch gates Forge media without deleting timeline' , () => {
   const { hook, state, c } = directorHook({ items: [{ id: 'a', type: 'image', value: 'a.png', slot: 0 }], continuing: true });
   assert.equal(hook.references().length, 0);
   assert.equal(state.items.length, 1);

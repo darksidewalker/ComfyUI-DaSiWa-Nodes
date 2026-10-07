@@ -8,7 +8,7 @@ const { test } = require('node:test');
 class Element {
   constructor(tag) {
     this.tagName = tag.toUpperCase(); this.children = []; this.style = {};
-    this.listeners = {}; this.attributes = {}; this.hidden = false;
+    this.listeners = {}; this.attributes = {}; this.dataset = {}; this.hidden = false;
     this.disabled = false; this.checked = false; this.value = ''; this._text = '';
     this.classList = { toggle() {} };
   }
@@ -26,7 +26,9 @@ class Element {
   async dispatch(type) {
     const event = { target: this };
     await this['on' + type]?.(event);
-    for (const callback of this.listeners[type] || []) await callback(event);
+    for (let element = this; element; element = type === 'click' ? element.parentElement : null) {
+      for (const callback of element.listeners[type] || []) await callback(event);
+    }
   }
   querySelectorAll(selector) {
     const descendants = this.children.flatMap(c => typeof c === 'string' ? [] : [c, ...c.querySelectorAll('*')]);
@@ -35,18 +37,25 @@ class Element {
       const parts = s.trim().split(' '); const tag = parts.pop();
       if (c.tagName !== tag.toUpperCase()) return false;
       if (!parts.length) return true;
-      for (let parent = c.parentElement; parent; parent = parent.parentElement) {
-        if (parent.className?.split(' ').includes(parts[0].slice(1))) return true;
+      let parent = c.parentElement;
+      for (const part of parts.reverse()) {
+        while (parent && !parent.className?.split(' ').includes(part.slice(1))) parent = parent.parentElement;
+        if (!parent) return false;
+        parent = parent.parentElement;
       }
-      return false;
+      return true;
     }));
+  }
+  closest(selector) {
+    const root = this.parentElement?.parentElement?.parentElement;
+    return root?.querySelectorAll(selector).includes(this) ? this : null;
   }
   get options() { return this.querySelectorAll('option'); }
   get selectedOptions() { return this.options.filter(o => o.value === this.value); }
 }
 const root = path.join(__dirname, '..');
 const image = (role = 'character-1') => ({ kind: 'image', path: 'a.png', easy_role: role, role: 'subject', instructions: '', item: { id: 'a' } });
-async function dialog({ refs = [image()], mode = 'REF2VA', continuity = null, history = [], prefs = {} } = {}) {
+async function dialog({ refs = [image()], mode = 'REF2VA', continuity = null, history = [], prefs = {}, beforeReply = null } = {}) {
   const document = { head: new Element('head'), body: new Element('body'), createElement: t => new Element(t), getElementById: () => null, addEventListener() {}, removeEventListener() {} };
   const requests = [], applied = [];
   const node = { id: 1, properties: { dasiwaH3ForgeHistory: history }, graph: { setDirtyCanvas() {} }, __dasiwaH3Forge: {
@@ -60,6 +69,7 @@ async function dialog({ refs = [image()], mode = 'REF2VA', continuity = null, hi
     api: { apiURL: p => p, fetchApi: async (url, options) => {
       if (url.endsWith('/models')) return { ok: true, json: async () => ({ models: [{ id: 'local:test', label: 'Test' }], creativity: ['balanced'], default_creativity: 'balanced', detail_levels: {}, default_detail: 5, shot_counts: ['Auto'] }) };
       const request = JSON.parse(options.body); requests.push(request);
+      if (beforeReply) await beforeReply(document);
       return { ok: true, json: async () => ({ mode, continuity: !!continuity, source_id: continuity?.clip_id, simple_prompt: 'Generated draft', fields: {}, model: 'local:test', easy: request.easy, vision: true, saw_images: request.see_pictures ? 1 : 0, unloaded: true, stats: { seconds: 1 } }) };
     } },
   });
@@ -75,6 +85,22 @@ async function dialog({ refs = [image()], mode = 'REF2VA', continuity = null, hi
     brief: all.find(c => c.tagName === 'TEXTAREA'), historyButton: () => all.find(c => c.title === 'Show this prompt; Apply to node to use it'),
     close: () => context.window.DaSiWaH3Forge.close(node) };
 }
+
+test('picture button clicks invalidate drafts and repainted Who buttons disable during generation', async () => {
+  const d = await dialog({ beforeReply: async document => {
+    const people = document.body.querySelectorAll('.refs .who button');
+    assert.ok(people.length);
+    assert.ok(people.every(b => b.disabled));
+  } });
+  d.brief.value = 'An idea'; await d.button('Generate').dispatch('click');
+  assert.equal(d.button('Apply to node').disabled, false);
+  await d.button('Place').dispatch('click');
+  assert.equal(d.button('Apply to node').disabled, true);
+  assert.equal(d.all.find(c => c.tagName === 'PRE').hidden, true);
+  await d.button('Regenerate').dispatch('click');
+  assert.equal(d.requests.length, 2);
+  d.close();
+});
 
 test('eligibility accepts exactly the backend EASY_ROLES whitelist', async () => {
   const roles = [...Array.from({ length: 32 }, (_, i) => `character-${i + 1}`), 'place', 'style', 'first-frame', 'last-frame', 'pose', 'custom', 'group-12', 'group-21', 'group-13', 'group-31', 'group-23', 'group-32', 'group-123'];
@@ -128,9 +154,9 @@ test('labelling an initially unlabelled image enables vision choice without reop
   delete ref.easy_role;
   const reopened = await dialog({ refs: [ref] });
   assert.equal(reopened.visible(reopened.choice), false);
-  const selector = reopened.all.find(c => c.attributes['aria-label']?.endsWith(' label'));
+  const selector = reopened.all.find(c => c.dataset.kind === 'place');
   assert.ok(selector, 'unlabelled image still has a label editor');
-  selector.value = 'place'; await selector.dispatch('change');
+  await selector.dispatch('click');
   assert.equal(reopened.visible(reopened.choice), true);
   reopened.checkbox.checked = true;
   reopened.brief.value = 'A place'; await reopened.button('Generate').dispatch('click');
@@ -174,7 +200,7 @@ test('changing the vision checkbox invalidates a generated draft and blocks appl
 test('mixed references hide the opt-out while keeping label editors and using normal vision', async () => {
   const d = await dialog({ refs: [image(), { kind: 'video', path: 'v.mp4', stream: 'video', instructions: '' }], prefs: { see_pictures: true } });
   assert.equal(d.visible(d.choice), false);
-  assert.ok(d.all.some(c => c.attributes['aria-label']?.endsWith(' label')));
+  assert.ok(d.all.some(c => c.attributes['aria-label']?.endsWith(' is')));
   assert.ok(d.all.some(c => d.visible(c) && c.textContent.includes('Pictures are automatically sent to a model capable')));
   d.brief.value = 'An idea'; await d.button('Generate').dispatch('click');
   assert.equal(d.requests[0].easy, false); assert.equal(d.requests[0].see_pictures, false);

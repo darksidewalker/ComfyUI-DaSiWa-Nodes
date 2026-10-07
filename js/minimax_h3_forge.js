@@ -207,7 +207,10 @@ async function open(node) {
   const persistReference = (ref, patch) => {
     if (hook.contextKey?.() !== openedKey) return;
     if (ref.item && hook.updateReference?.(ref.item.id, patch) !== false) {
-      Object.assign(ref.item, patch);
+      for (const [key, value] of Object.entries(patch)) {
+        if (["forge_kinds", "forge_who", "forge_who_axis"].includes(key) && value === "") delete ref.item[key];
+        else ref.item[key] = value;
+      }
       openedKey = hook.contextKey?.();
     }
   };
@@ -442,9 +445,9 @@ async function open(node) {
     return JSON.stringify([brief.value.trim(), structured.checked, definitions.value, refs.map(({ item, ...r }) => r), ...(rows.some(Boolean) ? [rows] : [])]);
   };
   const referenceControls = Array.from(box.querySelectorAll(".refs input, .refs select, .refs textarea, .refs .pick button"));
-  const controls = [brief, modelSel, detail, creativity, shots, structured, seePictures, ...referenceControls];
+  const controls = [brief, modelSel, detail, creativity, shots, structured, seePictures];
   const setControlsDisabled = disabled => {
-    controls.forEach(c => { c.disabled = disabled; });
+    [...controls, ...box.querySelectorAll(".refs input, .refs select, .refs textarea, .refs .pick button")].forEach(c => { c.disabled = disabled; });
     shotBox.querySelectorAll("textarea").forEach(c => { c.disabled = disabled; });
     if (includeReferences) includeReferences.disabled = !!running;
   };
@@ -561,7 +564,8 @@ async function open(node) {
   detail.addEventListener("input", clearDraft);
   structured.addEventListener("change", clearDraft);
   seePictures.addEventListener("change", clearDraft);
-  referenceControls.forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
+  referenceControls.filter(c => c.tagName !== "BUTTON").forEach(c => c.addEventListener(c.tagName === "SELECT" ? "change" : "input", clearDraft));
+  box.addEventListener("click", e => { if (e.target.closest?.(".refs .pick button")) clearDraft(); });
   genBtn.onclick = async () => {
     if (closed) return;
     if (running) { cancelRun(); genBtn.disabled = true; setStatus("Cancelling… the model stops at its next token, then unloads."); return; }

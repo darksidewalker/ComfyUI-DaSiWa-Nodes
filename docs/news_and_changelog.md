@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-10-07**. Older history lives in the 
 
 ## News
 
+- **H3 Forge reference roles (0.5.4):** Integrates PR #70 and #71 with combined picture roles, ordered character selection, frame-only character vision descriptions and updated REF2VA definitions/retention. Preserves Director canvas and shot policy, literal dialogue, legacy labels and draft persistence; fixes button preview invalidation and generation locks.
+
 - **H3 target-grid planning (10-07, 0.5.3):** Replaces dimension halving with a joint 32px tile/native temporal-window search. Chooses the fewest model forwards, then least repeated video work including actual edge/temporal overlaps; keeps the 512px floor and independent switches. Cropped keyframes are budgeted per tile, with full-target buffers and chunk-anchor reserve. Reports estimated calls and work; not a measured GPU runtime or VRAM guarantee.
 
 - **H3 upscale planning and independent switches (0.5.2):** Adds default-on `spatial_tiling` for diffusion and `temporal_chunking` for learned upscale/refinement, independently selectable. Disabled paths stay disabled; insufficient estimated refinement budgets fail early. Dynamic/offloaded weights are budgeted as reclaimable residency plus a streaming reserve instead of requiring the full checkpoint in VRAM. Includes 512px minimum tiles, audio/target-grid conditioning and full-window buffer accounting. Existing workflows retain both enabled.
