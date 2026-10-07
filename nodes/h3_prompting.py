@@ -1143,9 +1143,6 @@ def shot_count_warning(shots, segments):
 
 # ── Simple prompt mode: a port of PromptForge's server/h3-simple.mjs ──────
 
-_TIMESTAMP = re.compile(r"\b(\d{1,2}):(\d{2})(?:\.(\d+))?\b")
-
-
 def check_prompt(fields, mode, duration, prompt_text, limit):
     """Mechanical checks on a finished prompt. Warnings, never repairs."""
     warnings = []
@@ -1155,11 +1152,10 @@ def check_prompt(fields, mode, duration, prompt_text, limit):
     except (TypeError, ValueError):
         clip = None
     if clip:
-        stamps = [int(m) * 60 + int(s) + float(f"0.{frac}" if frac else 0)
-                  for m, s, frac in _TIMESTAMP.findall(description)]
-        if stamps and max(stamps) >= clip:
-            warnings.append(f"Shots run to {max(stamps):g}s but the clip is {clip:g}s. Regenerate, or fix the timestamps.")
+        # Only shot headers define cut times; ratios and visible clocks are prose.
         cuts = [int(m.group(2)) * 60 + float(m.group(3)) for m in _CUT.finditer(description)]
+        if cuts and max(cuts) >= clip:
+            warnings.append(f"Shots run to {max(cuts):g}s but the clip is {clip:g}s. Regenerate, or fix the timestamps.")
         if any(b <= a for a, b in zip([0.0, *cuts], cuts)):
             warnings.append("Cut timestamps must increase strictly. Edit the description before applying.")
     if len(prompt_text) > limit:

@@ -97,7 +97,6 @@ from .h3_prompting import (
     _stamp,
     repair_cut_times,
     shot_count_warning,
-    _TIMESTAMP,
     check_prompt,
     _snapped_seconds_text,
     _last_shot,
