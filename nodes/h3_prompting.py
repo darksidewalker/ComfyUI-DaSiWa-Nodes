@@ -281,8 +281,8 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
             lines += ["", (
                 f"The pictures {', '.join(attached_labels)} are attached to this message, in that order, so you can see "
                 "them after all. Use them for where everyone stands, what the place holds, and the look and light of "
-                "the style sentence. The cast above still decides who is who, and you still never describe how anyone "
-                f"looks in the other segments; that goes only in {DESCRIBE_SEGMENT}."
+                "the style sentence. The cast above still decides who is who. Record each look in "
+                f"{DESCRIBE_SEGMENT}, and in the shots keep everyone looking as those lines say."
             )]
             if wanted:
                 lines.append(

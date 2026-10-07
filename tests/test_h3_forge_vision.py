@@ -56,7 +56,10 @@ def test_see_pictures_sends_them_in_label_order(monkeypatch, tmp_path):
     assert sent[0]["images"] == ["a.png", "b.png"]
     user = sent[0]["user"]
     assert "The pictures <Picture 1>, <Picture 2> are attached to this message, in that order" in user
-    assert "never describe how anyone looks" in user
+    # A seeing writer keeps the shots consistent with Descriptions, as its
+    # system prompt says; the message must not tell it the opposite.
+    assert "in the shots keep everyone looking as those lines say" in user
+    assert "never describe how anyone looks" not in user
     assert user.index("Cast (fixed)") < user.index("are attached")
 
 
