@@ -60,6 +60,36 @@ def test_streamed_bf16_model_larger_than_vram_gets_usable_tiles():
     assert capped['tile_width'] * capped['tile_height'] <= plan['tile_width'] * plan['tile_height']
 
 
+def test_target_grid_search_avoids_redundant_third_strip():
+    plan = h3.plan_tiles((1,24,35,90,70),2240,2880,30*1024**3,
+                         model_bytes=38444*1024**2, text_tokens=512,ref_tokens=6300,
+                         streaming_weights=True,reserved_bytes=400*1024**2,audio_tokens=400)
+    windows = h3.temporal_ranges(35,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
+    nx = len(h3._starts(140,plan['tile_width']//16,plan['overlap']//16))
+    ny = len(h3._starts(180,plan['tile_height']//16,plan['overlap']//16))
+    assert nx*ny*len(windows) <= 4  # previous halving planner scheduled six
+    assert nx*ny*plan['tile_width']*plan['tile_height'] < 3*2240*1440
+    assert plan['forwards_per_step'] == nx*ny*len(windows)
+
+
+def test_short_clip_can_reduce_time_when_full_duration_does_not_fit():
+    plan = h3.plan_tiles((1,24,20,32,32),1024,1024,640*1024**2)
+    assert plan['chunk_tokens'] < 20
+    assert min(plan['tile_width'],plan['tile_height']) >= 512
+    h3.temporal_ranges(20,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
+
+
+@pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
+def test_keyframes_scale_with_selected_tile_and_chunk_anchor(spatial,temporal):
+    plan = h3.plan_tiles((1,24,35,90,70),2240,2880,64*1024**3,
+                         streaming_weights=True,keyframe_tokens=3,
+                         spatial_tiling=spatial,temporal_chunking=temporal)
+    frames = 3 + (plan['chunk_tokens'] < 35)
+    area = plan['tile_width']//32 * (plan['tile_height']//32)
+    assert area * (plan['chunk_tokens'] + frames) <= plan['target_rows']
+    assert plan['keyframe_rows_per_forward'] == area * frames
+
+
 def test_impossible_budget_does_not_silently_plan_thousands_of_tiny_tiles():
     with pytest.raises(MemoryError, match='H3 refinement'):
         h3.plan_tiles((1, 24, 35, 90, 70), 2240, 2880, 32 * 1024**3,
@@ -87,7 +117,7 @@ def test_minimum_tiles_cover_large_and_small_canvases(width, height):
 
 def test_minimum_tile_reduces_temporal_window_before_failing():
     plan = h3.plan_tiles((1,24,35,16,16), 2240, 2880, 1024**3, streaming_weights=True)
-    assert plan['tile_width'] == plan['tile_height'] == 512
+    assert min(plan['tile_width'],plan['tile_height']) >= 512
     assert plan['chunk_tokens'] < 30
     h3.temporal_ranges(35,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
     with pytest.raises(MemoryError):
@@ -107,6 +137,49 @@ def test_planner_switches_are_independent_and_never_reenabled(spatial,temporal):
     with pytest.raises(MemoryError):
         h3.plan_tiles((1,24,60,32,32),1024,1024,1024,
                       spatial_tiling=spatial,temporal_chunking=temporal)
+
+
+@pytest.mark.parametrize('width,height,total,mib',[
+    (768,1024,35,1024),(1024,768,20,640),(512,768,19,1024),
+    (32,256,6,64),(768,768,62,2048),(1024,1024,1,256),
+    (1024,1024,35,1)])
+@pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
+def test_plan_matches_exhaustive_actual_window_oracle(width,height,total,mib,spatial,temporal):
+    import math
+    shape=(1,24,total,16,16)
+    budget=mib*1024**2*0.65
+    chunks=[total] if not temporal else [c for c in range(10,min(total,30)+1,5)]
+    if temporal and total<=30 and total not in chunks:
+        chunks.append(total)
+    widths=[width] if not spatial else range(min(width,512),width+1,32)
+    heights=[height] if not spatial else range(min(height,512),height+1,32)
+    valid=[]
+    for chunk in chunks:
+        frames=2+int(chunk<total)
+        buffers=24*(height//16)*(width//16)*(chunk*20+frames*6)
+        rows=int((budget-buffers)/(96*1024))-148
+        windows=h3.temporal_ranges(total,chunk,5 if chunk<total else 0)
+        for tw in widths:
+            for th in heights:
+                area=tw//32*(th//32)
+                if area*(chunk+frames)>rows:
+                    continue
+                overlap=min(max(32,math.ceil(min(tw,th)/128)*32),min(tw,th)-32) if spatial else 0
+                n=len(h3._starts(width//16,tw//16,overlap//16))*len(h3._starts(height//16,th//16,overlap//16))
+                # Actual slice extents, not the planner's count shortcut.
+                work=n*area*sum(b-a for a,b in windows)
+                valid.append((n*len(windows),work,-chunk,abs(tw*height-th*width)))
+    kwargs=dict(text_tokens=8,ref_tokens=128,audio_tokens=12,keyframe_tokens=2,
+                spatial_tiling=spatial,temporal_chunking=temporal)
+    if not valid:
+        with pytest.raises(MemoryError):
+            h3.plan_tiles(shape,width,height,mib*1024**2,**kwargs)
+        return
+    plan=h3.plan_tiles(shape,width,height,mib*1024**2,**kwargs)
+    actual=(plan['forwards_per_step'],plan['processed_video_rows'],-plan['chunk_tokens'],
+            abs(plan['tile_width']*height-plan['tile_height']*width))
+    assert actual==min(valid)
+    assert f'target={width}x{height}px' in plan['explanation']
 
 
 def test_resize_retains_channel_time_order():

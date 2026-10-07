@@ -3,9 +3,10 @@
 import pytest
 
 
+@pytest.mark.parametrize('automatic_plan',[False,True])
 @pytest.mark.parametrize('with_continuity',[False,True])
 @pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
-def test_complete_native_sampler_tiled_temporal_upscale(with_continuity,spatial,temporal,tmp_path,monkeypatch):
+def test_complete_native_sampler_tiled_temporal_upscale(automatic_plan,with_continuity,spatial,temporal,tmp_path,monkeypatch):
     """Complete native CPU sampler + tiny random H3 model; no pretrained render."""
     import importlib.util
     import sys
@@ -43,16 +44,17 @@ def test_complete_native_sampler_tiled_temporal_upscale(with_continuity,spatial,
     m=importlib.util.module_from_spec(s)
     sys.modules[s.name]=m
     s.loader.exec_module(m)
-    # The tiny random model is not represented by the production memory
-    # heuristic. Force multiple spatial/temporal windows; sampling stays native.
-    helpers=__import__(package.__name__+'.h3_tiled_sampling',fromlist=['*'])
-    monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(
-        tile_width=64 if k['spatial_tiling'] else 128,
-        tile_height=64 if k['spatial_tiling'] else 128,
-        overlap=32 if k['spatial_tiling'] else 0,
-        chunk_tokens=10 if k['temporal_chunking'] else a[0][2],
-        temporal_overlap_tokens=5 if k['temporal_chunking'] else 0,
-        explanation='TEST forced geometry honoring switches'))
+    # Exercise both the real planner and forced multiwindow geometry for this
+    # tiny random model. In both paths the model and sampler remain native.
+    if not automatic_plan:
+        helpers=__import__(package.__name__+'.h3_tiled_sampling',fromlist=['*'])
+        monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(
+            tile_width=64 if k['spatial_tiling'] else 128,
+            tile_height=64 if k['spatial_tiling'] else 128,
+            overlap=32 if k['spatial_tiling'] else 0,
+            chunk_tokens=10 if k['temporal_chunking'] else a[0][2],
+            temporal_overlap_tokens=5 if k['temporal_chunking'] else 0,
+            explanation='TEST forced geometry honoring switches'))
     video=torch.randn(1,24,12,2,2)
     audio=torch.randn(1,32,2,65)
     conditioning=[[torch.randn(1,3,32),{'minimax_keyframes':[{'resolved_frame_index':0,'latent':torch.randn(1,24,1,2,2)}]}]]
@@ -77,7 +79,7 @@ def test_complete_native_sampler_tiled_temporal_upscale(with_continuity,spatial,
         cumulative,_=DaSiWaH3ContinuityAppend().commit(sampled,context)
         video,audio=cumulative['samples'].tensors
     output,report=m.DaSiWaH3TiledUpscale().upscale(model,conditioning,{'samples':NestedTensor((video,audio))},
-        scale=4,upscale_model='interpolation',steps=1,denoise=0.2,seed=23,memory_budget_mb=4,continuity_context=context,
+        scale=4,upscale_model='interpolation',steps=1,denoise=0.2,seed=23,memory_budget_mb=128 if automatic_plan else 4,continuity_context=context,
         continuity_soft_refine=with_continuity,continuity_mask_strength=1.0,
         spatial_tiling=spatial,temporal_chunking=temporal)
     assert output['samples'].tensors[0].shape==(1,24,12,8,8)
@@ -86,6 +88,8 @@ def test_complete_native_sampler_tiled_temporal_upscale(with_continuity,spatial,
     assert 'model_function_wrapper' not in model.model_options
     assert f"spatial_tiling={'on' if spatial else 'off'}" in report
     assert f"temporal_chunking={'on' if temporal else 'off'}" in report
+    if automatic_plan:
+        assert 'Grid search minimizes calls' in report
     if with_continuity:
         expected_prefix=m.resize_video(video,8,8)[:,:,:5]
         assert torch.equal(output['samples'].tensors[0][:,:,:5],expected_prefix)

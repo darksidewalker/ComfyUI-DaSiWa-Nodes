@@ -121,8 +121,9 @@ def encode_endpoints(conditioning, vae, first, last, width, height, last_frame_i
     return result, f'{count} endpoint keyframes VAE-encoded at {width}x{height}'
 
 
-def conditioning_token_counts(conditioning, spatial_latent_hw=None):
-    text, refs = 0, 0
+def conditioning_token_counts(conditioning):
+    """Fixed native reference/audio rows and tile-cropped keyframe frames."""
+    text, refs, keyframes = 0, 0, 0
     for tokens, md in conditioning:
         if isinstance(tokens, torch.Tensor) and tokens.ndim >= 2:
             text = max(text, tokens.shape[1])
@@ -135,17 +136,17 @@ def conditioning_token_counts(conditioning, spatial_latent_hw=None):
             audio = ref.get('audio_latent')
             if isinstance(audio, torch.Tensor):
                 current += audio.shape[-1] * audio.shape[-2]
-        # Keyframes also consume attention rows.
+        current_keyframes = 0
         for kf in md.get('minimax_keyframes', []):
             value = kf.get('latent')
             if isinstance(value, torch.Tensor):
-                h, w = spatial_latent_hw if spatial_latent_hw is not None else value.shape[-2:]
-                current += value.shape[2] * math.ceil(h / 2) * math.ceil(w / 2)
+                current_keyframes += value.shape[2]
             audio = kf.get('audio_latent')
             if isinstance(audio, torch.Tensor):
                 current += audio.shape[-1] * audio.shape[-2]
         refs = max(refs, current)
-    return text, refs
+        keyframes = max(keyframes, current_keyframes)
+    return text, refs, keyframes
 
 
 def refinement_memory_budget(model, device, memory_budget_mb):
@@ -278,12 +279,13 @@ class DaSiWaH3TiledUpscale:
         device = mm.get_torch_device()
         budget, streaming_weights, reserved = refinement_memory_budget(model, device, memory_budget_mb)
         model_bytes = int(model.model_size()) if device.type != 'cpu' else 0
-        text_tokens, ref_tokens = conditioning_token_counts(conditioning, (height // 16, width // 16))
+        text_tokens, ref_tokens, keyframe_tokens = conditioning_token_counts(conditioning)
         if negative is not None:
-            nt, nr = conditioning_token_counts(negative, (height // 16, width // 16))
+            nt, nr, nk = conditioning_token_counts(negative)
             text_tokens, ref_tokens = max(text_tokens, nt), max(ref_tokens, nr)
+            keyframe_tokens = max(keyframe_tokens, nk)
         plan = plan_tiles(video.shape, width, height, budget, model_bytes=model_bytes,
-                          text_tokens=text_tokens, ref_tokens=ref_tokens,
+                          text_tokens=text_tokens, ref_tokens=ref_tokens, keyframe_tokens=keyframe_tokens,
                           streaming_weights=streaming_weights,
                           reserved_bytes=reserved + audio.numel() * (6 * audio.element_size() + 8),
                           audio_tokens=audio.shape[-2] * audio.shape[-1],

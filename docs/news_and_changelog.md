@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-06**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-07**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **H3 target-grid planning (10-07, 0.5.3):** Replaces dimension halving with a joint 32px tile/native temporal-window search. Chooses the fewest model forwards, then least repeated video work including actual edge/temporal overlaps; keeps the 512px floor and independent switches. Cropped keyframes are budgeted per tile, with full-target buffers and chunk-anchor reserve. Reports estimated calls and work; not a measured GPU runtime or VRAM guarantee.
 
 - **H3 upscale planning and independent switches (0.5.2):** Adds default-on `spatial_tiling` for diffusion and `temporal_chunking` for learned upscale/refinement, independently selectable. Disabled paths stay disabled; insufficient estimated refinement budgets fail early. Dynamic/offloaded weights are budgeted as reclaimable residency plus a streaming reserve instead of requiring the full checkpoint in VRAM. Includes 512px minimum tiles, audio/target-grid conditioning and full-window buffer accounting. Existing workflows retain both enabled.
 
@@ -118,6 +120,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.3 | 10-07 | Joint target-grid tile/chunk selection, edge-overlap cost and per-tile keyframe budget |
 | 0.5.2 | 10-06 | H3 independent spatial/temporal switches, dynamic-memory budget and minimum tile floor |
 | 0.5.1 | 10-06 | LLM Prompt Writer display-name rename; saved node IDs unchanged |
 | 0.5.0 | 10-06 | MiniMaxH3 Enhanced Upscale: learned/interpolation upscale, tiled refinement, Director/Continuity integration, opt-in soft mask, CLI plan and usage diagrams |

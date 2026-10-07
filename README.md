@@ -39,7 +39,7 @@ Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable e
 
 One node that upscales a completed MiniMax H3 video/audio latent and refines it with per-step diffusion, keeping the original audio.
 
-- Independent `spatial_tiling` (diffusion) and `temporal_chunking` (upscale + refinement), both on by default. Automatic planning accounts for dynamic weight offloading, working buffers and a 512px minimum tile size.
+- Independent `spatial_tiling` (diffusion) and `temporal_chunking` (upscale + refinement), both on by default. Target-grid planning jointly selects 32px-aligned tiles and temporal windows, minimizing model calls and repeated work under the dynamic-memory estimate; 512px minimum tiles remain.
 - Learned safetensors upscaling from `models/latent_upscale_models/`, or `interpolation`; no automatic choice, no fallback.
 - Factor-only scaling (default **2.0**), refinement defaults CFG 1, 1 step, denoise 0.2 (`0` skips refinement). Native packed video/audio `LATENT` output; the original audio stream is returned unchanged.
 - Optional Director guide + H3 video VAE re-encode endpoint images at the enlarged resolution; works without a Director.

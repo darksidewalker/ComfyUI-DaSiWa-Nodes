@@ -89,9 +89,17 @@ def test_pixels_require_matching_vae_and_no_widget_introspection():
 def test_attention_budget_counts_refs_and_keyframes():
     cond=[[torch.zeros(1,12,8),{'minimax_refs':[{'latent':torch.zeros(1,24,2,4,6)}],
                                'minimax_keyframes':[{'latent':torch.zeros(1,24,1,4,6)}]}]]
-    assert u.conditioning_token_counts(cond)==(12,18)
-    # References stay native; keyframes are resized to the final target grid.
-    assert u.conditioning_token_counts(cond,(8,12))==(12,36)
+    # Native references have 12 rows; one keyframe is sized per tile by the planner.
+    assert u.conditioning_token_counts(cond)==(12,12,1)
+
+
+def test_keyframe_budget_separates_cropped_video_from_native_refs_and_audio():
+    cond=[[torch.zeros(1,12,8),{
+        'minimax_refs':[{'latent':torch.zeros(1,24,2,4,6),
+                         'audio_latent':torch.zeros(1,32,2,7)}],
+        'minimax_keyframes':[{'latent':torch.zeros(1,24,3,90,70),
+                              'audio_latent':torch.zeros(1,32,2,5)}]}]]
+    assert u.conditioning_token_counts(cond)==(12,36,3)
 
 
 def test_budget_recovers_managed_residency_once_and_respects_cap(monkeypatch):
