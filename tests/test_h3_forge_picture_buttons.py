@@ -104,3 +104,33 @@ def test_a_seeing_writer_is_told_which_person_to_describe():
     rules = dict((tag, rule) for tag, _, rule in hp.describe_targets(cast))
     assert "it is ONLY the one behind, further from the camera than the other, not the one in front, nearest the camera" in rules["<Subject 1>"]
     assert "it is ONLY the one in front, nearest the camera, not the one behind" in rules["<Subject 2>"]
+
+
+# The order is optional: "none" says who is in a picture, not where. Unset is
+# still left to right, so pictures saved before keep their meaning.
+def test_no_order_names_everyone_and_places_nobody():
+    cast = hp.easy_cast([pic("character-1", picture_kinds=["character"], who=[2, 1], who_axis="none")])
+    assert [(s["number"], s["placements"]) for s in cast["subjects"]] == [(1, [{"picture": 1}]), (2, [{"picture": 1}])]
+    assert [hp._shown_in(s) for s in cast["subjects"]] == ["in <Picture 1>", "in <Picture 1>"]
+    # A picture that cannot say which one this is gives no describe target of its own.
+    assert hp.describe_targets(cast, ["<Picture 1>"]) == []
+
+
+def test_no_order_keeps_five_or_more_in_the_cast():
+    cast = hp.easy_cast([pic("character-1", picture_kinds=["character"], who=[5, 4, 3, 2, 1], who_axis="none")])
+    assert sorted(s["number"] for s in cast["subjects"]) == [1, 2, 3, 4, 5]
+    assert all(s["placements"] == [{"picture": 1}] for s in cast["subjects"])
+
+
+def test_unset_order_is_still_left_to_right():
+    cast = hp.easy_cast([pic("character-1", picture_kinds=["character"], who=[1, 2])])
+    assert [p["position"] for s in cast["subjects"] for p in s["placements"]] == ["left", "right"]
+
+
+def test_no_order_in_a_frame():
+    cast = hp.easy_cast([pic("first-frame", picture_kinds=["first-frame"], who=[1, 2], who_axis="none"), pic("character-1"), pic("character-2")])
+    assert all("position" not in f for s in cast["subjects"] for f in s["in_frames"])
+    assert "shown in <Picture 2>, and in the first frame <Picture 1>" in "\n".join(hp.easy_lines(cast))
+    frame = {"kind": "image", "role": "keyframe", "path": "f.png", "who": [1, 2], "who_axis": "none"}
+    assert hp.framed_brief("Character 2 waves at Character 1.", [frame], "I2VA") == \
+        "the character in the first frame waves at the character in the first frame."
