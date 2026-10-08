@@ -84,14 +84,16 @@ function pictureLabels(images) {
 
 // What the Forge's picture buttons said beyond the single label: kinds that
 // combine ("character,place"), who is in it in tap order ("2,1") and which
-// way that order runs ("y" top to bottom, "z" front to back). Sent only when
-// set, so a picture labelled before the buttons sends exactly what it did.
+// way that order runs ("y" top to bottom, "z" front to back, "none" no order
+// picked; unset is left to right). Sent only when set, so a picture labelled
+// before the buttons sends exactly what it did.
 const BUTTON_KINDS = ["character", "place", "style", "first-frame", "last-frame", "pose", "custom"];
+const WHO_AXES = new Set(["y", "z", "none"]);
 export function pictureButtons(item) {
   const kinds = String(item.forge_kinds || "").split(",").filter(k => BUTTON_KINDS.includes(k));
   if (!kinds.length) return {};
   const who = String(item.forge_who || "").split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 32);
-  const axis = item.forge_who_axis === "y" || item.forge_who_axis === "z" ? item.forge_who_axis : "";
+  const axis = WHO_AXES.has(item.forge_who_axis) ? item.forge_who_axis : "";
   return { picture_kinds: kinds, who, ...(axis ? { who_axis: axis } : {}) };
 }
 
@@ -100,7 +102,7 @@ export function pictureButtons(item) {
 export function frameWho(item) {
   const who = String(item.forge_who || "").split(",").map(Number).filter(n => Number.isInteger(n) && n >= 1 && n <= 32);
   if (!who.length) return {};
-  const axis = item.forge_who_axis === "y" || item.forge_who_axis === "z" ? item.forge_who_axis : "";
+  const axis = WHO_AXES.has(item.forge_who_axis) ? item.forge_who_axis : "";
   return { who, ...(axis ? { who_axis: axis } : {}) };
 }
 

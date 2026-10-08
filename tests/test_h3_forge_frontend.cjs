@@ -294,3 +294,14 @@ test('saved multi-image members retain distinct identities and native kind numbe
   assert.equal(refs.length, 4);
   assert.notEqual(snapshot['<Picture 2>'], snapshot['<Picture 3>']);
 });
+
+test('the who order is optional: "none" reaches the request, unset stays left to right', () => {
+  const pick = (extra, mode = 'REF2VA') => helpers().forgeReferences([{ id: 'p', type: 'image', value: 'p.png', slot: 0, forge_label: 'character-1', ...extra }], mode)[0];
+  const none = pick({ forge_kinds: 'character', forge_who: '2,1', forge_who_axis: 'none' });
+  assert.equal(none.who_axis, 'none');
+  assert.equal(JSON.stringify(none.who), '[2,1]');
+  assert.equal(pick({ forge_kinds: 'character', forge_who: '1,2' }).who_axis, undefined);
+  assert.equal(pick({ forge_kinds: 'character', forge_who: '1,2', forge_who_axis: 'z' }).who_axis, 'z');
+  assert.equal(pick({ forge_kinds: 'character', forge_who: '1,2', forge_who_axis: 'sideways' }).who_axis, undefined);
+  assert.equal(pick({ forge_who: '1,2', forge_who_axis: 'none' }, 'I2VA').who_axis, 'none');
+});

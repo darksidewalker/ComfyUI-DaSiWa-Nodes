@@ -483,7 +483,10 @@ def describe_targets(cast, attached_labels=None):
         return "".join(notes)
     out = [(s["tag"], what, about + (only(s) if s["kind"] == "character" else ""))
            for s in cast["subjects"] if s["kind"] in _DESCRIBE
-           and attached(s["pictures"] + [p["picture"] for p in [*s.get("placements", []), *s.get("in_frames", [])]])
+           # A picture of several people with no order picked cannot say which
+           # one this is, so it does not make a target on its own.
+           and attached(s["pictures"] + [p["picture"] for p in s.get("placements", []) if p.get("position")]
+                        + [p["picture"] for p in s.get("in_frames", [])])
            for what, about in [_DESCRIBE[s["kind"]]]]
     out += [(f"<Picture {f['picture']}>", f"the {f['which']} frame", _DESCRIBE_FRAME)
             for f in cast["frames"] if attached([f["picture"]])]
@@ -548,8 +551,22 @@ _POSITIONS_Z = {2: ("front", "back"), 3: ("front", "middle row", "back"),
 PICTURE_KINDS = ("character", "place", "style", "first-frame", "last-frame", "pose", "custom")
 
 
-def _places(count, ref):
+def _who_axis(ref):
+    """The order the panel picked, or None for "none". The order is optional:
+    with none picked the numbers say who is in the picture, not where. No
+    `who_axis` at all is left to right, as it always was, so saved pictures
+    keep their meaning."""
     axis = ref.get("who_axis")
+    if axis == "none":
+        return None
+    return axis if axis in ("y", "z") else "x"
+
+
+def _places(count, ref):
+    """Positions in tap order, or () when no order was picked."""
+    axis = _who_axis(ref)
+    if axis is None:
+        return ()
     table = _POSITIONS_Y if axis == "y" else _POSITIONS_Z if axis == "z" else _POSITIONS
     direction = "top to bottom" if axis == "y" else "front to back" if axis == "z" else "left to right"
     return table.get(count, tuple(f"position {i + 1} of {count}, counting {direction}" for i in range(count)))
@@ -683,8 +700,11 @@ def easy_cast(references):
                 entry["refs"].append(ref)
                 entry["ref_pictures"].append(n)
             else:
-                for num, position in zip(tapped, _places(len(tapped), ref)):
-                    char(num)["placements"].append({"picture": n, "position": position})
+                # Everyone tapped is in the cast, placed or not: with no order
+                # picked there are no positions, and nobody may drop out.
+                places = _places(len(tapped), ref)
+                for i, num in enumerate(tapped):
+                    char(num)["placements"].append({"picture": n, **({"position": places[i]} if i < len(places) else {})})
                     char(num)["refs"].append(ref)
                     char(num)["ref_pictures"].append(n)
         for kind, entry in (("place", place), ("style", style)):
@@ -726,7 +746,8 @@ def _shown_in(s):
     """Where a subject is shown: "in <Picture 1>, and on the left in <Picture 3>
     and in front in the first frame <Picture 4>"."""
     own = f"in {_picture_list(s['pictures'])}" if s["pictures"] else ""
-    shared = _join_and([f"{place_word(p['position'])} in <Picture {p['picture']}>" for p in s.get("placements", [])])
+    shared = _join_and([f"{place_word(p['position']) + ' in' if p.get('position') else 'in'} <Picture {p['picture']}>"
+                        for p in s.get("placements", [])])
     framed = _join_and([f"{place_word(f['position']) + ' in' if f.get('position') else 'in'} the {f['which']} frame <Picture {f['picture']}>"
                         for f in s.get("in_frames", [])])
     rest = _join_and([x for x in (shared, framed) if x])

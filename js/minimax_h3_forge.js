@@ -71,14 +71,22 @@ function whoOf(ref) {
 function primaryLabel(kinds, who, axis) {
   if (kinds[0] !== "character") return kinds[0];
   const group = `group-${who.join("")}`;
-  return who.length > 1 && !axis && GROUP_LABELS.has(group) ? group : `character-${who[0] || 1}`;
+  return who.length > 1 && axis === "x" && GROUP_LABELS.has(group) ? group : `character-${who[0] || 1}`;
 }
 // True when that label alone says everything the buttons do.
 function describesAlone(label, kinds, who, axis) {
-  if (kinds.length !== 1 || axis) return false;
-  if (kinds[0] === "character") return who.length === 1 ? label === `character-${who[0]}` : label === `group-${who.join("")}`;
+  if (kinds.length !== 1) return false;
+  if (kinds[0] === "character") return who.length === 1 ? label === `character-${who[0]}` : axis === "x" && label === `group-${who.join("")}`;
   return !who.length;
 }
+// The order of several people is optional (no order picked: the numbers say
+// who is in it, not where). In the panel "x" / "y" / "z" is the order picked
+// and "" is none. Stored, nothing is still left to right, so pictures saved
+// before keep their meaning, and no order is "none".
+const axisFrom = (stored, who) => stored === "none" ? "" : stored === "y" || stored === "z" ? stored : who.length > 1 ? "x" : "";
+const axisTo = (axis, who) => who.length < 2 || axis === "x" ? "" : axis || "none";
+const AXIS_BUTTONS = [["x", "left → right"], ["y", "top → bottom"], ["z", "front → back"]];
+const AXIS_TITLE = "Optional: where each one stands, in the order tapped. Tap the picked order again to turn it off.";
 const INSTRUCTIONS_HINT = {
   pose: "Pose only; identity, clothes and background stay unchanged. Add details if needed.",
   custom: "Describe what to use from this image (required).",
@@ -258,13 +266,13 @@ async function open(node) {
         // place behind them) and who is in it, tapped in order. A picture the
         // old single label still describes is saved as that label alone, so
         // drafts made before the buttons keep matching.
-        let kinds = kindsOf(ref), who = whoOf(ref), axis = ref.who_axis || "";
+        let kinds = kindsOf(ref), who = whoOf(ref), axis = axisFrom(ref.who_axis, who);
         const takesWho = () => kinds.some(k => k === "character" || k.endsWith("-frame"));
         const kindButtons = el("span", { className: "kinds", role: "group", title: "What this picture is. Character, Place, Style and the frames combine; Pose and Custom stand alone." });
         kindButtons.setAttribute("aria-label", `${name} is`);
-        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in it. Tap in order: left to right, unless the order below says otherwise. Pictures with the same Character number are one character." });
+        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in it. Pictures with the same Character number are one character. With two or more, the order below can say where each one stands." });
         whoButtons.setAttribute("aria-label", `${name} who is in it`);
-        const axisButtons = el("span", { className: "who-axis", role: "group", title: "Which way the tap order runs." });
+        const axisButtons = el("span", { className: "who-axis", role: "group", title: AXIS_TITLE });
         axisButtons.setAttribute("aria-label", `${name} order`);
         const paint = () => {
           for (const b of kindButtons.querySelectorAll("button")) b.setAttribute("aria-pressed", String(kinds.includes(b.dataset.kind)));
@@ -273,7 +281,7 @@ async function open(node) {
             const n = i + 1, at = who.indexOf(n);
             const b = el("button", { type: "button", textContent: String(n), onclick: () => tapWho(n) });
             b.setAttribute("aria-pressed", String(at >= 0));
-            b.dataset.order = who.length > 1 && at >= 0 ? String(at + 1) : "";
+            b.dataset.order = axis && who.length > 1 && at >= 0 ? String(at + 1) : "";
             return b;
           }));
           whoButtons.hidden = !takesWho();
@@ -284,11 +292,12 @@ async function open(node) {
           const label = primaryLabel(kinds, who, axis);
           const simple = describesAlone(label, kinds, who, axis);
           ref.easy_role = label;
+          const stored = axisTo(axis, who);
           if (simple) { delete ref.picture_kinds; delete ref.who; delete ref.who_axis; }
-          else { ref.picture_kinds = [...kinds]; ref.who = [...who]; if (axis) ref.who_axis = axis; else delete ref.who_axis; }
+          else { ref.picture_kinds = [...kinds]; ref.who = [...who]; if (stored) ref.who_axis = stored; else delete ref.who_axis; }
           const role = labelRole(label);
           ref.role = role.forge_role; ref.subject_group = role.forge_subject_group;
-          persistReference(ref, { forge_label: label, ...role, forge_kinds: simple ? "" : kinds.join(","), forge_who: simple ? "" : who.join(","), forge_who_axis: simple ? "" : axis });
+          persistReference(ref, { forge_label: label, ...role, forge_kinds: simple ? "" : kinds.join(","), forge_who: simple ? "" : who.join(","), forge_who_axis: simple ? "" : stored });
           paint();
           syncVisionUI();
           if (instructions) instructions.placeholder = INSTRUCTIONS_HINT[label] || "What should this reference contribute? (optional)";
@@ -317,8 +326,8 @@ async function open(node) {
         };
         for (const [k, text] of KIND_BUTTONS) kindButtons.append(el("button", { type: "button", textContent: text, onclick: () => tapKind(k) }));
         kindButtons.querySelectorAll("button").forEach((b, i) => { b.dataset.kind = KIND_BUTTONS[i][0]; });
-        for (const [value, text] of [["", "left → right"], ["y", "top → bottom"], ["z", "front → back"]]) {
-          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = value; save(); } });
+        for (const [value, text] of AXIS_BUTTONS) {
+          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = axis === value ? "" : value; save(); } });
           b.dataset.axis = value;
           axisButtons.append(b);
         }
@@ -328,16 +337,18 @@ async function open(node) {
         // A frame in I2VA / FL2VA / L2VA: who is in it, so the idea's
         // "Character 1" can say which person in the frame that is (a
         // piggyback: tap the one carrying, then the one carried, front to back).
-        let who = Array.isArray(ref.who) ? [...ref.who] : [], axis = ref.who_axis || "";
-        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in this frame. Tap in order: left to right, unless the order below says otherwise. In the idea, write \"Character 1\"." });
+        let who = Array.isArray(ref.who) ? [...ref.who] : [];
+        let axis = axisFrom(ref.who_axis, who);
+        const whoButtons = el("span", { className: "who", role: "group", title: "Who is in this frame. In the idea, write \"Character 1\". With two or more, the order below can say where each one stands." });
         whoButtons.setAttribute("aria-label", `${name} who is in it`);
-        const axisButtons = el("span", { className: "who-axis", role: "group", title: "Which way the tap order runs." });
+        const axisButtons = el("span", { className: "who-axis", role: "group", title: AXIS_TITLE });
         axisButtons.setAttribute("aria-label", `${name} order`);
         const save = () => {
           if (who.length < 2) axis = "";
+          const stored = axisTo(axis, who);
           if (who.length) ref.who = [...who]; else delete ref.who;
-          if (axis) ref.who_axis = axis; else delete ref.who_axis;
-          persistReference(ref, { forge_who: who.join(","), forge_who_axis: axis });
+          if (stored) ref.who_axis = stored; else delete ref.who_axis;
+          persistReference(ref, { forge_who: who.join(","), forge_who_axis: stored });
           paint();
           node.graph?.setDirtyCanvas(true, true);
         };
@@ -347,14 +358,14 @@ async function open(node) {
             const n = i + 1, at = who.indexOf(n);
             const b = el("button", { type: "button", textContent: String(n), onclick: () => { who = at >= 0 ? who.filter(x => x !== n) : [...who, n]; save(); } });
             b.setAttribute("aria-pressed", String(at >= 0));
-            b.dataset.order = who.length > 1 && at >= 0 ? String(at + 1) : "";
+            b.dataset.order = axis && who.length > 1 && at >= 0 ? String(at + 1) : "";
             return b;
           }));
           for (const b of axisButtons.querySelectorAll("button")) b.setAttribute("aria-pressed", String(b.dataset.axis === axis));
           axisButtons.hidden = who.length < 2;
         };
-        for (const [value, text] of [["", "left → right"], ["y", "top → bottom"], ["z", "front → back"]]) {
-          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = value; save(); } });
+        for (const [value, text] of AXIS_BUTTONS) {
+          const b = el("button", { type: "button", textContent: text, onclick: () => { axis = axis === value ? "" : value; save(); } });
           b.dataset.axis = value;
           axisButtons.append(b);
         }
