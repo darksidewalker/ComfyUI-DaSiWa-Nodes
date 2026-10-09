@@ -1,6 +1,6 @@
 """Thin Director adapter for ComfyUI's native MiniMax H3 nodes."""
 
-from .helper_minimax_h3_director import normalize_guide
+from .helper_minimax_h3_director import FPS, normalize_guide
 from .helper_refmod_format import refmod_fingerprint
 from .helper_logging import log_dasiwa
 
@@ -206,12 +206,16 @@ class MiniMaxH3DirectorGuide:
                     raise ValueError("Connect the MiniMax H3 video VAE: invalid decoded RefMod shape.")
                 # Video refs need ref_audio_t/latent_t for ComfyUI's PackedLayout; images don't.
                 is_video = block["kind"] == "video" or (getattr(latent, "ndim", 0) >= 5 and latent.shape[2] > 1)
-                decoded_items.append({"type": "image" if not is_video else "video", "data": pixels.cpu().clone()})
                 if is_video:
+                    # Match native H3's 2-fps Qwen presentation; keep the full DiT latent.
+                    qwen_frames = pixels[::FPS // 2].cpu().clone()
+                    decoded_items.append({"type": "video", "data": qwen_frames,
+                                          "timestamps": [i / 2.0 for i in range(qwen_frames.shape[0])]})
                     native_block = {"kind": block["kind"], "latent": latent,
                                     "latent_t": latent.shape[2], "latent_h": latent.shape[3], "latent_w": latent.shape[4],
                                     "ref_audio_t": 0, "audio_latent": None}
                 else:
+                    decoded_items.append({"type": "image", "data": pixels.cpu().clone()})
                     # Image refs are still 5D (B,C,T=1,H,W); skip the temporal dim.
                     native_block = {"kind": "image", "latent": latent,
                                     "latent_h": latent.shape[3], "latent_w": latent.shape[4]}
