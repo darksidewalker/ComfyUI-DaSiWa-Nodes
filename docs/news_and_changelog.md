@@ -6,7 +6,7 @@ This changelog covers **2026-07-05 → 2026-10-09**. Older history lives in the 
 
 ## News
 
-- **H3 local-tile refinement fix (10-09, Git fix after 0.5.7):** Enhanced Upscale uses native tile-local H3 coordinates and prefers the Talon V2 automatic layout under a 2.1 MP tile cap. If the preferred geometry cannot fit the estimate, smaller spatial tiles remain available. Existing sockets, Director/CFGGuider integration, protected Continuity prefix and original audio are retained; pending Continuity guides are reserved in planning. No new controls or version bump. [Wiring and limits →](minimax_h3_tiled_upscale.md)
+- **H3 local-tile refinement and video RefMod fixes (10-09, 0.5.8):** Enhanced Upscale uses native tile-local H3 coordinates and prefers the Talon V2 automatic layout under a 2.1 MP tile cap. If the preferred geometry cannot fit the estimate, smaller spatial tiles remain available. Existing sockets, Director/CFGGuider integration, protected Continuity prefix and original audio are retained; pending Continuity guides are reserved in planning. Video RefMods use native 2 fps Qwen sampling with matching timestamps while retaining the full DiT reference latent. No new controls. [Wiring and limits →](minimax_h3_tiled_upscale.md)
 
 - **Automatic LLM backend settings (10-09, 0.5.7):** Prompt Writer and Advanced LLM nodes automatically use the saved DaSiWa LLM server settings in single-user mode, without a launcher opt-in. Local GGUF/Hugging Face models, Ollama models and OpenAI-compatible server models remain available together. Nested local discovery now lists all sibling model folders and GGUFs. Environment endpoints retain priority and endpoint/key pairing; multi-user workflows use environment configuration. [LLM guide →](llm_nodes.md)
 
@@ -126,6 +126,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.8 | 10-09 | H3 tile-local refinement, automatic tile layout and Continuity planning reserve; video RefMod Qwen sampling and timestamps |
 | 0.5.7 | 10-09 | Automatic saved LLM server settings; combined local/remote choices and complete nested local discovery |
 | 0.5.3 | 10-07 | Joint target-grid tile/chunk selection, edge-overlap cost and per-tile keyframe budget |
 | 0.5.2 | 10-06 | H3 independent spatial/temporal switches, dynamic-memory budget and minimum tile floor |
@@ -190,6 +191,8 @@ Quick reference for the version bumps inside this window, newest first:
 ## Changelog
 
 ### MiniMax H3 Director (v1)
+
+- **10-09 (0.5.8):** Video RefMods are presented to Qwen at the native 2 fps rate with matching half-second timestamps; the full video latent remains available to DiT. Image RefMods keep their existing presentation.
 
 - **10-03 (0.4.75, #64):** Append & Stage allocates a fresh checkpoint ID per executed commit instead of reusing an ID from cached Director Guide outputs. Consecutive new takes and continuation rerolls keep separate immutable checkpoints, preserve the pinned parent and leave capture-off behavior unchanged. Added CPU regression coverage for reused contexts, legacy run IDs, publish/readback and existing checkpoint preservation.
 
