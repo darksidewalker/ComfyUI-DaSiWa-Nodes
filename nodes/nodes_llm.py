@@ -66,7 +66,7 @@ class DaSiWa_LLMModelSelector:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": (_list_llm_models() + server_model_choices(), {"description": "Local model under ComfyUI/models/llm, or a cached 'Ollama:' / 'Server:' choice that sets its backend automatically. Workflow endpoints use the service environment; Settings require explicit operator opt-in. Discovery runs in the background; press R afterwards."}),
+                "model": (_list_llm_models() + server_model_choices(), {"description": "Local model under ComfyUI/models/llm, or a cached 'Ollama:' / 'Server:' choice that sets its backend automatically. Uses saved DaSiWa LLM server settings automatically in single-user mode; service environment values take priority. Discovery runs in the background; press R afterwards."}),
                 "custom_path": ("STRING", {"default": "", "description": "Optional absolute path, or relative path under ComfyUI/models/llm. Overrides model when set."}),
                 "backend": (["transformers", "llama_cpp", "ollama", "openai", "ollama_server"], {"default": "transformers", "description": "Transformers loads local model folders; llama.cpp loads local GGUFs; ollama is legacy loopback. openai/ollama_server use operator-configured endpoints."}),
                 "task": (["auto", "text", "vision"], {"default": "auto", "description": "Use vision when analyzing connected images/frame batches."}),

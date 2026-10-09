@@ -156,8 +156,7 @@ def _workflow_url(value, default=""):
     return value
 
 
-# User-editable ComfyUI Settings are not trusted global service configuration.
-# Workflow fallback requires explicit operator opt-in and single-user mode.
+# Single-user workflows share Forge settings; multi-user uses global environment only.
 SETTING_KEYS = {
     "ollama_url": "DaSiWa.H3Forge.OllamaURL",
     "openai_url": "DaSiWa.H3Forge.OpenAIURL",
@@ -178,14 +177,11 @@ def comfy_settings():
 
 
 def workflow_server_settings():
-    """Trusted global environment, or explicitly opted-in single-user settings.
+    """Environment overrides the saved single-user Forge settings.
 
     An endpoint and its key always come from the same configuration source."""
-    saved = {}
-    if os.environ.get("DASIWA_LLM_ALLOW_SETTINGS") == "1":
-        from comfy.cli_args import args
-        if not getattr(args, "multi_user", False):
-            saved = comfy_settings()
+    from comfy.cli_args import args
+    saved = comfy_settings() if not getattr(args, "multi_user", False) else {}
     ollama_url = os.environ.get("DASIWA_LLM_OLLAMA_URL", "").strip()
     openai_url = os.environ.get("DASIWA_LLM_OPENAI_URL", "").strip()
     if openai_url:
@@ -742,9 +738,9 @@ def run_workflow_server(config, system, user, images, max_tokens,
     kind = config["backend"]
     if kind == "openai":
         if not settings["openai_url"]:
-            raise ValueError("Set DASIWA_LLM_OPENAI_URL in the ComfyUI service environment. "
-                             "Single-user operators may opt into ComfyUI Settings > DaSiWa > LLM servers "
-                             "with DASIWA_LLM_ALLOW_SETTINGS=1; settings fallback is disabled in multi-user mode.")
+            raise ValueError("Set the OpenAI-compatible server address in "
+                             "ComfyUI Settings > DaSiWa > LLM servers, or set DASIWA_LLM_OPENAI_URL "
+                             "in the ComfyUI service environment. Multi-user mode requires the environment setting.")
         server = OpenAICompatible(settings["openai_url"], settings["openai_api_key"])
     elif kind == "ollama_server":
         server = Ollama(settings["ollama_url"])

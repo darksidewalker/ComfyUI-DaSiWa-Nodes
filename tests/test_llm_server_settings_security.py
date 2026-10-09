@@ -17,6 +17,7 @@ def synthetic_settings(monkeypatch):
         "ollama_url": "http://user-ollama", "openai_url": "http://user-openai",
         "openai_api_key": "user-key"})
     if hasattr(backend, "_model_choices_cache"):
+        join_discovery()
         backend._model_choices_cache.clear()
         monkeypatch.setattr(backend, "_model_choices_thread", None)
     yield
@@ -30,30 +31,19 @@ def join_discovery():
         assert not thread.is_alive()
 
 
-def test_settings_not_trusted_by_default(monkeypatch):
-    reads = []
-    monkeypatch.setattr(backend, "comfy_settings", lambda: reads.append(True) or {})
+def test_missing_settings_use_loopback_ollama(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
     assert backend.workflow_server_settings() == {
         "ollama_url": backend.DEFAULT_OLLAMA, "openai_url": "", "openai_api_key": ""}
-    assert reads == []
 
 
-@pytest.mark.parametrize("opt_in", [None, "0", "true", "yes", " 1"])
-def test_only_exact_operator_opt_in_enables_settings(monkeypatch, opt_in):
-    if opt_in is not None:
-        monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", opt_in)
-    assert backend.workflow_server_settings()["openai_url"] == ""
-
-
-def test_single_user_operator_can_opt_in(monkeypatch):
-    monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", "1")
+def test_single_user_settings_are_used_automatically():
     assert backend.workflow_server_settings() == {
         "ollama_url": "http://user-ollama", "openai_url": "http://user-openai",
         "openai_api_key": "user-key"}
 
 
 def test_multi_user_disables_settings_fallback(monkeypatch):
-    monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", "1")
     monkeypatch.setattr(args, "multi_user", True)
     reads = []
     monkeypatch.setattr(backend, "comfy_settings", lambda: reads.append(True) or {
@@ -67,24 +57,24 @@ def test_multi_user_disables_settings_fallback(monkeypatch):
 
 
 def test_environment_url_never_uses_settings_key(monkeypatch):
-    monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", "1")
     monkeypatch.setenv("DASIWA_LLM_OPENAI_URL", "http://operator")
     assert backend.workflow_server_settings()["openai_api_key"] == ""
 
 
 def test_settings_url_never_uses_environment_key(monkeypatch):
-    monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", "1")
     monkeypatch.setenv("DASIWA_LLM_OPENAI_API_KEY", "operator-key")
     assert backend.workflow_server_settings()["openai_api_key"] == "user-key"
 
 
 def test_key_without_endpoint_is_not_retained(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {"openai_api_key": "orphan-key"})
     monkeypatch.setenv("DASIWA_LLM_OPENAI_API_KEY", "operator-key")
     assert backend.workflow_server_settings()["openai_api_key"] == ""
 
 
-def test_missing_workflow_endpoint_explains_operator_opt_in():
-    with pytest.raises(ValueError, match="DASIWA_LLM_ALLOW_SETTINGS=1"):
+def test_missing_workflow_endpoint_explains_settings(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
+    with pytest.raises(ValueError, match="Settings > DaSiWa > LLM servers"):
         backend.run_workflow_server(
             {"backend": "openai", "model_path": "served"}, "s", "u", [],
             10, 0.2, 0.8, 1.0, -1)
@@ -186,6 +176,7 @@ def test_changed_configuration_cannot_reuse_other_server_models(discovery, monke
 
 
 def test_single_worker_does_not_block_schema_calls_during_configuration_churn(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
     entered, release = threading.Event(), threading.Event()
     calls = []
     def http(url, **kwargs):
@@ -231,6 +222,7 @@ def test_schema_returns_copy_of_cache(discovery):
 
 
 def test_explicit_refresh_serializes_with_worker_without_blocking_schema(monkeypatch):
+    monkeypatch.setattr(backend, "comfy_settings", lambda: {})
     entered, release, waiting = threading.Event(), threading.Event(), threading.Event()
     class ObservedCondition(threading.Condition):
         def wait(self, timeout=None):

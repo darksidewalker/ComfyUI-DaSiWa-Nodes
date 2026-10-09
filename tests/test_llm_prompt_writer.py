@@ -163,12 +163,12 @@ def _settings_file(monkeypatch, tmp_path, values):
     (tmp_path / "default").mkdir()
     (tmp_path / "default" / "comfy.settings.json").write_text(json.dumps(values), encoding="utf-8")
     monkeypatch.setitem(sys.modules, "folder_paths", types.SimpleNamespace(get_user_directory=lambda: str(tmp_path)))
-    monkeypatch.setenv("DASIWA_LLM_ALLOW_SETTINGS", "1")
+    monkeypatch.delenv("DASIWA_LLM_ALLOW_SETTINGS", raising=False)
     for env in ("DASIWA_LLM_OLLAMA_URL", "DASIWA_LLM_OPENAI_URL", "DASIWA_LLM_OPENAI_API_KEY"):
         monkeypatch.delenv(env, raising=False)
 
 
-def test_servers_come_from_comfyui_settings_when_operator_opts_in(monkeypatch, tmp_path):
+def test_servers_come_from_comfyui_settings_automatically(monkeypatch, tmp_path):
     from nodes import llm_backends
     _settings_file(monkeypatch, tmp_path, {
         "DaSiWa.H3Forge.OllamaURL": "http://192.168.0.50:11434/",

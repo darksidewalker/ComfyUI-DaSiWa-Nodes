@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-07**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-10-09**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Automatic LLM backend settings (10-09, 0.5.7):** Prompt Writer and Advanced LLM nodes automatically use the saved DaSiWa LLM server settings in single-user mode, without a launcher opt-in. Local GGUF/Hugging Face models, Ollama models and OpenAI-compatible server models remain available together. Nested local discovery now lists all sibling model folders and GGUFs. Environment endpoints retain priority and endpoint/key pairing; multi-user workflows use environment configuration. [LLM guide →](llm_nodes.md)
 
 - **H3 Forge reference roles (0.5.4):** Integrates PR #70 and #71 with combined picture roles, ordered character selection, frame-only character vision descriptions and updated REF2VA definitions/retention. Preserves Director canvas and shot policy, literal dialogue, legacy labels and draft persistence; fixes button preview invalidation and generation locks.
 
@@ -122,6 +124,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.7 | 10-09 | Automatic saved LLM server settings; combined local/remote choices and complete nested local discovery |
 | 0.5.3 | 10-07 | Joint target-grid tile/chunk selection, edge-overlap cost and per-tile keyframe budget |
 | 0.5.2 | 10-06 | H3 independent spatial/temporal switches, dynamic-memory budget and minimum tile floor |
 | 0.5.1 | 10-06 | LLM Prompt Writer display-name rename; saved node IDs unchanged |
@@ -293,6 +296,8 @@ Patch Comfy Kitchen Attention was retired in **0.4.68**; the entries below descr
 - **07-30:** node added: dual Booru / Natural-Language wildcard library, weighted bounded prompts, reproducible rerolls.
 
 ### LLM / VLM Analyze
+
+- **10-09 (0.5.7):** Prompt Writer and Advanced nodes share saved single-user DaSiWa LLM server settings automatically; `DASIWA_LLM_ALLOW_SETTINGS` is no longer required. Local and configured server models remain listed together, including all sibling model folders and GGUFs below a common local directory. Environment priority, credential-source pairing and multi-user isolation are preserved.
 
 - **09-15: Registry security remediation (0.4.38–0.4.39):** removed workflow-controlled Hugging Face repository downloads, Hugging Face token reads, and `trust_remote_code`; local model folders must be installed before a workflow runs. Ollama requests are fixed to `http://127.0.0.1:11434/api/chat`; the former arbitrary URL input is removed. Enhanced Video Combine preview accepts only a real file under ComfyUI's output directory, rather than selecting a root from a request parameter. `tools/audit_comfy_registry_status.py` redacts Registry status payloads and verifies the exact post-publication version becomes active.
 - **07-30:** LLM cache and GGUF backends added (local GGUF via llama.cpp alongside Ollama and Hugging Face download).

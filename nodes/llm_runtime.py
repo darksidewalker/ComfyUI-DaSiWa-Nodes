@@ -125,19 +125,22 @@ def _list_llm_models():
                     rel = name
                 else:
                     rel = None
-                    ggufs = []
-                    for root, _, files in os.walk(path):
+                    for root, dirs, files in os.walk(path):
+                        dirs.sort()
                         if "config.json" in files:
-                            rel = os.path.relpath(root, base)
-                            break
-                        ggufs += [os.path.relpath(os.path.join(root, f), base) for f in sorted(files)
-                                  if f.lower().endswith(".gguf") and not _is_mmproj(f)]
-                    if not rel:
-                        # A folder of GGUFs: a vision model keeps its mmproj beside it.
-                        for gguf in ggufs:
-                            if gguf not in seen:
-                                models.append(gguf)
-                                seen.add(gguf)
+                            model = os.path.relpath(root, base)
+                            if model not in seen:
+                                models.append(model)
+                                seen.add(model)
+                            # A complete model is one entry, not its weight shards.
+                            dirs[:] = []
+                            continue
+                        for filename in sorted(files):
+                            if filename.lower().endswith(".gguf") and not _is_mmproj(filename):
+                                model = os.path.relpath(os.path.join(root, filename), base)
+                                if model not in seen:
+                                    models.append(model)
+                                    seen.add(model)
                 if rel and rel not in seen:
                     models.append(rel)
                     seen.add(rel)

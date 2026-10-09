@@ -89,7 +89,7 @@ def style_line(style, spec):
 
 
 # Server models sit in the one model list as "Ollama: name" and "Server: id".
-# Addresses are operator-configured; Settings require explicit opt-in, never the graph.
+# Addresses come from the shared Forge settings or environment, never the graph.
 NO_MODEL = "None"
 
 
@@ -180,7 +180,7 @@ class DaSiWa_LLMPromptWriter:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": (model_choices(), {"description": "Models in ComfyUI/models/llm plus cached Ollama and OpenAI-compatible server models. Workflow servers use the service environment; Settings require DASIWA_LLM_ALLOW_SETTINGS=1 on a trusted single-user installation. Discovery runs in the background; press R afterwards. A vision model can read connected images."}),
+                "model": (model_choices(), {"description": "Models in ComfyUI/models/llm plus cached Ollama and OpenAI-compatible server models. Uses saved DaSiWa LLM server settings automatically in single-user mode; service environment values take priority. Discovery runs in the background; press R afterwards. A vision model can read connected images."}),
                 "write_for": (list(WRITE_FOR), {"default": "Anima", "description": "The image or video model the prompt is for."}),
                 "start_with": ("STRING", {"default": "", "multiline": True, "placeholder": "Quality tags and LoRA trigger words go here. Always first, exactly as typed.", "description": "Quality tags, LoRA trigger words or anything else that must lead the prompt. Put at the very top exactly as typed; the model never sees or changes it."}),
                 "idea": ("STRING", {"default": "", "multiline": True, "placeholder": "Write your idea here", "description": "What you want in the picture, in your own words or as tags."}),

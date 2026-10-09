@@ -13,7 +13,7 @@ The simple way in. Type an idea, pick what the prompt is for, get a prompt back.
   - `Ollama: <name>` for every model Ollama has installed, on this computer unless Settings say otherwise;
   - `Server: <id>` for every model on the OpenAI-compatible server (llama-swap, LM Studio, llama.cpp server), once its address is set.
 
-  Workflow server addresses come from the ComfyUI service environment by default. On trusted single-user installations, an operator can explicitly enable the Settings fallback described below.
+  Workflow server addresses automatically use the same saved DaSiWa LLM server settings as Prompt Forge on single-user installations. Environment-configured endpoints take priority.
 
   Server discovery runs in the background; node schemas read a cached list without waiting for HTTP requests. Press R after discovery has completed to update the dropdown. First-time unreachable servers contribute no entries; a transient failure retains their last successful list. Execution still reports a stopped server clearly.
 - `write_for`: Anima, Illustrious, Krea2, Wan 2.2 or LTX 2.3.
@@ -106,7 +106,9 @@ The quickest way: pick an `Ollama: <name>` or `Server: <id>` entry from Model Se
 
 Or, as before, choose `openai` or `ollama_server` in Model Selector and enter the server's model ID in `server_model`. Local `model`/`custom_path` are not used for these modes. The original `ollama` mode remains fixed to loopback and uses `ollama_model`.
 
-Workflow endpoints are operator-configured, never supplied by graph inputs. By default, set them in the environment used to start ComfyUI:
+Set server addresses under **Settings > DaSiWa > LLM servers**, just as for Prompt Forge. Prompt Writer and Advanced Selector use these saved settings automatically; no launcher variable is needed. Local models in `ComfyUI/models/llm` remain available in the same dropdown. Selecting a server model does not silently fall back to a local model if the server fails.
+
+Workflow endpoints are never supplied by graph inputs. To override the saved addresses, or for multi-user installations, set them in the environment used to start ComfyUI:
 
 ```fish
 set -gx DASIWA_LLM_OPENAI_URL http://127.0.0.1:8041/v1
@@ -115,7 +117,7 @@ set -gx DASIWA_LLM_OLLAMA_URL http://127.0.0.1:11434
 
 `DASIWA_LLM_OPENAI_API_KEY` supplies authentication for the environment-configured OpenAI endpoint. Never put keys in workflow JSON. OpenAI-compatible addresses may include `/v1`; the transport adds it when absent. With no Ollama address, the loopback default is used.
 
-**Settings fallback is off by default.** On a trusted single-user installation, the operator may set `DASIWA_LLM_ALLOW_SETTINGS=1` before starting ComfyUI. The workflow nodes can then use **Settings > DaSiWa > LLM servers** from `user/default/comfy.settings.json` when an endpoint is not environment-configured. These settings are writable by ComfyUI clients, not a secure operator configuration store; enable this only when every client is trusted. The fallback is disabled under `--multi-user`; use global environment configuration there.
+Single-user workflow nodes read the saved settings from `user/default/comfy.settings.json` automatically. `DASIWA_LLM_ALLOW_SETTINGS` is no longer required. These settings are writable by ComfyUI clients; only expose a single-user installation to trusted clients. Under `--multi-user`, workflow nodes do not read another user's default settings; use global environment configuration there.
 
 An environment OpenAI URL uses only the environment API key. A Settings URL uses only the Settings API key. Keys never cross configuration sources, including when an environment URL overrides a Settings URL. The Director Forge continues to use its explicitly supplied dialog settings and never inherits workflow environment credentials.
 
