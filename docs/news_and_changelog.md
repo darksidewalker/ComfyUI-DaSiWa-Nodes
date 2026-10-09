@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-10-09**. Older history lives in the 
 
 ## News
 
+- **H3 local-tile refinement fix (10-09, Git fix after 0.5.7):** Enhanced Upscale uses native tile-local H3 coordinates and prefers the Talon V2 automatic layout under a 2.1 MP tile cap. If the preferred geometry cannot fit the estimate, smaller spatial tiles remain available. Existing sockets, Director/CFGGuider integration, protected Continuity prefix and original audio are retained; pending Continuity guides are reserved in planning. No new controls or version bump. [Wiring and limits →](minimax_h3_tiled_upscale.md)
+
 - **Automatic LLM backend settings (10-09, 0.5.7):** Prompt Writer and Advanced LLM nodes automatically use the saved DaSiWa LLM server settings in single-user mode, without a launcher opt-in. Local GGUF/Hugging Face models, Ollama models and OpenAI-compatible server models remain available together. Nested local discovery now lists all sibling model folders and GGUFs. Environment endpoints retain priority and endpoint/key pairing; multi-user workflows use environment configuration. [LLM guide →](llm_nodes.md)
 
 - **H3 Forge reference roles (0.5.4):** Integrates PR #70 and #71 with combined picture roles, ordered character selection, frame-only character vision descriptions and updated REF2VA definitions/retention. Preserves Director canvas and shot policy, literal dialogue, legacy labels and draft persistence; fixes button preview invalidation and generation locks.

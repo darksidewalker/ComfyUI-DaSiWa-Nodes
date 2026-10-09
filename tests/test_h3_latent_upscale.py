@@ -16,7 +16,7 @@ spec.loader.exec_module(h3)
 @pytest.fixture(scope="module")
 def native():
     # Never initialize a GPU: force CPU before importing ComfyUI model management.
-    sys.path.insert(0, str(ROOT.parents[1]))
+    sys.path.insert(0, str(ROOT.parent / 'ComfyUI'))
     import comfy.cli_args
     comfy.cli_args.args.cpu = True
     import folder_paths

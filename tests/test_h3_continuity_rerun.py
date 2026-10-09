@@ -6,12 +6,16 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-import nodes
-sys.path.append(str(ROOT.parent / "ComfyUI"))
+sys.path.insert(0, str(ROOT.parent / "ComfyUI"))
+import types
+package = types.ModuleType('_h3_rerun_nodes')
+package.__path__ = [str(ROOT / 'nodes')]
+sys.modules[package.__name__] = package
+import comfy.cli_args
+comfy.cli_args.args.cpu = True
 from comfy.nested_tensor import NestedTensor
-from nodes.h3_continuity.core import ClipStore
-from nodes.h3_continuity import nodes as continuity_nodes
+from _h3_rerun_nodes.h3_continuity.core import ClipStore
+from _h3_rerun_nodes.h3_continuity import nodes as continuity_nodes
 
 
 def latent(value=0, frames=5):

@@ -7,7 +7,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT.parents[1]))
+sys.path.insert(0, str(ROOT.parent / 'ComfyUI'))
 import comfy.cli_args
 comfy.cli_args.args.cpu = True
 spec = importlib.util.spec_from_file_location('dasiwa_h3_upscale_test', ROOT / 'nodes/nodes_minimax_h3_tiled_upscale.py')

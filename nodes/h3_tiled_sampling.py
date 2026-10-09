@@ -50,6 +50,57 @@ def temporal_ranges(total_tokens, chunk_tokens, overlap_tokens):
     return result
 
 
+# Preferred equal-split geometry adapted from Talon Upscale V2 (GPL-3.0).
+def _even_split(total, count, overlap):
+    if count <= 1:
+        return total
+    return min(total, math.ceil((total + (count - 1) * overlap) / count / 32) * 32)
+
+
+def auto_local_tiles(source_width, source_height, target_width, target_height, max_tile_megapixels=2.1):
+    """Prefer few source-shaped equal tiles, not a measured runtime optimum."""
+    dimensions = (source_width, source_height, target_width, target_height)
+    if any(not math.isfinite(float(v)) or v <= 0 for v in dimensions):
+        raise ValueError('Source and target dimensions must be finite and positive')
+    sw, sh, tw, th = map(int, dimensions)
+    if min(sw, sh, tw, th) <= 0 or tw % 32 or th % 32:
+        raise ValueError('Target dimensions must be positive multiples of 32')
+    cap = float(max_tile_megapixels) * 1_000_000
+    if not math.isfinite(cap) or cap <= 0:
+        raise ValueError('max_tile_megapixels must be finite and positive')
+    if tw * th <= cap:
+        return tw, th, 0
+    aspect = sw / sh
+    min_w, min_h = min(tw, 512), min(th, 512)
+
+    def search(overlap):
+        shaped, any_shape = None, None
+        # Enough splits to reach the spatial floor, without an arbitrary grid cap.
+        max_nx = max(1, math.ceil((tw - overlap) / (min_w - overlap)))
+        max_ny = max(1, math.ceil((th - overlap) / (min_h - overlap)))
+        for nx in range(1, max_nx + 1):
+            for ny in range(1, max_ny + 1):
+                w, h = _even_split(tw, nx, overlap), _even_split(th, ny, overlap)
+                if w < min_w or h < min_h or w * h > cap or overlap > min(w, h) - 32:
+                    continue
+                drift = abs(math.log((w / h) / aspect))
+                key = (nx * ny, drift, nx)
+                if any_shape is None or key < any_shape[0]:
+                    any_shape = (key, w, h)
+                if drift <= math.log(1.6) and (shaped is None or key < shaped[0]):
+                    shaped = (key, w, h)
+        return shaped or any_shape
+
+    overlap = min(128, min_w - 32, min_h - 32)
+    best = search(overlap)
+    if best is None:
+        overlap = min(64, min_w - 32, min_h - 32)
+        best = search(overlap)
+    if best is None:
+        raise ValueError('max_tile_megapixels is too small for this output size')
+    return best[1], best[2], overlap
+
+
 def plan_tiles(video_shape, target_width, target_height, memory_bytes,
                model_bytes=0, text_tokens=0, ref_tokens=0, *, streaming_weights=False,
                reserved_bytes=0, audio_tokens=0, latent_element_size=2, enforce_budget=True,
@@ -86,33 +137,43 @@ def plan_tiles(video_shape, target_width, target_height, memory_bytes,
         buffers += video_shape[0] * video_shape[1] * keyframes * (height // 16) * (width // 16) * (latent_element_size + 4)
         return int((budget - buffers) / (96 * 1024)) - int(text_tokens) - int(ref_tokens) - int(audio_tokens)
 
-    best = None
-    for chunk in chunks:
-        # prepare_conditioning can add one previous-window anchor.
-        keyframes = int(keyframe_tokens) + int(chunk < total)
-        rows = target_rows(chunk, keyframes)
-        ranges = temporal_ranges(total, chunk, period if chunk < total else 0)
-        sampled_time = sum(end - start for start, end in ranges)
-        widths = range(min_w, width + 1, 32) if spatial_tiling else (width,)
-        for tw in widths:
-            max_h = min(height, rows // ((tw // 32) * (chunk + keyframes)) * 32) if enforce_budget else height
-            heights = range(min_h, max_h + 1, 32) if spatial_tiling else (height,)
-            for th in heights:
-                area = (tw // 32) * (th // 32)
-                if enforce_budget and area * (chunk + keyframes) > rows:
-                    continue
-                overlap = min(max(32, math.ceil(min(tw, th) / 128) * 32), min(tw, th) - 32) if spatial_tiling else 0
-                # Exactly the count from _starts, including its pulled-back last
-                # tile. Do not allocate tile/window lists per candidate.
-                nx = (width - overlap - 1) // (tw - overlap) + 1
-                ny = (height - overlap - 1) // (th - overlap) + 1
-                forwards = nx * ny * len(ranges)
-                processed_rows = nx * ny * area * sampled_time
-                # Geometric/offload proxy, not a measured attention runtime:
-                # fewest full-model calls, least repeated work, longest context.
-                score = (forwards, processed_rows, -chunk, abs(tw * height - th * width))
-                if best is None or score < best[0]:
-                    best = (score, tw, th, overlap, chunk, rows)
+    preferred = (auto_local_tiles(video_shape[4] * 16, video_shape[3] * 16, width, height)
+                 if spatial_tiling else (width, height, 0))
+    pw, ph, po = preferred
+
+    def search(fixed):
+        best = None
+        for chunk in chunks:
+            # prepare_conditioning can add one previous-window anchor.
+            keyframes = int(keyframe_tokens) + int(chunk < total)
+            rows = target_rows(chunk, keyframes)
+            ranges = temporal_ranges(total, chunk, period if chunk < total else 0)
+            sampled_time = sum(end - start for start, end in ranges)
+            widths = (pw,) if fixed else range(min_w, pw + 1, 32)
+            for tw in widths:
+                max_h = min(ph, rows // ((tw // 32) * (chunk + keyframes)) * 32) if enforce_budget else ph
+                heights = (ph,) if fixed else range(min_h, max_h + 1, 32)
+                for th in heights:
+                    area = (tw // 32) * (th // 32)
+                    if enforce_budget and area * (chunk + keyframes) > rows:
+                        continue
+                    overlap = po if fixed else min(max(32, math.ceil(min(tw, th) / 128) * 32), min(tw, th) - 32)
+                    # Same count as _starts on the even target grid.
+                    nx = (width - overlap - 1) // (tw - overlap) + 1
+                    ny = (height - overlap - 1) // (th - overlap) + 1
+                    forwards = nx * ny * len(ranges)
+                    processed_rows = nx * ny * area * sampled_time
+                    score = (forwards, processed_rows, -chunk, abs(tw * height - th * width))
+                    if best is None or score < best[0]:
+                        best = (score, tw, th, overlap, chunk, rows)
+        return best
+
+    best = search(fixed=True)
+    policy = 'preferred' if spatial_tiling else 'full_canvas'
+    if best is None and spatial_tiling:
+        best = search(fixed=False)
+        policy = 'memory_fallback'
+
     if best is None:
         raise MemoryError("H3 refinement budget cannot fit the minimum "
                           f"{min_w}x{min_h}px window "
@@ -122,12 +183,15 @@ def plan_tiles(video_shape, target_width, target_height, memory_bytes,
                           "use a smaller diffusion model, or set denoise=0.")
     score, tw, th, overlap, chunk, rows = best
     mode = 'streamed' if streaming_weights else 'resident'
-    return dict(tile_width=tw, tile_height=th, overlap=overlap, target_rows=rows,
+    return dict(layout_policy=policy, tile_coordinates='local' if spatial_tiling else 'full_canvas',
+                tile_width=tw, tile_height=th, overlap=overlap, target_rows=rows,
                 chunk_tokens=chunk, temporal_overlap_tokens=period if chunk < total else 0,
                 forwards_per_step=score[0], processed_video_rows=score[1],
                 keyframe_rows_per_forward=(tw // 32) * (th // 32) * (int(keyframe_tokens) + int(chunk < total)),
                 explanation=(f"Heuristic: target={width}x{height}px, pool={pool / 1024**3:.2f}GiB, {mode} weight reserve="
-                             f"{weight_bytes / 1024**3:.2f}GiB; {rows} target rows after full-window buffers, "
+                             f"{weight_bytes / 1024**3:.2f}GiB; layout={policy}; coordinates={'local' if spatial_tiling else 'full_canvas'}; "
+                             f"{'preferred layout exceeds budget; smaller spatial search; ' if policy == 'memory_fallback' else ''}"
+                             f"{rows} target rows after full-window buffers, "
                              f"text/references/audio and 35% headroom; {tw}x{th}px tiles "
                              f"(minimum {min_w}x{min_h}px), {chunk} temporal tokens; "
                              f"{score[0]} forwards/step, {score[1]} processed video rows. Native period={period}. "
@@ -281,7 +345,10 @@ class H3TiledDiffusion:
     velocity. Masks are forwarded, not multiplied onto x0 a second time.
     No tensors are retained on this wrapper between forwards.
     """
-    def __init__(self, tile_width_px, tile_height_px, overlap_px):
+    def __init__(self, tile_width_px, tile_height_px, overlap_px, coordinates='global'):
+        if coordinates not in ('global', 'local'):
+            raise ValueError('Tile coordinates must be global or local')
+        self.coordinates = coordinates
         if min(tile_width_px, tile_height_px) <= 0 or overlap_px < 0 or any(
                 v % 32 for v in (tile_width_px, tile_height_px, overlap_px)):
             raise ValueError("Tile sizes and overlap must be multiples of 32 pixels")
@@ -307,10 +374,12 @@ class H3TiledDiffusion:
         hp, wp = _ceil2(h), _ceil2(w)
         text = c.get("c_crossattn")
         text_len = text.shape[1] if text is not None else 0
-        full = payload.get("layout")
-        signature = (text_len, t, hp, wp, audio.shape[-1])
-        if full is None or full.signature != signature:
-            full = PackedLayout(*signature, keyframes=kfs, refs=payload.get("refs"))
+        full = None
+        if self.coordinates == 'global':
+            full = payload.get("layout")
+            signature = (text_len, t, hp, wp, audio.shape[-1])
+            if full is None or full.signature != signature:
+                full = PackedLayout(*signature, keyframes=kfs, refs=payload.get("refs"))
         vbuf = torch.zeros(video.shape, dtype=torch.float32, device=video.device)
         weights = torch.zeros((1, 1, 1, h, w), dtype=torch.float32, device=video.device)
         abuf = torch.zeros(audio.shape, dtype=torch.float32, device=audio.device)
@@ -337,7 +406,12 @@ class H3TiledDiffusion:
                 p["keyframes"] = tile_kfs
                 refs = payload.get("refs", ())
                 p["cond_video_latents"] = [k["latent"] for k in tile_kfs if k.get("latent") is not None] + [r["latent"] for r in refs if r.get("latent") is not None]
-                p["layout"] = _WindowLayout(full, kfs, t, hp, wp, y, x, th, tw)
+                if self.coordinates == 'global':
+                    p["layout"] = _WindowLayout(full, kfs, t, hp, wp, y, x, th, tw)
+                else:
+                    # Native PackedLayout normalizes this tile's spatial grid;
+                    # retain resolved temporal positions and unsliced AV refs.
+                    p.pop("layout", None)
                 ct = dict(c)
                 ct["transformer_options"] = dict(c.get("transformer_options", {}))
                 ct["minimax_payload"] = p

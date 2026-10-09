@@ -121,7 +121,7 @@ def encode_endpoints(conditioning, vae, first, last, width, height, last_frame_i
     return result, f'{count} endpoint keyframes VAE-encoded at {width}x{height}'
 
 
-def conditioning_token_counts(conditioning):
+def conditioning_token_counts(conditioning, *, continuity=None):
     """Fixed native reference/audio rows and tile-cropped keyframe frames."""
     text, refs, keyframes = 0, 0, 0
     for tokens, md in conditioning:
@@ -144,6 +144,12 @@ def conditioning_token_counts(conditioning):
             audio = kf.get('audio_latent')
             if isinstance(audio, torch.Tensor):
                 current += audio.shape[-1] * audio.shape[-2]
+        if continuity is not None:
+            # Planning precedes align_continuity_conditioning. Conservatively
+            # count a pending positive AV tail even if an existing tail may be
+            # replaced; never allocate guide tensors or reduce incoming guides.
+            current_keyframes += continuity['source_tokens'] - continuity['refine_start_token']
+            current += 2 * (continuity['source_audio_tokens'] - continuity['audio_start'])
         refs = max(refs, current)
         keyframes = max(keyframes, current_keyframes)
     return text, refs, keyframes
@@ -279,7 +285,8 @@ class DaSiWaH3TiledUpscale:
         device = mm.get_torch_device()
         budget, streaming_weights, reserved = refinement_memory_budget(model, device, memory_budget_mb)
         model_bytes = int(model.model_size()) if device.type != 'cpu' else 0
-        text_tokens, ref_tokens, keyframe_tokens = conditioning_token_counts(conditioning)
+        text_tokens, ref_tokens, keyframe_tokens = conditioning_token_counts(
+            conditioning, continuity=continuity if denoise > 0 else None)
         if negative is not None:
             nt, nr, nk = conditioning_token_counts(negative)
             text_tokens, ref_tokens = max(text_tokens, nt), max(ref_tokens, nr)
@@ -370,7 +377,7 @@ class DaSiWaH3TiledUpscale:
             raise ValueError('The supplied NOISE must generate native video+audio nested tensors.')
         working = model.clone()
         if spatial_tiling:
-            working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap']))
+            working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap'], coordinates='local'))
         completed = None
         try:
             for start, end in ranges:

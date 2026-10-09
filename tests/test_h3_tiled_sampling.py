@@ -7,7 +7,7 @@ import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[1]
-COMFY = ROOT.parents[1]
+COMFY = ROOT.parent / 'ComfyUI'
 sys.path.insert(0, str(COMFY))
 if "--cpu" not in sys.argv:
     sys.argv.append("--cpu")
@@ -28,6 +28,83 @@ def test_temporal_ranges_cover_native_phases(total):
     assert covered == set(range(total))
     assert ranges[-1][1] == total
     assert all(b <= 15 or b == total for _, b in ranges[:1])
+
+
+@pytest.mark.parametrize('width,height,cap,expected,count', [
+    (1024,1408,2.1,(1024,1408,0),1),
+    (1024,1408,1.35,(576,768,128),4),
+    (1536,2112,2.1,(832,1120,128),4),
+    (1536,2112,1.35,(832,1120,128),4),
+    (2176,3008,2.1,(1152,1568,128),4),
+    (2176,3008,1.35,(832,1568,128),6),
+])
+def test_preferred_geometry_matches_reference(width,height,cap,expected,count):
+    geometry = h3.auto_local_tiles(1024,1408,width,height,cap)
+    assert geometry == expected
+    tw,th,overlap = geometry
+    assert len(h3._starts(width//16,tw//16,overlap//16))*len(h3._starts(height//16,th//16,overlap//16)) == count
+
+
+@pytest.mark.parametrize('args',[(1024,1408,0.1,32,2.1),
+    (1024,1408,1024,1408,float('nan')),(0,1408,1024,1408,2.1),
+    (1024,float('inf'),1024,1408,2.1),(1024,1408,1023,1408,2.1)])
+def test_preferred_geometry_rejects_invalid_boundaries(args):
+    with pytest.raises(ValueError):
+        h3.auto_local_tiles(*args)
+
+
+@pytest.mark.parametrize('gib,policy', [(64,'preferred'),(2,'memory_fallback')])
+def test_preference_then_smaller_budget_fallback(gib,policy):
+    plan = h3.plan_tiles((1,24,20,94,68),2176,3008,gib*1024**3)
+    assert plan['layout_policy'] == policy
+    assert plan['tile_coordinates'] == 'local'
+    tw,th,overlap = (plan[k] for k in ('tile_width','tile_height','overlap'))
+    if policy == 'preferred':
+        assert (tw,th,overlap) == (1152,1568,128)
+    else:
+        assert tw <= 1152 and th <= 1568 and tw*th < 1152*1568
+        assert min(tw,th) >= 512
+    assert tw*th <= 2.1*1_000_000
+    frames = int(plan['chunk_tokens'] < 20)
+    assert tw//32*(th//32)*(plan['chunk_tokens']+frames) <= plan['target_rows']
+    windows = h3.temporal_ranges(20,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
+    assert plan['forwards_per_step'] == len(windows)*len(h3._starts(136,tw//16,overlap//16))*len(h3._starts(188,th//16,overlap//16))
+
+
+@pytest.mark.parametrize('enforce_budget', [True, False])
+def test_scale_eight_layout_is_not_limited_to_twelve_splits(enforce_budget):
+    width, height = 17408, 24064
+    plan = h3.plan_tiles((1,24,1,188,136),width,height,2*1024**3,
+                         enforce_budget=enforce_budget)
+    tw, th, overlap = (plan[k] for k in ('tile_width','tile_height','overlap'))
+    assert tw*th <= 2.1*1_000_000
+    assert min(tw,th) >= 512
+    nx = len(h3._starts(width//16,tw//16,overlap//16))
+    ny = len(h3._starts(height//16,th//16,overlap//16))
+    assert max(nx,ny) > 12
+    assert plan['forwards_per_step'] == nx*ny
+    if enforce_budget:
+        assert tw//32*(th//32) <= plan['target_rows']
+
+
+@pytest.mark.parametrize('width,height', [(1024,8192),(8192,1024)])
+@pytest.mark.parametrize('gib', [1,32])
+def test_extreme_aspect_layout_and_fallback_keep_spatial_floor(width,height,gib):
+    plan = h3.plan_tiles((1,24,10,height//32,width//32),width,height,gib*1024**3)
+    tw,th = plan['tile_width'],plan['tile_height']
+    assert tw >= min(width,512) and th >= min(height,512)
+    assert tw*th <= 2.1*1_000_000
+    assert tw//32*(th//32)*plan['chunk_tokens'] <= plan['target_rows']
+    if gib == 1:
+        assert plan['layout_policy'] == 'memory_fallback'
+
+
+def test_thin_canvas_can_reduce_overlap_without_rejecting_valid_layout():
+    plan = h3.plan_tiles((1,24,10,2048,2),64,65536,1024**3)
+    assert plan['tile_width'] == 64
+    assert plan['tile_height'] >= 512
+    assert plan['overlap'] < 64
+    assert plan['tile_width']//32*(plan['tile_height']//32)*plan['chunk_tokens'] <= plan['target_rows']
 
 
 def test_planner_validation_and_budget_response():
@@ -67,7 +144,8 @@ def test_target_grid_search_avoids_redundant_third_strip():
     windows = h3.temporal_ranges(35,plan['chunk_tokens'],plan['temporal_overlap_tokens'])
     nx = len(h3._starts(140,plan['tile_width']//16,plan['overlap']//16))
     ny = len(h3._starts(180,plan['tile_height']//16,plan['overlap']//16))
-    assert nx*ny*len(windows) <= 4  # previous halving planner scheduled six
+    assert (plan['tile_width'],plan['tile_height'],plan['overlap']) == (1184,1504,128)
+    assert nx*ny == 4  # preferred layout may shorten the temporal context
     assert nx*ny*plan['tile_width']*plan['tile_height'] < 3*2240*1440
     assert plan['forwards_per_step'] == nx*ny*len(windows)
 
@@ -151,14 +229,20 @@ def test_plan_matches_exhaustive_actual_window_oracle(width,height,total,mib,spa
     chunks=[total] if not temporal else [c for c in range(10,min(total,30)+1,5)]
     if temporal and total<=30 and total not in chunks:
         chunks.append(total)
-    widths=[width] if not spatial else range(min(width,512),width+1,32)
-    heights=[height] if not spatial else range(min(height,512),height+1,32)
+    pw,ph,po = h3.auto_local_tiles(256,256,width,height) if spatial else (width,height,0)
+    widths=[width] if not spatial else range(min(width,512),pw+1,32)
+    heights=[height] if not spatial else range(min(height,512),ph+1,32)
     valid=[]
+    preferred=[]
     for chunk in chunks:
         frames=2+int(chunk<total)
         buffers=24*(height//16)*(width//16)*(chunk*20+frames*6)
         rows=int((budget-buffers)/(96*1024))-148
         windows=h3.temporal_ranges(total,chunk,5 if chunk<total else 0)
+        area=pw//32*(ph//32)
+        if area*(chunk+frames)<=rows:
+            n=len(h3._starts(width//16,pw//16,po//16))*len(h3._starts(height//16,ph//16,po//16))
+            preferred.append((n*len(windows),n*area*sum(b-a for a,b in windows),-chunk,abs(pw*height-ph*width)))
         for tw in widths:
             for th in heights:
                 area=tw//32*(th//32)
@@ -171,6 +255,7 @@ def test_plan_matches_exhaustive_actual_window_oracle(width,height,total,mib,spa
                 valid.append((n*len(windows),work,-chunk,abs(tw*height-th*width)))
     kwargs=dict(text_tokens=8,ref_tokens=128,audio_tokens=12,keyframe_tokens=2,
                 spatial_tiling=spatial,temporal_chunking=temporal)
+    valid = preferred or valid
     if not valid:
         with pytest.raises(MemoryError):
             h3.plan_tiles(shape,width,height,mib*1024**2,**kwargs)
@@ -290,7 +375,37 @@ def test_tiling_global_positions_masks_odd_edges_and_no_cache(dtype):
     assert all(not isinstance(v, torch.Tensor) for v in vars(wrapper).values())
 
 
-def test_packed_mask_and_cancellation(monkeypatch):
+@pytest.mark.parametrize('hw', [(6,8),(7,9)])
+def test_local_tile_payload_rebuilds_native_layout_without_mutation(hw):
+    video,audio,args = packed_case(h=hw[0],w=hw[1])
+    payload = args['c']['minimax_payload']
+    payload['layout'] = object()  # local forwards must not consult a stale global layout
+    kf = payload['keyframes'][0]
+    kf.update(resolved_frame_index=17, audio_latent=torch.randn(1,2,2,4),
+              seed=23, label='tail', latent_h=hw[0], latent_w=hw[1])
+    calls=[]
+    def forward(x,t,**ct):
+        v,a = h3.comfy.utils.unpack_latents(x,ct['latent_shapes'])
+        p = ct['minimax_payload']
+        assert 'layout' not in p
+        tk = p['keyframes'][0]
+        assert tk['resolved_frame_index'] == 17 and tk['seed'] == 23
+        assert tk['audio_latent'] is kf['audio_latent']
+        assert p['refs'] is payload['refs']
+        assert p['cond_video_latents'][-1] is payload['refs'][0]['latent']
+        layout = h3.PackedLayout(2,2,h3._ceil2(v.shape[-2]),h3._ceil2(v.shape[-1]),a.shape[-1],keyframes=p['keyframes'],refs=p['refs'])
+        assert layout.signature[2:4] == tk['latent'].shape[-2:]
+        assert ct['transformer_options']['sentinel'] is args['c']['transformer_options']['sentinel']
+        calls.append(layout)
+        return x
+    output = h3.H3TiledDiffusion(64,64,32,coordinates='local')(forward,args)
+    torch.testing.assert_close(output,args['input'])
+    assert len(calls)>1
+    assert payload['layout'] is not None and kf['latent'].shape[-2:] == (3,4)
+
+
+@pytest.mark.parametrize('coordinates',['global','local'])
+def test_packed_mask_and_cancellation(monkeypatch,coordinates):
     video, audio, args = packed_case()
     c = args["c"]
     c["denoise_mask"] = h3.comfy.utils.pack_latents([c["denoise_mask"], c.pop("audio_denoise_mask")])[0]
@@ -300,7 +415,7 @@ def test_packed_mask_and_cancellation(monkeypatch):
         assert ct["audio_denoise_mask"].shape == audio.shape
         calls.append(x.shape)
         return x
-    wrapper = h3.H3TiledDiffusion(64, 64, 32)
+    wrapper = h3.H3TiledDiffusion(64, 64, 32, coordinates=coordinates)
     torch.testing.assert_close(wrapper(apply_model_test_double, args), args["input"])
     checks = []
     def interrupt():
