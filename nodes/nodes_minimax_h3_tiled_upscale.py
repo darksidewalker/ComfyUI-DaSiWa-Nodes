@@ -234,6 +234,8 @@ class DaSiWaH3TiledUpscale:
                 'tooltip': 'Split diffusion into spatial tiles. Off uses the full target canvas; never re-enabled automatically.'}),
             'temporal_chunking': ('BOOLEAN', {'default': True,
                 'tooltip': 'Split learned upscale and diffusion into temporal windows. Off processes the complete video in each pass.'}),
+            'enforce_memory_budget': ('BOOLEAN', {'default': True,
+                'tooltip': 'Disabling the estimated memory-budget check can cause OOM on most systems. Use at your own responsibility.'}),
         }}
 
     @torch.inference_mode()
@@ -243,7 +245,7 @@ class DaSiWaH3TiledUpscale:
                 sampler_name='euler', scheduler='simple', memory_budget_mb=0,
                 sampler=None, noise=None, upscale_precision='auto', continuity_context=None,
                 continuity_soft_refine=False, continuity_mask_strength=1.0,
-                spatial_tiling=True, temporal_chunking=True):
+                spatial_tiling=True, temporal_chunking=True, enforce_memory_budget=True):
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -296,7 +298,7 @@ class DaSiWaH3TiledUpscale:
                           streaming_weights=streaming_weights,
                           reserved_bytes=reserved + audio.numel() * (6 * audio.element_size() + 8),
                           audio_tokens=audio.shape[-2] * audio.shape[-1],
-                          latent_element_size=video.element_size(), enforce_budget=denoise > 0,
+                          latent_element_size=video.element_size(), enforce_budget=enforce_memory_budget and denoise > 0,
                           spatial_tiling=spatial_tiling, temporal_chunking=temporal_chunking)
         ranges = temporal_ranges(video.shape[2], plan['chunk_tokens'], plan['temporal_overlap_tokens'])
         # CPU staging is bounded by the complete output+noise, not constant-memory
