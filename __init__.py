@@ -3,6 +3,7 @@ if __package__:
     from .nodes.nodes_scaling import DaSiWa_ResolutionScaleCalculator, DaSiWa_TorchResize
     from .nodes.nodes_status_switch import DaSiWa_NodeStatusSwitch
     from .nodes.nodes_rtx_upscaler_refiner import DaSiWa_RTX_UpscalerRefiner
+    from .nodes.nodes_rtx_frame_generation import DaSiWa_RTX_FrameGeneration
     from .nodes.nodes_metadata import DaSiWa_MetadataImageSaver, DaSiWa_MetadataImageSaverFull, DaSiWa_MetadataConfig, DaSiWa_CreateExtraMetadata
     from .nodes.nodes_advanced_lora_loader import DaSiWa_AdvancedLoRALoader
     from .nodes.nodes_watermark import DaSiWa_Watermark
@@ -36,6 +37,7 @@ if __package__:
         "DaSiWa_TorchResize": DaSiWa_TorchResize,
         "DaSiWa_NodeStatusSwitch": DaSiWa_NodeStatusSwitch,
         "DaSiWa_RTX_UpscalerRefiner": DaSiWa_RTX_UpscalerRefiner,
+        "DaSiWa_RTX_FrameGeneration": DaSiWa_RTX_FrameGeneration,
         "DaSiWa_MetadataImageSaver": DaSiWa_MetadataImageSaver,
         "DaSiWa_MetadataImageSaverFull": DaSiWa_MetadataImageSaverFull,
         "DaSiWa_MetadataConfig": DaSiWa_MetadataConfig,
@@ -65,7 +67,8 @@ if __package__:
         "DaSiWa_ResolutionScaleCalculator": "DaSiWa Resolution Scale Calculator",
         "DaSiWa_TorchResize": "DaSiWa Torch Resize",
         "DaSiWa_NodeStatusSwitch": "DaSiWa Node Status Switch",
-        "DaSiWa_RTX_UpscalerRefiner": "DaSiWa RTX Upscaler & Refiner",
+        "DaSiWa_RTX_UpscalerRefiner": "RTX Upscaler & Refiner",
+        "DaSiWa_RTX_FrameGeneration": "RTX Frame Generation",
         "DaSiWa_MetadataImageSaver": "DaSiWa Metadata Image Saver",
         "DaSiWa_MetadataImageSaverFull": "DaSiWa Metadata Image Saver (Full)",
         "DaSiWa_MetadataConfig": "DaSiWa Metadata Config",

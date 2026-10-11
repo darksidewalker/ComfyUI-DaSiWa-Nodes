@@ -43,7 +43,7 @@ function enable(enabled) {
     const menu = document.createElement("div");
     menu.id = `${ID}-menu`;
     menu.hidden = true;
-    menu.innerHTML = `<button type="button" data-free="vram">Free VRAM</button><button type="button" data-free="ram">Free System RAM</button>`;
+    menu.innerHTML = `<button type="button" data-free="vram">Free VRAM</button><button type="button" data-free="ram">Free System RAM</button><button type="button" data-free="both">Free Both</button>`;
     document.body.appendChild(menu);
     const close = () => { menu.hidden = true; toggle.setAttribute("aria-expanded", "false"); };
     toggle.addEventListener("click", () => {
@@ -64,7 +64,7 @@ function enable(enabled) {
         try {
             const response = await api.fetchApi("/free", {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ unload_models: true, free_memory: choice.dataset.free === "ram" }),
+                body: JSON.stringify({ unload_models: true, free_memory: choice.dataset.free === "ram" || choice.dataset.free === "both" }),
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
         } catch (error) {

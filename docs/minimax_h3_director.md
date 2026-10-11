@@ -66,7 +66,10 @@ The Resolution panel offers Auto or custom aspect ratio and resolution. Auto asp
 | Off | Keep the input tensor as-is |
 | Auto | Downscale only if needed to a 2048-pixel short side; never enlarge smaller inputs |
 | Target - Selected Aspect & Resolution | Stretch to the selected canvas |
-| Fit / Fill and crop / Fit and pad / Long side with divisible crop | Use the corresponding Torch Resize behavior against the canvas |
+| Fit | Preserve source aspect inside the canvas box, with dimensions divisible by 16; output may be smaller than the canvas, without padding or cropping |
+| Fill and crop | Preserve source aspect, scale to cover the canvas and center-crop excess edges; output fills the canvas |
+| Fit and pad | Preserve source aspect, fit inside the canvas and center with black padding; output fills the canvas without removing source edges |
+| Long side with divisible crop | Match the source long side to the corresponding canvas dimension, then center-crop the other side to fit the box and the 16-pixel grid; output may be smaller than the canvas |
 
 ## Write a prompt
 

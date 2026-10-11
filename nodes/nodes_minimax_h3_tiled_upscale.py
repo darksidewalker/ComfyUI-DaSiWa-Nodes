@@ -236,6 +236,13 @@ class DaSiWaH3TiledUpscale:
                 'tooltip': 'Allow automatic temporal windows for learned upscale and diffusion, up to 30 latent tokens per planned window. Short videos may use one window. Off processes the complete video. Independent of memory-budget enforcement.'}),
             'enforce_memory_budget': ('BOOLEAN', {'default': True,
                 'tooltip': 'Disabling the estimated memory-budget check can cause OOM on most systems. Use at your own responsibility. Spatial tiling and temporal chunking still follow their own settings.'}),
+            'spike_guard': ('BOOLEAN', {'default': False,
+                'tooltip': 'Experimental Talon V4 burn-signature correction after learned upscale. Calibrated on 3d_conv_v1; may remove real detail. Interpolation is unaffected.'}),
+            'guard_sensitivity': ('FLOAT', {'default': 4.3, 'min': 1.5, 'max': 12.0, 'step': 0.1}),
+            'guard_strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 1.0, 'step': 0.05,
+                'tooltip': 'Correction strength; 0 leaves the latent unchanged and skips guard allocations.'}),
+            'guard_mode': (['burn_direction', 'both'], {'default': 'burn_direction',
+                'tooltip': 'burn_direction: submitted signed burn signature. both: also detect its opposite; experimental, with more false-positive risk.'}),
         }}
 
     @torch.inference_mode()
@@ -245,7 +252,9 @@ class DaSiWaH3TiledUpscale:
                 sampler_name='euler', scheduler='simple', memory_budget_mb=0,
                 sampler=None, noise=None, upscale_precision='auto', continuity_context=None,
                 continuity_soft_refine=False, continuity_mask_strength=1.0,
-                spatial_tiling=True, temporal_chunking=True, enforce_memory_budget=True):
+                spatial_tiling=True, temporal_chunking=True,
+                spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
+                enforce_memory_budget=True):
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -305,9 +314,20 @@ class DaSiWaH3TiledUpscale:
         # CPU staging is bounded by the complete output+noise, not constant-memory
         # streaming. Refuse an unsafe host allocation instead of relying on OOM.
         output_shape = (*video.shape[:3], height // 16, width // 16)
-        bytes_needed = math.prod(output_shape) * video.element_size() * 4 + audio.numel() * audio.element_size() * 3
+        output_bytes = math.prod(output_shape) * video.element_size()
+        bytes_needed = output_bytes * 4 + audio.numel() * audio.element_size() * 3
+        guard_active = spike_guard and upscale_model != 'interpolation' and guard_strength != 0
+        if guard_active:
+            if guard_mode not in ('burn_direction', 'both') or not math.isfinite(float(guard_sensitivity)) or guard_sensitivity <= 0:
+                raise ValueError('H3 spike guard needs a valid mode and finite positive sensitivity.')
+            if not math.isfinite(float(guard_strength)) or not 0 <= guard_strength <= 1:
+                raise ValueError('H3 spike guard strength must be finite and between 0 and 1.')
+            from .h3_spike_guard import spike_guard_memory_bytes
+            # Guard completes before full noise/stitched refinement allocations.
+            bytes_needed = max(bytes_needed, output_bytes + spike_guard_memory_bytes(video.shape, output_shape))
         if bytes_needed > int(mm.get_free_memory(torch.device('cpu'))) * 0.6:
-            raise MemoryError('H3 upscale output/noise staging exceeds the conservative available-RAM budget. Reduce target size or video length.')
+            stage = 'output/noise staging or spike guard' if guard_active else 'output/noise staging'
+            raise MemoryError(f'H3 upscale {stage} exceeds the conservative available-RAM budget. Reduce target size or video length, or disable the spike guard.')
         first = start_image if start_image is not None else director_endpoint(director_guide, 'first_frame')
         last = director_endpoint(director_guide, 'last_frame')
         if continuity is not None:
@@ -343,6 +363,12 @@ class DaSiWaH3TiledUpscale:
         finally:
             if backend is not None:
                 backend.close()
+        guard_note = 'spike guard: off' if guard_strength != 0 else 'spike guard: off (strength=0)'
+        if spike_guard and selected == 'interpolation':
+            guard_note = 'spike guard: skipped (interpolation)'
+        elif guard_active:
+            from .h3_spike_guard import spike_guard as repair_spikes
+            upscaled, guard_note = repair_spikes(video, upscaled, guard_sensitivity, guard_strength, guard_mode)
         audio_cpu = audio.to('cpu')
         if continuity is not None and denoise > 0:
             from .h3_upscale_continuity import align_continuity_conditioning
@@ -357,7 +383,7 @@ class DaSiWaH3TiledUpscale:
                   f"enforce_memory_budget={'on' if enforce_memory_budget else 'off'}; "
                   f"spatial_split={'on' if spatial_split and denoise > 0 else 'off'}; "
                   f"temporal_split={'on' if len(ranges) > 1 else 'off'}; "
-                  f"audio=original; {endpoint_info}; {plan['explanation']}")
+                  f"audio=original; {endpoint_info}; {guard_note}; {plan['explanation']}")
         if continuity is not None:
             report += '; ' + continuity['explanation']
             report += (f'; soft_refine_mask={continuity_mask_strength:g}' if continuity_soft_refine and denoise > 0

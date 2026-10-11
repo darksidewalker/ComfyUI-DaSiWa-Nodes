@@ -25,7 +25,8 @@ The current settings are stored in the browser, so they remain active after a Co
 The DaSiWa-logo button sits beside the other top controls, independent of the monitor's dock, size, or floating position. It stays in the toolbar even if the monitor is disabled. Click it to choose:
 
 - **Free VRAM:** asks ComfyUI to unload its managed models (`POST /free` with `unload_models: true`, `free_memory: false`).
-- **Free System RAM:** unloads managed models **and** resets ComfyUI's execution cache (`unload_models: true`, `free_memory: true`). This is not an operating-system-wide RAM purge.
+- **Free System RAM:** unloads managed models **and** resets ComfyUI's execution cache (`unload_models: true`, `free_memory: true`). This existing behavior is retained for compatibility.
+- **Free Both:** explicitly requests model unloading and execution-cache reset in one request (`unload_models: true`, `free_memory: true`), equivalent to the existing Free System RAM action. Neither action is an operating-system-wide RAM purge.
 
 The request is queued by ComfyUI and processed by its prompt worker; the button does not interrupt an active generation or free memory owned by other processes. Click outside either this menu or the monitor settings menu to close it. Disable the Free Memory button separately at **ComfyUI → Settings → Other → DaSiWa → Free Memory → Show Free Memory Button**; the preference is browser-local and does not disable telemetry.
 

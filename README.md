@@ -41,6 +41,7 @@ One node that upscales a completed MiniMax H3 video/audio latent and refines it 
 
 - Independent `spatial_tiling` (diffusion) and `temporal_chunking` (upscale + refinement), both on by default. Refinement uses tile-local H3 coordinates and a preferred automatic layout capped at 2.1 MP per tile. If that layout cannot fit the memory estimate, smaller spatial tiles are planned down to the existing 512px floor; no additional tile controls or wiring are needed.
 - Learned safetensors upscaling from `models/latent_upscale_models/`, or `interpolation`; no automatic choice, no fallback.
+- Optional **Spike Guard**, default off: experimental Talon V4 burn-signature correction before refinement, with sensitivity/strength and signed or both-direction detection. Uses frame-wise FP32 correction, includes RAM checks and cancellation, and reports the actual changed output area. Calibrated on `3d_conv_v1`; not a general image-quality fix.
 - Factor-only scaling (default **2.0**), refinement defaults CFG 1, 1 step, denoise 0.2 (`0` skips refinement). Native packed video/audio `LATENT` output; the original audio stream is returned unchanged.
 - Optional Director guide + H3 video VAE re-encode endpoint images at the enlarged resolution; works without a Director.
 - Continuity: keep Append & Stage before the upscaler and feed it the cumulative latent.
@@ -99,15 +100,31 @@ One `IMAGE` batch in, one `IMAGE` batch out. A native RIFE/FILM safetensors comb
 NVIDIA RTX Video SDK enhancement with Denoise, Deblur and VSR/High Bitrate upscaling. Processing uses bounded frame windows and produces one standard ComfyUI `IMAGE` batch.
 
 - **Refine:** Independent Denoise and Deblur passes (both off by default).
-- **Upscale:** AI-powered VSR and High Bitrate upscaling.
+- **Upscale:** VSR for typical compressed sources and High Bitrate for clean, high-bitrate/lossless sources; SDK-supported Streaming modes.
+- **SDK-aware options:** Available effects and parameters are detected from the installed SDK. Optional RGB10A2 10-bit processing and per-pass strengths preserve the legacy default path; no automatic SDK installation.
+- **TrueHDR (opt-in):** Final SDR → BT.2020/PQ conversion, also usable on its own. IMAGE does not carry HDR metadata; correct HDR encoding/tagging must be provided downstream, and Enhanced Video Combine HDR export is not yet verified.
+- **Alpha and diagnostics (opt-in):** Preserve alpha through matching crop/resize, or check small samples for invalid pixels and suspected SDR channel collapse. Both are off by default.
+- **Compatibility:** Keeps its own DaSiWa node ID and existing workflow inputs/outputs, without replacing the official NVIDIA VFX nodes. Frame count/FPS stay unchanged; RIFE remains separate.
 - **Smart Sizing:** Multiple resize modes including Constant Megapixel targets.
 - **Efficiency:** Internal `chunking` (on, 16 frames by default) bounds processing intermediates; the final output remains a single `IMAGE` batch.
 - **Lossless output storage:** `lossless_fp16` (on by default) uses FP16 only if every output value round-trips exactly and memory headroom permits; typical VSR output remains FP32.
-- **Memory Control:** Full input and output batches still scale with video duration and may be cached by ComfyUI; internal chunking is not constant-memory streaming. The output is allocated lazily in VRAM or RAM. Optional `use_mmap` enables a disk-backed last resort (off by default); `auto_unload_models` is on by default.
+- **Memory Control:** Full input and output batches still scale with video duration and may be cached by ComfyUI; internal chunking is not constant-memory streaming. GPU output is budgeted with a conservative per-frame/SDK working reserve and a 24 GiB output cap; RAM output is capacity-checked and aborts clearly if insufficient. `torch.empty` avoids zero-fill, not the full storage requirement. Optional `use_mmap` enables a disk-backed last resort (off by default); `auto_unload_models` requests target-device ComfyUI memory reclamation under pressure, not global model unloading.
 
 ![RTX_UpscalerRefiner.png](assets/RTX_UpscalerRefiner.png)
 
 [Full documentation →](docs/rtx_upscaler_refiner.md)
+
+### 🎞️ RTX Frame Generation
+
+![RTX Frame Generation](assets/RTX_FrameGeneration.png)
+
+- **Interpolation:** Multiplier 2–16 or one frame at a chosen timestep; preserves every original frame and both endpoints. Multiplier output: `(N-1)*M+1` frames, encode at **source FPS × M**.
+- **Quality and cuts:** **HIGH by default**, with MEDIUM/LOW alternatives; automatic scene-cut detection and an explicit cut override.
+- **Precision:** RGB8 by default; optional SDK-supported RGB10A2 10-bit SDR. Not HDR; alpha is discarded.
+- **Memory:** Bounded pair staging, budgeted VRAM/RAM, native memory reclamation under pressure and opt-in disk-backed output. Complete frame batches still need storage.
+- **Workflow:** IMAGE batches only; decode videos upstream and route audio separately. Non-midpoint timesteps have unequal temporal spacing. Requires SDK `VideoFrameGeneration`.
+
+[Frame generation controls, timing and limits →](docs/rtx_frame_generation.md)
 
 ---
 
@@ -272,7 +289,7 @@ A compact telemetry bar that defaults to its own row below ComfyUI's top control
 - **Viewport-Aware Menu:** The settings menu opens toward available screen space; separate background and drawing/text/lines opacity sliders are also available in ComfyUI Settings.
 - **Cross-Platform:** Works on Linux and Windows with automatic fallback detection for GPU tools.
 - **Container-safe:** In containers and sandboxes where parts of `/proc` are missing (e.g. `/proc/vmstat`), probes degrade to `n/a` instead of warning every second. Set `DASWA_SYSTEM_MONITOR=0` (also `false`/`no`/`off`/`disable`) to fully stop the backend polling thread.
-- **Free Memory Button:** Separate DaSiWa-logo button stays beside the top controls regardless of monitor placement. Free VRAM unloads ComfyUI models; Free System RAM also resets its execution cache. Hide it independently under **Settings → Other → DaSiWa → Free Memory**.
+- **Free Memory Button:** Separate DaSiWa-logo button stays beside the top controls regardless of monitor placement. Free VRAM unloads ComfyUI models; Free System RAM also resets its execution cache. Free Both explicitly requests both actions (same cleanup as Free System RAM, retained for compatibility). Hide it independently under **Settings → Other → DaSiWa → Free Memory**.
 
 **Lite mode**
 

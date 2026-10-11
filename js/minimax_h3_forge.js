@@ -158,7 +158,7 @@ function installStyles() {
   .ds-forge .ref-notes details input{margin-top:4px}
   .ds-forge .ref{align-items:start}
   .ds-forge .ref img{width:48px;height:36px;object-fit:cover;border-radius:3px;background:#090d11}
-  .ds-forge pre{white-space:pre-wrap;background:#0b1015;border:1px solid #344452;border-radius:4px;padding:8px;margin:0;max-height:320px;overflow:auto;font:12px/1.45 ui-monospace,monospace}
+  .ds-forge pre{white-space:pre-wrap;background:#0b1015;border:1px solid #344452;border-radius:4px;padding:8px;margin:0;min-height:140px;height:240px;flex-shrink:0;resize:vertical;overflow:auto;font:12px/1.45 ui-monospace,monospace}
   .ds-forge .history{display:flex;flex-direction:column;gap:5px;border-top:1px solid #344452;padding-top:9px}
   .ds-forge .history-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
   .ds-forge .history-head button{padding:3px 8px;font-size:11px}

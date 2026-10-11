@@ -115,7 +115,9 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     assert f"enforce_memory_budget={'on' if enforce else 'off'}" in report
     assert f"spatial_split={'on' if spatial and denoise else 'off'}" in report
     assert f"temporal_split={'on' if temporal else 'off'}" in report
-    assert list(schema)[-3:]==['spatial_tiling','temporal_chunking','enforce_memory_budget']
+    assert list(schema)[list(schema).index('temporal_chunking')+1]=='enforce_memory_budget'
+    assert schema['spike_guard'][1]['default'] is False
+    assert schema['guard_mode'][0] == ['burn_direction','both']
     assert schema['spatial_tiling'][1]['default'] is True
     assert schema['temporal_chunking'][1]['default'] is True
     assert schema['enforce_memory_budget'][1]['default'] is True
@@ -212,7 +214,8 @@ def test_refine_schema_and_callable_defaults_without_external_sigmas():
     assert list(schema['required']) == ['model','conditioning','latent','scale','upscale_model','steps','denoise','seed']
     assert list(schema['optional']) == ['director_guide','vae','start_image','negative','cfg','sampler_name',
         'scheduler','memory_budget_mb','sampler','noise','continuity_context','upscale_precision',
-        'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking','enforce_memory_budget']
+        'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking','enforce_memory_budget',
+        'spike_guard','guard_sensitivity','guard_strength','guard_mode']
     assert u.DaSiWaH3TiledUpscale.RETURN_TYPES == ('LATENT','STRING')
     assert 'sigmas' not in schema['required']
     assert 'sigmas' not in schema['optional']
@@ -376,3 +379,114 @@ def test_continuity_orchestration_freezes_prefix_and_refines_joint_seam(setup_no
     assert 'TEST continuity seam' in report
     assert 'no endpoint re-encode' in report
     assert 'minimax_keyframes' not in positive[0][1]
+
+
+@pytest.mark.parametrize('denoise',[0,0.2])
+@pytest.mark.parametrize('enabled,selection,strength,expected',[
+    (False,'test.safetensors',1.0,False),
+    (True,'interpolation',1.0,False),
+    (True,'test.safetensors',0.0,False),
+    (True,'test.safetensors',0.75,True)])
+def test_guard_wiring_preserves_audio_and_runs_before_refine(setup_node,monkeypatch,denoise,enabled,selection,strength,expected):
+    guard=types.ModuleType(PACKAGE+'.h3_spike_guard')
+    calls=[]
+    guard.spike_guard_memory_bytes=lambda *a: 1024
+    def repair(source,result,sensitivity,strength,mode):
+        assert source.shape == (1,24,2,2,2)
+        assert sensitivity == 5.0 and strength == 0.75 and mode == 'both'
+        calls.append(True)
+        result.fill_(0.625)
+        return result, 'spike guard: TEST corrected footprint'
+    guard.spike_guard=repair
+    monkeypatch.setitem(sys.modules,guard.__name__,guard)
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:['test.safetensors'])
+    class Backend:
+        temporal_halo=0
+        dtype=torch.float32
+        def __init__(self,*a,**kw): pass
+        def upscale(self,v,h,w): return u.resize_video(v,h,w)
+        def close(self): pass
+    monkeypatch.setattr(upscale,'H3LatentUpscaler',Backend)
+    monkeypatch.setattr(mm,'unload_model_and_clones',lambda *a,**k:None)
+    monkeypatch.setattr(mm,'get_free_memory',lambda *a: 16*1024**3)
+    def sample(model,pc,nc,cfg,samples,*args):
+        if expected:
+            assert torch.all(samples.tensors[0] == 0.625)
+        return samples
+    monkeypatch.setattr(u,'sample_chunk',sample)
+    video=torch.ones(1,24,2,2,2)
+    audio=torch.randn(1,32,2,8)
+    result,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[],
+        {'samples':NestedTensor((video,audio))},upscale_model=selection,denoise=denoise,
+        sampler=object(),spike_guard=enabled,guard_strength=strength,guard_sensitivity=5.0,guard_mode='both')
+    assert bool(calls) is expected
+    assert result['samples'].tensors[1] is audio
+    assert torch.all(video == 1)
+    if expected:
+        assert torch.all(result['samples'].tensors[0] == 0.625)
+        assert 'TEST corrected footprint' in report
+    elif enabled and selection == 'interpolation':
+        assert 'spike guard: skipped (interpolation)' in report
+    else:
+        assert 'spike guard: off' in report
+
+
+@pytest.mark.parametrize('enforce',[True,False])
+def test_guard_budget_rejects_before_loading_backend(setup_node,monkeypatch,enforce):
+    guard=types.ModuleType(PACKAGE+'.h3_spike_guard')
+    guard.spike_guard_memory_bytes=lambda *a: 32*1024**3
+    monkeypatch.setitem(sys.modules,guard.__name__,guard)
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:['test.safetensors'])
+    monkeypatch.setattr(mm,'get_free_memory',lambda *a: 16*1024**3)
+    def forbidden(*a,**k): raise AssertionError('must reject before model offload/load')
+    monkeypatch.setattr(mm,'unload_model_and_clones',forbidden)
+    monkeypatch.setattr(upscale,'H3LatentUpscaler',forbidden)
+    with pytest.raises(MemoryError,match='spike guard'):
+        u.DaSiWaH3TiledUpscale().upscale(setup_node,[],
+            {'samples':NestedTensor((torch.ones(1,24,2,2,2),torch.ones(1,32,2,8)))},
+            upscale_model='test.safetensors',denoise=0,spike_guard=True,enforce_memory_budget=enforce)
+
+
+def test_real_guard_pipeline_aligns_corrected_tail_before_refinement(setup_node,monkeypatch):
+    guard=__import__(PACKAGE+'.h3_spike_guard',fromlist=['*'])
+    monkeypatch.setattr(mm,'get_free_memory',lambda *a: 16*1024**3)
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:['test.safetensors'])
+    monkeypatch.setattr(mm,'unload_model_and_clones',lambda *a,**k:None)
+    video=torch.randn(1,24,5,12,12,generator=torch.Generator().manual_seed(41))
+    original=video.clone()
+    audio=torch.randn(1,32,2,30)
+    burned=[]
+    class Backend:
+        temporal_halo=0
+        dtype=torch.float32
+        def __init__(self,*a,**kw): pass
+        def upscale(self,v,h,w):
+            result=v.repeat_interleave(2,-2).repeat_interleave(2,-1)
+            result[:,:,2,10:12,10:12]+=30*torch.tensor(guard.BURN_DIRECTION).view(1,24,1,1)
+            burned.append(result.clone())
+            return result
+        def close(self): pass
+    monkeypatch.setattr(upscale,'H3LatentUpscaler',Backend)
+    continuity=types.ModuleType(PACKAGE+'.h3_upscale_continuity')
+    plan=dict(refine_start_token=1,source_tokens=3,frame_offset=0,audio_start=0,
+        source_audio_tokens=16,explanation='TEST guard continuity')
+    continuity.continuity_plan=lambda *a:plan
+    aligned=[]
+    def align(pc,v,a,p,*,inject_tail=True):
+        assert inject_tail and p is plan
+        aligned.append(v.clone())
+        return pc
+    continuity.align_continuity_conditioning=align
+    monkeypatch.setitem(sys.modules,continuity.__name__,continuity)
+    def sample(model,pc,nc,cfg,samples,mask,*a):
+        assert aligned and torch.equal(samples.tensors[0],aligned[0])
+        return NestedTensor((samples.tensors[0]+mask.tensors[0]*.125,samples.tensors[1]+999))
+    monkeypatch.setattr(u,'sample_chunk',sample)
+    out,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[[torch.zeros(1,3,32),{}]],
+        {'samples':NestedTensor((video,audio))},upscale_model='test.safetensors',spike_guard=True,
+        continuity_context={'operation':'continue'},sampler=object())
+    baseline=video.repeat_interleave(2,-2).repeat_interleave(2,-1)
+    assert (aligned[0]-baseline).square().sum() < (burned[0]-baseline).square().sum()*.3
+    assert torch.equal(out['samples'].tensors[0][:,:,:1],aligned[0][:,:,:1])
+    assert out['samples'].tensors[1] is audio and torch.equal(video,original)
+    assert 'changed latent frames' in report and 'output area' in report

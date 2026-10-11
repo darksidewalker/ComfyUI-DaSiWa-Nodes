@@ -79,6 +79,10 @@ Optional:
 | `continuity_mask_strength` | FLOAT | Default **1.0**, range 0–1, step 0.05. Used only with soft refine on an active continuation. |
 | `spatial_tiling` | BOOLEAN | Default **on**. Spatial diffusion tiles; off uses the full target canvas. |
 | `temporal_chunking` | BOOLEAN | Default **on**. Temporal windows for learned upscale and diffusion; off uses the full video. |
+| `spike_guard` | BOOLEAN | Default **off**. Experimental burn-signature correction after learned upscale, before refinement. Ignored for interpolation. |
+| `guard_sensitivity` | FLOAT | Default **4.3**. Lower thresholds affect more regions and increase false-positive risk. |
+| `guard_strength` | FLOAT | Default **1.0**, range 0–1. Zero skips the guard without allocations or claimed repairs. |
+| `guard_mode` | combo | `burn_direction` (default) or `both`. Both also detects the opposite signature and is experimental. |
 
 Outputs: `latent` (`LATENT`, native packed H3 video/audio for the existing decode path) and `plan` (`STRING`, diagnostic report of the actual selected settings; it need not be connected).
 
@@ -134,6 +138,16 @@ Existing workflow node IDs are preserved; only the visible display name changes.
 - Keyframe attention rows scale with each tile; native references/audio stay unsliced in the estimate. Full-target keyframe buffers, a possible previous-window anchor and pending Continuity tail guides are reserved. The plan reports preferred layout or memory fallback, actual tile/window geometry and estimated model calls. Candidate ranking is a geometric/offload proxy, not a measured runtime optimum. Larger tiles can require shorter temporal windows, so the new layout is not a universal speedup. If the minimum still cannot fit, refinement fails with an actionable budget error. `denoise=0` does not require a viable diffusion budget. Estimates are not an allocator limit or OOM guarantee.
 
 The learned H3 checkpoint selector uses ComfyUI's `latent_upscale_models` catalog and safetensors files. There are no unsafe pickle checkpoints or global GPU model caches.
+
+## Spike Guard (experimental, default off)
+
+The optional guard adapts the GPLv3 algorithm submitted in **Talon Upscale Node fix V4**. It compares the learned-upscaled latent, shrunk to the source grid, with the source and scores a fixed 24-channel signature reported for `minimax_h3_latent_upscaler_3d_conv_v1_bf16`. It is postprocessing, not a repair of the learned model. Other checkpoints and general quality improvements are not established.
+
+`burn_direction` detects the submitted signed signature; `both` additionally detects its opposite. The latter has higher false-positive risk and needs real scene comparisons. Detection uses clip-wide statistics, grows connected outliers in space/time, and feathers correction into neighboring cells/latent frames. It can remove legitimate detail. Reports distinguish detected coarse cells from the actual changed output cells, give output-pixel bounding boxes with exclusive upper bounds at any scale, and name changed **latent** frames, not decoded video-frame indices. Strength zero does not claim repairs.
+
+Output retains its incoming dtype. Statistics/residuals stay FP32 because quantizing small residuals to FP16 can change median/MAD normalization and threshold decisions. Shrinking and correction are frame-wise: no extra full-output FP32 video copy. Additional coarse-grid maps still scale with duration; RAM estimates include these and frame temporaries. Cancellation is checked within guard work. Memory refusal is explicit, without silently disabling the selected correction or unloading unrelated models.
+
+The guard runs after learned upscale and before Continuity-tail alignment and diffusion, including at `denoise=0`. Interpolation skips it. With Continuity enabled it can also correct the old upscaled prefix; the diffusion freeze then preserves that **guard-corrected** prefix. Extending a clip can change the global statistics and earlier guard decisions. Audio remains original. Guard off preserves the existing latent path; optional inputs are appended to keep existing widget order.
 
 ## Processing and limits
 
