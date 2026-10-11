@@ -231,11 +231,11 @@ class DaSiWaH3TiledUpscale:
             'continuity_mask_strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 1.0, 'step': 0.05,
                 'tooltip': '0: original hard mask. 1: full smoothstep ramp over the existing Continuity overlap. Ignored unless soft refine is enabled and Continuity is active.'}),
             'spatial_tiling': ('BOOLEAN', {'default': True,
-                'tooltip': 'Split diffusion into spatial tiles. Off uses the full target canvas; never re-enabled automatically.'}),
+                'tooltip': 'Allow automatic spatial tiling for diffusion. A single full-canvas tile uses native sampling without a tiled wrapper. Off always uses the full canvas. Independent of memory-budget enforcement.'}),
             'temporal_chunking': ('BOOLEAN', {'default': True,
-                'tooltip': 'Split learned upscale and diffusion into temporal windows. Off processes the complete video in each pass.'}),
+                'tooltip': 'Allow automatic temporal windows for learned upscale and diffusion, up to 30 latent tokens per planned window. Short videos may use one window. Off processes the complete video. Independent of memory-budget enforcement.'}),
             'enforce_memory_budget': ('BOOLEAN', {'default': True,
-                'tooltip': 'Disabling the estimated memory-budget check can cause OOM on most systems. Use at your own responsibility.'}),
+                'tooltip': 'Disabling the estimated memory-budget check can cause OOM on most systems. Use at your own responsibility. Spatial tiling and temporal chunking still follow their own settings.'}),
         }}
 
     @torch.inference_mode()
@@ -301,6 +301,7 @@ class DaSiWaH3TiledUpscale:
                           latent_element_size=video.element_size(), enforce_budget=enforce_memory_budget and denoise > 0,
                           spatial_tiling=spatial_tiling, temporal_chunking=temporal_chunking)
         ranges = temporal_ranges(video.shape[2], plan['chunk_tokens'], plan['temporal_overlap_tokens'])
+        spatial_split = spatial_tiling and (plan['tile_width'] < width or plan['tile_height'] < height)
         # CPU staging is bounded by the complete output+noise, not constant-memory
         # streaming. Refuse an unsafe host allocation instead of relying on OOM.
         output_shape = (*video.shape[:3], height // 16, width // 16)
@@ -353,6 +354,9 @@ class DaSiWaH3TiledUpscale:
                   f"overlap={plan['overlap']}px; temporal={len(ranges)} chunks; "
                   f"spatial_tiling={'on' if spatial_tiling else 'off'}; "
                   f"temporal_chunking={'on' if temporal_chunking else 'off'}; "
+                  f"enforce_memory_budget={'on' if enforce_memory_budget else 'off'}; "
+                  f"spatial_split={'on' if spatial_split and denoise > 0 else 'off'}; "
+                  f"temporal_split={'on' if len(ranges) > 1 else 'off'}; "
                   f"audio=original; {endpoint_info}; {plan['explanation']}")
         if continuity is not None:
             report += '; ' + continuity['explanation']
@@ -378,7 +382,7 @@ class DaSiWaH3TiledUpscale:
         if not getattr(full_noise, 'is_nested', False) or len(full_noise.tensors) != 2:
             raise ValueError('The supplied NOISE must generate native video+audio nested tensors.')
         working = model.clone()
-        if spatial_tiling:
+        if spatial_split:
             working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap'], coordinates='local'))
         completed = None
         try:

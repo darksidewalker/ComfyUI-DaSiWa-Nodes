@@ -55,7 +55,7 @@ def setup_node(monkeypatch):
     monkeypatch.setattr(mm,'get_torch_device',lambda:torch.device('cpu'))
     monkeypatch.setattr(comfy.model_base,'MiniMaxH3',TestH3Base)
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:[])
-    monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(tile_width=64,tile_height=64,overlap=32,
+    monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(tile_width=32,tile_height=64,overlap=0,
                          chunk_tokens=10,temporal_overlap_tokens=5,explanation='TEST forced multiwindow plan'))
     from comfy_extras.nodes_custom_sampler import BasicScheduler
     model=FakePatcher()
@@ -70,14 +70,16 @@ def setup_node(monkeypatch):
 
 @pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
 @pytest.mark.parametrize('denoise',[0,0.2])
-def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,spatial,temporal,denoise):
+@pytest.mark.parametrize('enforce',[True,False])
+def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,spatial,temporal,denoise,enforce):
     model=setup_node
     name='test-upscaler.safetensors'
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:[name])
     def plan(shape,*args,**kw):
         assert kw['spatial_tiling'] is spatial
         assert kw['temporal_chunking'] is temporal
-        return dict(tile_width=64,tile_height=64,overlap=32 if spatial else 0,
+        assert kw['enforce_budget'] is (enforce and denoise > 0)
+        return dict(tile_width=32 if spatial else 64,tile_height=64,overlap=0,
                     chunk_tokens=10 if temporal else shape[2],
                     temporal_overlap_tokens=5 if temporal else 0,explanation='TEST switch plan')
     monkeypatch.setattr(helpers,'plan_tiles',plan)
@@ -101,7 +103,7 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     audio=torch.randn(1,32,2,120)
     output,report=u.DaSiWaH3TiledUpscale().upscale(model,[],
         {'samples':NestedTensor((video,audio))},upscale_model=name,denoise=denoise,
-        sampler=object(),spatial_tiling=spatial,temporal_chunking=temporal)
+        sampler=object(),spatial_tiling=spatial,temporal_chunking=temporal,enforce_memory_budget=enforce)
     assert closed==[True]
     assert len(lengths)>1 if temporal else lengths==[22]
     assert len(sampled)==(len(lengths) if denoise else 0)
@@ -110,9 +112,28 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     assert f"spatial_tiling={'on' if spatial else 'off'}" in report
     assert f"temporal_chunking={'on' if temporal else 'off'}" in report
     schema=u.DaSiWaH3TiledUpscale.INPUT_TYPES()['optional']
-    assert list(schema)[-2:]==['spatial_tiling','temporal_chunking']
+    assert f"enforce_memory_budget={'on' if enforce else 'off'}" in report
+    assert f"spatial_split={'on' if spatial and denoise else 'off'}" in report
+    assert f"temporal_split={'on' if temporal else 'off'}" in report
+    assert list(schema)[-3:]==['spatial_tiling','temporal_chunking','enforce_memory_budget']
     assert schema['spatial_tiling'][1]['default'] is True
     assert schema['temporal_chunking'][1]['default'] is True
+    assert schema['enforce_memory_budget'][1]['default'] is True
+
+
+@pytest.mark.parametrize('enforce',[True,False])
+def test_full_canvas_plan_skips_wrapper_even_when_tiling_enabled(setup_node,monkeypatch,enforce):
+    monkeypatch.setattr(helpers,'plan_tiles',lambda *a,**k:dict(tile_width=64,tile_height=64,overlap=0,
+        chunk_tokens=2,temporal_overlap_tokens=0,explanation='TEST full canvas'))
+    def sample(working,positive,negative,cfg,samples,*args):
+        assert 'model_function_wrapper' not in working.model_options
+        return samples
+    monkeypatch.setattr(u,'sample_chunk',sample)
+    output,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[],
+        {'samples':NestedTensor((torch.zeros(1,24,2,2,2),torch.zeros(1,32,2,8)))},
+        sampler=object(),spatial_tiling=True,temporal_chunking=True,enforce_memory_budget=enforce)
+    assert 'spatial_tiling=on' in report and 'spatial_split=off' in report
+    assert 'temporal_chunking=on' in report and 'temporal_split=off' in report
 
 
 def test_full_node_multichunk_path_preserves_audio_and_upstream_model(setup_node,monkeypatch):
@@ -191,7 +212,7 @@ def test_refine_schema_and_callable_defaults_without_external_sigmas():
     assert list(schema['required']) == ['model','conditioning','latent','scale','upscale_model','steps','denoise','seed']
     assert list(schema['optional']) == ['director_guide','vae','start_image','negative','cfg','sampler_name',
         'scheduler','memory_budget_mb','sampler','noise','continuity_context','upscale_precision',
-        'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking']
+        'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking','enforce_memory_budget']
     assert u.DaSiWaH3TiledUpscale.RETURN_TYPES == ('LATENT','STRING')
     assert 'sigmas' not in schema['required']
     assert 'sigmas' not in schema['optional']
