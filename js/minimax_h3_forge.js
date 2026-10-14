@@ -619,7 +619,7 @@ async function open(node) {
   const PLACEHOLDER = {
     character: "What they look like: hair, eyes, build, clothes. Read from their pictures, or write it yourself.",
     place: "The setting: where it is, its landmarks, the light and the time of day.",
-    style: "How it is drawn: the medium, linework, colour and shading.",
+    style: "The medium (photo, semi-real, anime, oil painting…), then the linework, shading and colours.",
     pose: "The pose only: the stance, where the arms and legs are, the gesture, which way they face. Looks and clothes are left out.",
   };
   const kindOfKey = key => !isScene(key) ? "character" : key.startsWith("pose:") ? "pose" : key;

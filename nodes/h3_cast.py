@@ -355,6 +355,15 @@ def describe_message(unit, brief=""):
         lines.append("Describe how they look, never what they are doing, holding or sitting on, or where they are: the video puts them in a new scene.")
     else:
         lines.append(f"This shows {_DESCRIBE_KIND[unit['kind']]}.")
+    if unit["kind"] == "style":
+        # The medium first, and never what is in the picture (PromptForge, 15
+        # Oct 2026): told only "This shows a style.", r4 described the people
+        # and objects of a style picture in 10 of 18 reads; with this, 12 of 12
+        # named the medium right and 1 of 12 named what is in it.
+        lines.append("Start with the medium in a few words: photorealistic, 3D render, semi-realistic, anime, cel-shaded, flat 2D "
+                     "illustration, painterly illustration, oil painting, watercolour, pixel art. Then the linework, the shading and "
+                     "the colour palette, and light only as how soft or harsh it is. Never what is in the picture, no people, animals, "
+                     "objects, places or light sources: the video has its own content and takes only the look.")
     if unit["kind"] == "pose":
         # Stance only, said twice over (PromptForge, 12 Oct 2026); pose_only
         # makes sure in code.

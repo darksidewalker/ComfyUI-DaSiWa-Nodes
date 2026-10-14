@@ -302,7 +302,9 @@ def test_the_place_style_and_pose_are_read_with_their_own_message():
     cast = hc.cast_for(scene_refs(), "REF2VA")
     place = hc.scene_unit(cast, "place")
     assert place["tag"] == "<Subject 2>" and "This shows the place." in hc.describe_message(place)
-    assert "This shows a style." in hc.describe_message(hc.scene_unit(cast, "style"))
+    style = hc.describe_message(hc.scene_unit(cast, "style"))
+    assert "This shows a style." in style and "Start with the medium" in style and "Never what is in the picture" in style
+    assert "Start with the medium" not in hc.describe_message(place)
     pose = hc.scene_unit(cast, "pose@4")
     msg = hc.describe_message(pose, "She waves.")
     assert "Describe only the pose" in msg and "other characters take this pose" in msg and "this pose" in msg
