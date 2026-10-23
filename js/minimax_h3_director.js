@@ -189,10 +189,27 @@ function createBuilderField(label, value, opts = {}, fieldHeights = {}) {
   wrapper.appendChild(area);
   const resizer = document.createElement("div");
   resizer.className = "ds-h3-prompt-field-resizer";
-  let dragging = false, startY = 0, startH = 0;
-  resizer.addEventListener("pointerdown", ev => { ev.preventDefault(); dragging = true; startY = ev.clientY; startH = area.clientHeight; resizer.setPointerCapture(ev.pointerId); });
-  resizer.addEventListener("pointermove", ev => { if (!dragging) return; const height = Math.max(60, startH + (ev.clientY - startY)); area.style.height = `${height}px`; if (key) fieldHeights[key] = height; });
-  const finishResize = () => { if (dragging) { dragging = false; window.dispatchEvent(new CustomEvent("dasiwa-h3-field-resized")); } };
+  let pointerId = null, startY = 0, startH = 0, scaleY = 1;
+  resizer.addEventListener("pointerdown", ev => {
+    if (ev.button !== 0) return;
+    ev.preventDefault(); ev.stopPropagation();
+    pointerId = ev.pointerId; startY = ev.clientY; startH = area.offsetHeight;
+    // Pointer coordinates include graph zoom; CSS heights do not. Measure the
+    // actual transform instead of assuming a particular canvas zoom.
+    scaleY = area.getBoundingClientRect().height / startH || 1;
+    resizer.setPointerCapture(pointerId);
+  });
+  resizer.addEventListener("pointermove", ev => {
+    if (ev.pointerId !== pointerId) return;
+    const height = Math.max(60, startH + (ev.clientY - startY) / scaleY);
+    area.style.height = `${height}px`; if (key) fieldHeights[key] = height;
+  });
+  const finishResize = ev => {
+    if (pointerId === null || ev.pointerId !== pointerId) return;
+    const captured = pointerId; pointerId = null;
+    if (resizer.hasPointerCapture(captured)) resizer.releasePointerCapture(captured);
+    resizer.dispatchEvent(new CustomEvent("dasiwa-h3-field-resized", { bubbles: true }));
+  };
   for (const event of ["pointerup", "pointercancel", "lostpointercapture"]) resizer.addEventListener(event, finishResize);
   wrapper.appendChild(resizer);
   if (key) {
@@ -208,13 +225,6 @@ function install(node) {
   let nodeRemoved = false;
   installStyles();
   if (!window.__dasiwaH3MenuCloseInstalled) { window.__dasiwaH3MenuCloseInstalled = true; window.addEventListener("pointerdown", event => { const open = document.querySelector(".ds-h3-res-menu.open"); if (open && !open.parentElement.contains(event.target)) open.classList.remove("open"); }, true); }
-  // Resizing a prompt field's textarea never triggered a render()/emit() pass
-  // on its own (it's a local DOM mutation only) so the node's own bounding
-  // box -- what LiteGraph uses for viewport culling -- was never refreshed,
-  // and scrolling far enough away made the whole node vanish. Resync once,
-  // on release, rather than continuously while dragging.
-  const onFieldResized = () => requestAnimationFrame(() => { if (!nodeRemoved) syncNodeBounds("fit"); });
-  window.addEventListener("dasiwa-h3-field-resized", onFieldResized);
   const dataWidget = node.widgets?.find(w => w.name === "timeline_data");
   if (!dataWidget) return;
   dataWidget.hidden = true; dataWidget.options = { ...(dataWidget.options || {}), hidden: true };
@@ -272,6 +282,15 @@ function install(node) {
   let lastExternalCanvasLinked = hasExternalCanvas();
   const status = document.createElement("div"); status.className = "ds-h3-status ds-h3-info-field"; status.textContent = ""; status.style.display = "none";
   const timeline = document.createElement("div"); timeline.className = "ds-h3 ds-h3-root"; timeline.tabIndex = 0;
+  // Vue stretches the widget host. Keep intrinsic content in a separate block
+  // so allocated empty space can never become the next preferred height.
+  const timelineHost = document.createElement("div");
+  timelineHost.style.cssText = "width:100%;min-width:0;box-sizing:border-box;flex:0 0 auto;";
+  timelineHost.append(timeline);
+  timeline.addEventListener("dasiwa-h3-field-resized", () => {
+    emit();
+    syncNodeBounds("fit");
+  });
   timeline.addEventListener("wheel", event => {
     const openMenu = event.target instanceof Element ? event.target.closest(".ds-h3-res-menu.open") : null;
     if (openMenu && openMenu.scrollHeight > openMenu.clientHeight) return;
@@ -1932,7 +1951,7 @@ function install(node) {
     promptPanel.addEventListener("focusin", event => { if (event.target.tagName === "TEXTAREA") refModPromptField = event.target; });
     timeline.append(promptPanel);
     // Prompt text is edited on the corresponding media row and synchronized to prompt_blocks.
-    timeline.append(status); if (domWidget) domWidget.computeSize = () => [Math.max(420, node.size?.[0] || 520), uiHeight()];
+    timeline.append(status);
     if (edit?.key) {
       const replacement = Array.from(timeline.querySelectorAll("textarea,input")).find(el => (el.dataset.h3FieldKey || el.getAttribute("aria-label")) === edit.key);
       if (replacement) { replacement.value = edit.value; replacement.focus({ preventScroll: true }); replacement.setSelectionRange(edit.start, edit.end); }
@@ -1941,81 +1960,72 @@ function install(node) {
     syncNodeBounds?.("grow");
   };
   let domWidget;
-  // Keep DOM-widget sizing independent from node.size. Using node.size as the
-  // widget's preferred height creates a feedback loop: LiteGraph asks the DOM
-  // widget how tall it wants to be, the widget reports the current node height,
-  // and that result can become the next node height.
-  const NODE_CHROME_HEIGHT = 30;
+  // Report the measured content through the widget's layout API. Classic's
+  // DOM margin is part of its allocation, whereas Vue supplies its own insets.
   const minimumNodeSize = [440, 520];
-  const minimumUiHeight = minimumNodeSize[1] - NODE_CHROME_HEIGHT;
+  const minimumUiHeight = 490;
+  const widgetMargin = 10;
   let syncingNodeBounds = false;
-
-  // Measure the content while the root has no height tied to node.size. This is
-  // the stable value used for automatic grow/fit operations.
-  const measureContentHeight = () => {
-    const measured = Math.ceil(Number(timeline.scrollHeight) || 0);
-    trackedContentHeight = Math.max(minimumUiHeight, measured);
-    return trackedContentHeight;
-  };
-
-  // IMPORTANT: this is content height, not node.size[1]. It must remain stable
-  // while LiteGraph is manually resizing the node.
+  let layoutFrame = 0;
+  let pendingLayout = "grow";
   const uiHeight = () => Math.max(minimumUiHeight, trackedContentHeight);
+  const widgetHeight = () => uiHeight() + widgetMargin * 2;
 
-  // "grow" = content changed and the node needs more room.
-  // "fit"  = a prompt field was resized and the node may shrink/grow to fit.
-  // "manual" = LiteGraph owns node.size; never write another size during drag.
+  // Coalesce content/width changes after layout, including mount and renderer
+  // switches. Preserve manual sizes above the content minimum; never resize
+  // synchronously from onResize.
   const syncNodeBounds = (strategy = "grow") => {
-    if (syncingNodeBounds || nodeRemoved) return;
+    if (nodeRemoved) return;
+    if (!layoutFrame || strategy === "fit") pendingLayout = strategy;
+    if (layoutFrame) return;
+    layoutFrame = requestAnimationFrame(() => {
+      layoutFrame = 0;
+      if (nodeRemoved || !node.graph || node.flags?.collapsed || !timeline.isConnected || !timeline.offsetWidth) return;
+      trackedContentHeight = Math.max(minimumUiHeight, Math.ceil(timeline.offsetHeight));
+      timelineHost.style.height = `${uiHeight()}px`;
+      for (const key of ["height", "min-height", "max-height"]) {
+        timelineHost.style.setProperty(`--comfy-widget-${key}`, `${uiHeight()}px`);
+      }
 
-    const contentHeight = measureContentHeight();
-    const [currentWidth = minimumNodeSize[0], currentHeight = minimumNodeSize[1]] = node.size || [];
-    const width = Math.max(minimumNodeSize[0], currentWidth);
-    const requiredHeight = contentHeight + NODE_CHROME_HEIGHT;
-
-    let height = currentHeight;
-    if (strategy === "fit") {
-      height = Math.max(minimumNodeSize[1], requiredHeight);
-    } else if (strategy === "grow" && currentHeight < requiredHeight) {
-      height = Math.max(minimumNodeSize[1], requiredHeight);
-    }
-
-    if (width !== currentWidth || height !== currentHeight) {
-      syncingNodeBounds = true;
-      node.setSize?.([width, height]);
-      syncingNodeBounds = false;
+      const [currentWidth, currentHeight] = node.size;
+      const width = Math.max(minimumNodeSize[0], currentWidth);
+      const vueNode = timelineHost.closest(".lg-node");
+      // Native slots and widgets have different heights in the two renderers.
+      // Subtract the allocated widget space to measure only Vue's node chrome;
+      // Classic's computeSize already accounts for its slots, widgets and gaps.
+      const requiredHeight = vueNode
+        ? vueNode.offsetHeight - timelineHost.parentElement.offsetHeight - LiteGraph.NODE_TITLE_HEIGHT + uiHeight()
+        : node.computeSize()[1];
+      const height = pendingLayout === "fit"
+        ? Math.max(minimumNodeSize[1], requiredHeight)
+        : Math.max(currentHeight, requiredHeight);
+      if (width !== currentWidth || height !== currentHeight) {
+        syncingNodeBounds = true;
+        try { node.setSize?.([width, height]); }
+        finally { syncingNodeBounds = false; }
+      }
       node.graph?.setDirtyCanvas(true, true);
-    }
-
-    // Width follows the node. Do NOT set timeline.height from node.size; the
-    // DOM widget itself is positioned/sized by ComfyUI's addDOMWidget layer.
-    const actualWidth = Number(node.size?.[0]) || width;
-    timeline.style.width = `${Math.max(1, actualWidth - 20)}px`;
-    timeline.style.height = "auto";
+    });
   };
 
   if (node.addDOMWidget) {
-    domWidget = node.addDOMWidget("minimax_h3_director_ui", "custom", timeline, {
+    domWidget = node.addDOMWidget("minimax_h3_director_ui", "custom", timelineHost, {
       serialize: false,
       hideOnZoom: false,
-      // Stable floor; do not derive this from the current node height.
-      getMinHeight: () => minimumUiHeight,
-      // Preferred height comes from measured content, not node.size.
-      getHeight: () => uiHeight(),
+      margin: widgetMargin,
+      getMinHeight: widgetHeight,
+      getMaxHeight: widgetHeight,
+      getHeight: widgetHeight,
     });
+    domWidget.computeSize = () => [node.size[0], widgetHeight()];
   }
+  const layoutObserver = new ResizeObserver(() => syncNodeBounds("grow"));
+  layoutObserver.observe(timeline);
 
   const oldResize = node.onResize;
   node.onResize = function (...args) {
     oldResize?.apply(this, args);
-    // LiteGraph owns node.size during a corner resize. Only update the DOM
-    // width here; never call setSize again from inside the resize callback.
-    requestAnimationFrame(() => {
-      const width = Number(node.size?.[0]) || minimumNodeSize[0];
-      timeline.style.width = `${Math.max(1, width - 20)}px`;
-      timeline.style.height = "auto";
-      node.graph?.setDirtyCanvas(true, true);
-    });
+    if (!syncingNodeBounds) syncNodeBounds("grow");
   };
   const restorePersistedState = () => {
     state = parseState(dataWidget.value);
@@ -2211,7 +2221,8 @@ function install(node) {
     closeContinuityAdvanced?.();
     closeClipAssembly?.();
     window.clearTimeout(checkTimer); checkAbort?.abort();
-    window.removeEventListener("dasiwa-h3-field-resized", onFieldResized);
+    layoutObserver.disconnect();
+    if (layoutFrame) cancelAnimationFrame(layoutFrame);
     window.DaSiWaH3Forge?.close?.(node);
     closePreview(true);
     closePromptNumberPopover?.();
