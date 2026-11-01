@@ -321,6 +321,8 @@ def _metadata_file(prompt, extra_pnginfo):
 def _audio_file(audio):
     if audio is None:
         return None, None
+    if not isinstance(audio, dict) and hasattr(audio, "keys"):
+        audio = {key: audio[key] for key in audio.keys()}
     if not isinstance(audio, dict) or "waveform" not in audio or "sample_rate" not in audio:
         raise ValueError("audio must be a ComfyUI AUDIO value containing waveform and sample_rate.")
 
