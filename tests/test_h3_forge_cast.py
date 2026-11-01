@@ -108,6 +108,32 @@ def test_a_lent_picture_says_its_note_once_and_keeps_its_leave_out():
     assert "From the second picture, leave out: the hat." in msg
 
 
+def custom_pic(**extra):
+    return pic("hand.png", easy_role="custom", picture_kinds=["custom"], **extra)
+
+
+def test_a_labelled_custom_picture_can_go_without_a_note():
+    assert hp.validate_references([{"kind": "image", "role": "custom", "path": "a.png", "easy_role": "custom"}])
+    with pytest.raises(ForgeError):
+        hp.validate_references([{"kind": "image", "role": "custom", "path": "a.png"}])
+
+
+def test_a_custom_picture_reads_as_a_reference_not_a_person():
+    cast = hc.cast_for([custom_pic()], "REF2VA")
+    unit = hc.scene_unit(cast, "custom@1")
+    assert unit["kind"] == "custom" and unit["tag"] == "<Picture 1>"
+    msg = hc.describe_message(unit, "Her hand reaches for the cup.")
+    assert "This shows a reference the person picked." in msg
+    assert "not a whole character unless the brief says it is one" in msg
+
+
+def test_a_custom_card_reaches_the_writer_whole():
+    cast = hc.cast_for([custom_pic()], "REF2VA")
+    text = "A hand with chipped red nails, holding a chipped mug."
+    assert hc.carded_tags(cast, {"custom@1": text}) == {"<Picture 1>": text}
+    assert hc.given_cast({"custom@1": text}) == {"custom@1": text}
+
+
 def test_each_shot_gets_its_share_of_the_word_range():
     assert hp.detail_share("About 420-500 words.", "4") == (
         " With 4 shots that is about 105-125 words in each shot: every shot gets its full share, the last as much as the first.")

@@ -172,6 +172,19 @@ test('Cast autoload is default on, independent of draft vision, with a remembere
   off.close();
 });
 
+test('a Custom picture with no note gets a card and drafts from the idea', async () => {
+  const ref = { ...image('custom'), role: 'custom', picture_kinds: ['custom'], instructions: '', item: { id: 'c' } };
+  const d = await dialog({ refs: [ref], castReply: { ok: true, json: async () => ({ text: 'A hand with chipped red nails.' }) } });
+  d.brief.value = 'Her hand reaches for the cup';
+  await d.readTimer();
+  assert.equal(d.requests.filter(r => r.subject === 'custom@1').length, 1);
+  assert.equal(d.node.properties.dasiwaH3ForgeCast['custom:c'].text, 'A hand with chipped red nails.');
+  await d.button('Generate').dispatch('click');
+  const draft = d.requests.find(r => r.brief === 'Her hand reaches for the cup' && !r.subject);
+  assert.equal(draft.cast['custom@1'], 'A hand with chipped red nails.');
+  d.close();
+});
+
 test('a non-vision reader stops the automatic queue without blocking normal drafting', async () => {
   const d = await dialog({ refs: [image(), { ...image('character-2'), path: 'b.png', item: { id: 'b' } }],
     castReply: { ok: false, json: async () => ({ error: 'no_vision', message: 'Write their description yourself.' }) } });
