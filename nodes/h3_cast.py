@@ -46,12 +46,12 @@ def _cap(text):
 
 
 # Scene cards: "place", "style", and "pose@3" for the pose in <Picture 3>.
-_SCENE_KEY = re.compile(r"^(?:place|style|pose@([1-9]\d?))$")
+_SCENE_KEY = re.compile(r"^(?:place|style|(?:pose|custom)@([1-9]\d?))$")
 
 
 def given_cast(raw):
     """The cards the panel sent: {character number: text, "place": text,
-    "style": text, "pose@N": text}. Empty cards are not cards."""
+    "style": text, "pose@N": text, "custom@N": text}. Empty cards are not cards."""
     out = {}
     if not isinstance(raw, dict):
         return out
@@ -280,7 +280,7 @@ def cast_unit(cast, number):
     return None
 
 
-_DESCRIBE_KIND = {"place": "the place", "style": "a style", "pose": "a pose"}
+_DESCRIBE_KIND = {"place": "the place", "style": "a style", "pose": "a pose", "custom": "a reference the person picked"}
 
 
 def _clean(value):
@@ -292,7 +292,8 @@ def describe_message(unit, brief=""):
     which person this is, the person's notes on each picture, and the brief."""
     frames = unit.get("frames", 0)
     told = _clean(brief)[:1500]
-    it = f'"{unit["name"]}"' if unit.get("name") else "this pose" if unit["kind"] == "pose" else "these characters"
+    it = (f'"{unit["name"]}"' if unit.get("name") else "this pose" if unit["kind"] == "pose"
+          else "this reference" if unit["kind"] == "custom" else "these characters")
     brief_lines = [
         f'The person\'s brief for the video{", where this is " + it if unit.get("name") else ""}:\n"""\n{told}\n"""',
         f"Use the brief to know what you are looking at, and call things what it calls them. Where it changes how {it} looks, "
@@ -373,6 +374,11 @@ def describe_message(unit, brief=""):
                          "\"the one on the right\" and so on, and say how they stand to each other.")
         lines.append("Never their hair, eyes, face, skin, body, clothes, colours or the background, not even to tell them apart: "
                      "other characters take this pose. The Kept line lists the stance and gesture only.")
+    if unit["kind"] == "custom":
+        # Told nothing, a reader describes a close-up of a hand as a person
+        # (PromptForge, 28 Oct 2026).
+        lines.append("It may be a body part, an object, an action, a detail of clothing or anything else. Describe what the "
+                     "brief and the notes use it for, in their words, and not a whole character unless the brief says it is one.")
     if unit["kind"] == "place" and unit.get("also_people"):
         lines.append("Describe only the setting: the location, its layout, light and time of day. Leave out the people in it; they are described separately.")
     if len(unit["pictures"]) > 1:
@@ -459,10 +465,11 @@ def scene_unit(cast, key):
                 # A place in a picture of the characters: the setting only.
                 "also_people": key == "place" and any("character" in (r.get("picture_kinds") or []) for r in s["refs"])} if pictures else None
     n = int(m.group(1))
-    use = next((u for u in cast["uses"] if u["which"] == "pose" and u["picture"] == n), None)
+    which = key.split("@")[0]
+    use = next((u for u in cast["uses"] if u["which"] == which and u["picture"] == n), None)
     if use is None or not use["ref"].get("path"):
         return None
-    return {"kind": "pose", "name": None, "tag": f"<Picture {n}>", "pictures": [{"picture": n, "ref": use["ref"], "crop": None}],
+    return {"kind": which, "name": None, "tag": f"<Picture {n}>", "pictures": [{"picture": n, "ref": use["ref"], "crop": None}],
             "frames": 0, "takers": len(use.get("takers") or [])}
 
 
@@ -477,10 +484,10 @@ def carded_tags(cast, given):
         if s["kind"] in ("place", "style") and s["kind"] in given:
             out[s["tag"]] = given[s["kind"]]
     for u in cast["uses"]:
-        text = given.get(f"pose@{u['picture']}") if u["which"] == "pose" else None
-        stance = pose_only(text) if text else ""
-        if stance:
-            out[f"<Picture {u['picture']}>"] = stance
+        text = given.get(f"{u['which']}@{u['picture']}")
+        said = pose_only(text) if text and u["which"] == "pose" else text
+        if said:
+            out[f"<Picture {u['picture']}>"] = said
     return out
 
 

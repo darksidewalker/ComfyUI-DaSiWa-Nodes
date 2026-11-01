@@ -94,7 +94,7 @@ const WHO_SHOWN = 6, WHO_MAX = 32;
 const whoShown = (pictures, used) => Math.max(Math.min(WHO_MAX, Math.max(WHO_SHOWN, pictures, Math.max(0, ...used) + 1)), ...used);
 const INSTRUCTIONS_HINT = {
   pose: "Pose only; identity, clothes and background stay unchanged. Add details if needed.",
-  custom: "Describe what to use from this image (required).",
+  custom: "What to use from this image. Leave it empty and the idea says what it is.",
 };
 function forgeHistory(node) {
   const saved = node.properties?.[HISTORY_KEY];
@@ -516,18 +516,19 @@ async function open(node) {
     if (mode !== "REF2VA") return keys;
     const shown = imagesOf().filter(r => r.path);
     for (const kind of ["place", "style"]) if (shown.some(r => kindsOf(r)[0] !== "pose" && kindsOf(r).includes(kind))) keys.push(kind);
-    for (const r of shown) if (kindsOf(r)[0] === "pose" && r.item?.id) keys.push(`pose:${r.item.id}`);
+    for (const r of shown) if (ALONE_KINDS.has(kindsOf(r)[0]) && r.item?.id) keys.push(`${kindsOf(r)[0]}:${r.item.id}`);
     return keys;
   }
   // The pictures a card is read from.
   function cardRefs(key) {
     if (!isScene(key)) return castRefs(key);
-    if (key.startsWith("pose:")) return imagesOf().filter(r => r.path && r.item?.id === key.slice(5) && kindsOf(r)[0] === "pose");
+    const alone = key.includes(":") && key.split(":")[0];
+    if (alone) return imagesOf().filter(r => r.path && r.item?.id === key.slice(alone.length + 1) && kindsOf(r)[0] === alone);
     return imagesOf().filter(r => r.path && kindsOf(r)[0] !== "pose" && kindsOf(r).includes(key));
   }
   function cardLabel(key) {
     if (!isScene(key)) return `Character ${key}`;
-    if (key.startsWith("pose:")) { const r = cardRefs(key)[0]; return `Pose (Picture ${r ? pictureNumber(r) : "?"})`; }
+    if (key.includes(":")) { const r = cardRefs(key)[0]; return `${key.startsWith("pose:") ? "Pose" : "Reference"} (Picture ${r ? pictureNumber(r) : "?"})`; }
     return SCENE_LABEL[key];
   }
   // Everything the reader is told for a card, so a change shows as out of
@@ -579,13 +580,13 @@ async function open(node) {
     runCastQueue();
   }
   function keysOfPicture(r) {
-    if (kindsOf(r)[0] === "pose") return r.item?.id ? [`pose:${r.item.id}`] : [];
+    if (ALONE_KINDS.has(kindsOf(r)[0])) return r.item?.id ? [`${kindsOf(r)[0]}:${r.item.id}`] : [];
     return [...peopleIn(r), ...["place", "style"].filter(k => kindsOf(r).includes(k))];
   }
   // What the draft and the reader call a card: "2", "place", "style", "pose@3".
   function requestKey(key) {
     if (!isScene(key)) return String(key);
-    if (key.startsWith("pose:")) { const r = cardRefs(key)[0]; return r ? `pose@${pictureNumber(r)}` : null; }
+    if (key.includes(":")) { const r = cardRefs(key)[0]; return r ? `${key.split(":")[0]}@${pictureNumber(r)}` : null; }
     return key;
   }
   async function readCard(key, redo) {
@@ -621,8 +622,9 @@ async function open(node) {
     place: "The setting: where it is, its landmarks, the light and the time of day.",
     style: "The medium (photo, semi-real, anime, oil painting…), then the linework, shading and colours.",
     pose: "The pose only: the stance, where the arms and legs are, the gesture, which way they face. Looks and clothes are left out.",
+    custom: "What this picture is for: a body part, an object, an action, a detail. Read from the picture and your idea, or write it yourself.",
   };
-  const kindOfKey = key => !isScene(key) ? "character" : key.startsWith("pose:") ? "pose" : key;
+  const kindOfKey = key => !isScene(key) ? "character" : key.split(":")[0];
   function castCardEl(key) {
     const img = el("img", { alt: "" });
     const text = el("textarea", { rows: 3, maxLength: CAST_MAX, placeholder: PLACEHOLDER[kindOfKey(key)] });
@@ -1126,7 +1128,7 @@ async function open(node) {
     if (openedKey !== hook.contextKey?.()) { setStatus("Director context changed. Close and reopen Forge.", true); return; }
     const rows = shotRows();
     if (!text && !continuity && !rows.some(r => r.trim())) { setStatus("Write the idea first.", true); return; }
-    const missing = refs.find(r => r.role === "custom" && !r.instructions.trim());
+    const missing = refs.find(r => r.role === "custom" && !r.instructions.trim() && !r.easy_role);
     if (missing) { setStatus("Custom reference: describe what this image should contribute, or choose a preset role.", true); return; }
     genBtn.disabled = true;
     draftWaiting = true; setControlsDisabled(true);

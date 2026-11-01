@@ -638,7 +638,7 @@ def _read_cast(body, input_directory, release_memory, stop):
     references = validate_references(body.get("references"))
     cast = cast_for(references, mode)
     unit = scene_unit(cast, subject) if scene else cast_unit(cast, number)
-    what = ({"place": "the place", "style": "the style"}.get(subject, "the pose")) if scene else f"Character {number}"
+    what = ({"place": "the place", "style": "the style"}.get(subject, "the reference" if subject.startswith("custom@") else "the pose")) if scene else f"Character {number}"
     if unit is None:
         raise ForgeError("not_shown", f"No picture shows {what} so that it can be read. Write the description yourself." if scene else
                          f"No picture shows Character {number} so that they can be read on their own. "
