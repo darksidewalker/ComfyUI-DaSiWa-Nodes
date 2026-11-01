@@ -91,6 +91,8 @@ flowchart TD
 | Append & Stage.ticket | Publish Export.ticket | Identify this staged checkpoint |
 | Enhanced Video Combine.filename | Publish Export.filename | Wait for and validate this actual export |
 
+A single-input filename pass-through such as VHS **Select Filename** may sit between the exporter and Publish Export; capture checks the exporter behind it.
+
 The sampler's latent path may include native **Set Latent Noise Mask**, **Separate AV Latent** and **Concat AV Latent** nodes. Capture follows the video-carrying latent inputs back to this Director Guide; an unrelated video latent or a connection only through audio, masks or conditioning does not qualify.
 
 Keep **Append & Stage before spatial latent upscaling**. It joins and stores the

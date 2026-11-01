@@ -57,6 +57,17 @@ def validate_capture_graph(prompt, guide_id, output_mode="full"):
     if not isinstance(filename, (list, tuple)) or len(filename) != 2:
         raise ValueError("Publish Export.filename must be wired to the actual video exporter.")
     exporter_id = str(filename[0])
+
+    def media_exporter(node_id, seen):
+        """Step back through filename pass-throughs (e.g. VHS_SelectFilename) to the node that took the images."""
+        node = nodes.get(node_id, {})
+        if node_id in seen or "images" in node.get("inputs", {}):
+            return node_id
+        seen.add(node_id)
+        sources = [str(v[0]) for v in node.get("inputs", {}).values() if isinstance(v, (list, tuple)) and len(v) == 2 and str(v[0]) in nodes]
+        return media_exporter(sources[0], seen) if len(sources) == 1 else node_id
+
+    exporter_id = media_exporter(exporter_id, set())
     exporter = nodes.get(exporter_id, {})
 
     def depends_on(node_id, ancestor, visited=None):

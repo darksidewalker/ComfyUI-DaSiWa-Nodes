@@ -684,6 +684,8 @@ def test_copy_video_is_lossless_and_reencodes_only_audio(tmp_path):
         frames = list(container.decode(video=0))
         assert [round(float(f.pts * f.time_base * 24)) for f in frames] == list(range(24))
     with av.open(str(output)) as container:
+        picture = container.streams.video[0]  # issue #89: last packet duration must be one frame, not its source ticks
+        assert picture.duration * picture.time_base == 1
         sound = container.streams.audio[0]
         assert sound.codec_context.name == "aac" and round(sound.duration * sound.time_base * 48000) == 48000
     assert not list(tmp_path.glob("*.partial*"))

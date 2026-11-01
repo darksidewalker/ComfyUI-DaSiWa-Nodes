@@ -55,6 +55,22 @@ class CaptureValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "images must come from this cumulative latent"):
             validation.validate_capture_graph(p, "guide")
 
+    def test_segment_exporter_behind_select_filename_in_a_subgraph(self):
+        # Issue #90: subgraph-flattened ids and a VHS_SelectFilename between exporter and Publish.
+        p = {
+            "guide": {"class_type": "MiniMaxH3DirectorGuide", "inputs": {}},
+            "7:1": {"class_type": "SamplerCustomAdvanced", "inputs": {"latent_image": ["guide", 1]}},
+            "7:2": {"class_type": "DaSiWaH3ContinuitySegmentPrepare", "inputs": {"sampled": ["7:1", 0], "context": ["guide", 2]}},
+            "7:3": {"class_type": "DaSiWaH3ContinuitySegmentDecode", "inputs": {"latent": ["7:2", 0], "context": ["7:2", 1]}},
+            "9": {"class_type": "VHS_VideoCombine", "inputs": {"images": ["7:3", 0], "audio": ["7:3", 1]}},
+            "7:4": {"class_type": "VHS_SelectFilename", "inputs": {"filenames": ["9", 0], "index": -1}},
+            "7:5": {"class_type": "DaSiWaH3ContinuityPublish", "inputs": {"filename": ["7:4", 0], "ticket": ["7:2", 2]}},
+        }
+        validation.validate_capture_graph(p, "guide", "segment")
+        p["9"]["inputs"]["audio"] = ["elsewhere", 0]
+        with self.assertRaisesRegex(ValueError, "same Segment Decode"):
+            validation.validate_capture_graph(p, "guide", "segment")
+
 
 if __name__ == "__main__":
     unittest.main()

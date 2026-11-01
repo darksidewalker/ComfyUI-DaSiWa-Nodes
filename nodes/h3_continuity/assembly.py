@@ -643,6 +643,7 @@ def _write_copy(temporary, plan, check, output_root):
                         raise ValueError(f"copied video timestamps would run backwards at clip {number}")
                     last_dts = packet.dts
                     packet.time_base, packet.stream = Fraction(1, 24), video
+                    packet.duration = 1  # source ticks (e.g. 512 at 1/12288) would read as 512 frames on the last packet
                     output.mux(packet)
                     copied += 1
                     ahead = max(ahead, index - row["start"] + 1)
