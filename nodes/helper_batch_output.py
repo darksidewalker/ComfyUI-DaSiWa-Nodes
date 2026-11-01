@@ -13,8 +13,9 @@ import torch
 MAX_RAM_SAFETY_RESERVE_BYTES = 8 * 1024 * 1024 * 1024
 MIN_RAM_SAFETY_RESERVE_BYTES = 1 * 1024 * 1024 * 1024
 LOW_RAM_SAFETY_RESERVE_FRACTION = 0.25
-MAX_DISK_BACKED_OUTPUT_BYTES = 64 * 1024 * 1024 * 1024
-TEMP_DISK_RESERVE_BYTES = 1024 * 1024 * 1024
+# A disk-backed output may take at most this share of the temp drive's free space; the rest
+# stays for ComfyUI's own temp files, the OS and the encoder's output. No fixed GiB cap.
+MAX_DISK_BACKED_FREE_FRACTION = 0.9
 
 
 def tensor_nbytes(shape: Tuple[int, ...], dtype: torch.dtype) -> int:
@@ -38,8 +39,12 @@ def can_allocate_in_ram(required_bytes: int) -> bool:
     return required_bytes <= max(0, available_ram_bytes() - ram_safety_reserve_bytes())
 
 
+def disk_backed_output_budget_bytes(directory: str) -> int:
+    return int(shutil.disk_usage(directory).free * MAX_DISK_BACKED_FREE_FRACTION)
+
+
 def _has_free_disk_space(directory: str, required_bytes: int) -> bool:
-    return shutil.disk_usage(directory).free >= required_bytes + TEMP_DISK_RESERVE_BYTES
+    return required_bytes <= disk_backed_output_budget_bytes(directory)
 
 
 def _remove_temporary_output(path: str) -> None:
@@ -95,19 +100,13 @@ def allocate_cpu_output(
     required_bytes = tensor_nbytes(shape, dtype)
     if not force_mmap and can_allocate_in_ram(required_bytes):
         return torch.zeros(shape, dtype=dtype), None
-    if required_bytes > MAX_DISK_BACKED_OUTPUT_BYTES:
-        raise RuntimeError(
-            f"Output requires {required_bytes / 1024 ** 3:.2f} GiB, exceeding the "
-            f"{MAX_DISK_BACKED_OUTPUT_BYTES / 1024 ** 3:.0f} GiB disk-backed safety limit. "
-            "Reduce frame count, scale, or target resolution."
-        )
     os.makedirs(directory, exist_ok=True)
     has_free_disk_space = has_free_disk_space or _has_free_disk_space
     if not has_free_disk_space(directory, required_bytes):
         raise RuntimeError(
             f"Not enough free disk space for a {required_bytes / 1024 ** 3:.2f} GiB "
-            f"disk-backed output ({TEMP_DISK_RESERVE_BYTES / 1024 ** 3:.0f} GiB reserve "
-            f"required in '{directory}'). Free up space, use a larger/other temp "
+            f"disk-backed output: at most {MAX_DISK_BACKED_FREE_FRACTION:.0%} of the free "
+            f"space in '{directory}' may be used. Free up space, use a larger/other temp "
             "drive, disable 'Use disk-backed (mmap) output', or reduce the batch "
             "size / target resolution."
         )

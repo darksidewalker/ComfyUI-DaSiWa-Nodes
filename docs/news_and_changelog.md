@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-10-30**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-01**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **RTX Upscaler & Refiner / Frame Generation: no 64 GiB mmap cap (0.5.35):** with `use_mmap` on, an output larger than RAM was refused above a fixed 64 GiB (`Output requires 76.03 GiB, exceeding the 64 GiB disk-backed safety limit`) even on a drive with room for it. The disk-backed output may now use up to 90% of the temp drive's free space; the error names the share and the folder. A DEAS user hit this on a 64 GB RAM machine with a long RTX 2× + frame-generation chain.
 
 - **Continuity Segment Decode: swapped VAE slots named (0.5.34):** a video VAE wired into `audio_vae` (or the audio VAE into `vae`) used to fail deep inside Core with `tuple index out of range`. Segment Decode now checks both slots against Core's MiniMax H3 VAE classes in both output modes and says which VAE belongs where. Every H3 video VAE variant Core loads (stock, int8, LightVAE, the new Sol-H3-VAE) keeps passing; the Director Guide hint now names `minimax_h3_sol_vae_*` too.
 
@@ -197,6 +199,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.35 | 11-01 | RTX disk-backed (mmap) output: 90% of free temp space instead of a fixed 64 GiB cap |
 | 0.5.34 | 10-30 | Continuity Segment Decode names swapped video/audio VAE slots; Sol-H3-VAE in the hints |
 | 0.5.33 | 10-21 | Enhanced Video Combine Auto outputs AV1 in MP4; Seed Control poller stops with the node |
 | 0.5.32 | 10-19 | New **Tiled Diffusion (Image)** MODEL patch: per-step overlapping-tile sampling for SD/SDXL/Flux-family image models |

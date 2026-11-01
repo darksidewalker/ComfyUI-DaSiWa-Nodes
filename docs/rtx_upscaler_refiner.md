@@ -120,7 +120,7 @@ Workflows saved with the removed experimental `(Chunked)` RTX and `(Chunks)` Com
 
 When `use_mmap` is **enabled**, disk remains the last output tier, only used when RAM cannot cover the batch. Its backing file is removed when the output tensor is released. It does not remove the requirement for CUDA compute workspace.
 
-> **Warning:** enabling `use_mmap` writes a temp file to your ComfyUI temp drive that can grow to the **full output size** (several GiB for long 4K batches; 8.99 GB was observed with Frame Interpolation) and stays on disk for the whole run. The node checks free disk space before creating the file and raises a clear error when the temp drive cannot hold output + 1 GiB reserve. On Windows, an unlinked mmap file only releases its disk space when the last handle to it is closed — while a downstream node still holds the output, the space stays charged.
+> **Warning:** enabling `use_mmap` writes a temp file to your ComfyUI temp drive that can grow to the **full output size** (several GiB for long 4K batches; 8.99 GB was observed with Frame Interpolation) and stays on disk for the whole run. The node checks free disk space before creating the file and raises a clear error when the output would take more than 90% of the temp drive's free space (there is no fixed GiB cap any more; 0.5.34 and earlier refused anything above 64 GiB regardless of the drive). On Windows, an unlinked mmap file only releases its disk space when the last handle to it is closed — while a downstream node still holds the output, the space stays charged.
 
 ## 💡 Pro-Tips
 
