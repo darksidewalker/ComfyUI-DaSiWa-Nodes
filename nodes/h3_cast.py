@@ -380,7 +380,26 @@ def describe_message(unit, brief=""):
     # A note on one of several pictures is about that picture: "her face" on a
     # close-up beside a full-body shot (PromptForge, 14 Oct 2026).
     pairs = list(map(notes, own))
-    if len(own) > 1 and len(set(pairs)) > 1:
+    # Some pictures with a note and some with none: the ones with none are how
+    # they look, and the others lend one thing each. Told "from the second
+    # picture, take only: her hairstyle", a 27B still took that picture's
+    # clothes (PromptForge, 28 Oct 2026; three reads of the same pair kept the
+    # right outfit said this way).
+    whole = [i for i, (k, d) in enumerate(pairs) if not k and not d]
+    lent = [i for i, (k, _) in enumerate(pairs) if k]
+    if len(own) > 1 and whole and lent and unit["kind"] == "character":
+        names = _join_and([_ordinal(frames + i) for i in whole])
+        shows = "picture shows" if len(whole) == 1 else "pictures show"
+        lines.append(f"The {names} {shows} how they look: describe them from {'it' if len(whole) == 1 else 'them'}.")
+        for i in lent:
+            # "Reference for her haircut" / "use it for her halo" said once.
+            what = re.sub(r"^(?:a\s+)?(?:reference|used?(?:\s+it)?|only|just)\s+for\s+", "", pairs[i][0], flags=re.I)
+            lines.append(f"The {_ordinal(frames + i)} picture is a reference for {what} only. Take that from it, in "
+                         f"place of what the {names} {shows}; their clothes, body and everything else stay as in the {names}.")
+        for i, (_, d) in enumerate(pairs):
+            if d:
+                lines.append(f"From the {_ordinal(frames + i)} picture, leave out: {d}.")
+    elif len(own) > 1 and len(set(pairs)) > 1:
         for i, (k, d) in enumerate(pairs):
             if k:
                 lines.append(f"From the {_ordinal(i)} picture, take only: {k}.")

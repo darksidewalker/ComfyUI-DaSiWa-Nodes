@@ -219,6 +219,22 @@ def scale_detail_rule(rule, duration):
     return out.replace(", the reference guide's own range", f" for this {float(duration):g}-second clip")
 
 
+def detail_share(rule, shots):
+    """Each shot's share of the detail rule's word range, or "".
+
+    The ladder gives one range for the whole clip and nothing says how to split
+    it, so with several shots the model stopped at a sentence or two each.
+    Detail 8 x 4 shots on a 27B, PromptForge 22 Oct 2026: 274 and 234 words
+    without this, 388 and 393 with it.
+    """
+    n = shot_count(shots)
+    found = _WORD_RANGE.search(str(rule or ""))
+    if not found or not n or n < 2:
+        return ""
+    lo, hi = (round(int(x) / n) for x in found.groups())
+    return f" With {n} shots that is about {lo}-{hi} words in each shot: every shot gets its full share, the last as much as the first."
+
+
 def output_canvas_context(canvas):
     """Only Director output dimensions establish the target aspect ratio."""
     if canvas is None:
@@ -274,7 +290,8 @@ def build_user_message(bundle, brief, mode, duration, detail, creativity, refere
     entry = table.get(str(detail)) or table.get(str(bundle["default_detail"]))
     if entry and entry.get("rule"):
         level = detail if str(detail) in table else bundle["default_detail"]
-        lines.append(f"Detail level {level} of {len(table)} - {entry.get('label', level)}. {scale_detail_rule(entry['rule'], duration)}")
+        rule = scale_detail_rule(entry["rule"], duration)
+        lines.append(f"Detail level {level} of {len(table)} - {entry.get('label', level)}. {rule}{detail_share(rule, shots)}")
 
     if references and cast is not None:
         # Labelled pictures are in the cast block; everything else keeps its
@@ -354,7 +371,8 @@ def parse_segments(text, expected):
         label = by_field.get(heading, heading)
         if label in segments:
             label = heading
-        segments[label] = raw[m.end():end].strip()
+        # A bare === line is a delimiter's leftovers, never part of a section.
+        segments[label] = re.sub(r"^\s*={3,}\s*$", "", raw[m.end():end], flags=re.M).strip()
     if "Refused" in segments:
         raise ForgeError("refused", f"The model refused: {segments['Refused']}", raw)
     missing = [label for label in expected if label not in segments]

@@ -88,7 +88,37 @@ def test_a_note_on_one_of_two_pictures_is_said_for_that_picture():
     cast = hc.cast_for([pic("full.png"), pic("face.png", keep="her face")], "REF2VA")
     msg = hc.describe_message(hc.cast_unit(cast, 1))
     assert "These 2 pictures show the same character; describe it once." in msg
-    assert "From the second picture, take only: her face." in msg and "Take everything else from the other pictures." in msg
+    assert "The first picture shows how they look: describe them from it." in msg
+    assert "The second picture is a reference for her face only." in msg
+    assert "their clothes, body and everything else stay as in the first." in msg
+    assert "take only" not in msg
+
+
+def test_notes_on_every_picture_still_say_what_each_one_gives():
+    cast = hc.cast_for([pic("a.png", keep="her coat"), pic("b.png", keep="her face")], "REF2VA")
+    msg = hc.describe_message(hc.cast_unit(cast, 1))
+    assert "From the first picture, take only: her coat." in msg
+    assert "From the second picture, take only: her face." in msg
+
+
+def test_a_lent_picture_says_its_note_once_and_keeps_its_leave_out():
+    cast = hc.cast_for([pic("full.png"), pic("halo.png", keep="use it for her halo", drop="the hat")], "REF2VA")
+    msg = hc.describe_message(hc.cast_unit(cast, 1))
+    assert "The second picture is a reference for her halo only." in msg
+    assert "From the second picture, leave out: the hat." in msg
+
+
+def test_each_shot_gets_its_share_of_the_word_range():
+    assert hp.detail_share("About 420-500 words.", "4") == (
+        " With 4 shots that is about 105-125 words in each shot: every shot gets its full share, the last as much as the first.")
+    for shots in (None, "Auto", "1"):
+        assert hp.detail_share("About 420-500 words.", shots) == ""
+    assert hp.detail_share("Keep it brief.", "4") == ""
+
+
+def test_a_bare_equals_line_is_not_part_of_a_section():
+    parsed = hp.parse_segments("===SEGMENT: Summary===\nA quiet night.\n===\n===SEGMENT: Music===\nStrings.\n===", ["Summary", "Music"])
+    assert parsed == {"Summary": "A quiet night.", "Music": "Strings."}
 
 
 def test_nobody_on_their_own_is_not_read():
