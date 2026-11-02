@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-01**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-02**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Enhanced Video Combine: VHS audio accepted (0.5.37):** VideoHelperSuite's *Load Video (Path)* returns audio as a `LazyAudioMap` that exposes `waveform`/`sample_rate` but is not a `dict`, so the node refused it with *audio must be a ComfyUI AUDIO value containing waveform and sample_rate*. Mapping-like audio is now read as a plain dict before validation (contributed in [PR #93](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/93)). The `free_memory_if_needed` RAM estimate still skips such audio, so it under-counts by that one buffer.
 
 - **Join Clips copy duration, Continuity Select Filename, Forge notes and shot share (0.5.36):** with *Copy video without re-encoding*, the last copied video packet kept its source duration (512 ticks at 1/12288 read as 512 frames), so a 34.9 s join reported 56.2 s; every copied packet now lasts one frame ([#89](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/89)). New segment only no longer fails with *Export images derived from, and audio directly from, the same Segment Decode* when Publish Export's filename comes through VHS Select Filename; capture checks the exporter behind such a pass-through ([#90](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/90)). Prompt Forge (contributed in [PR #91](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/91)): when some of a character's pictures carry a note and some none, the un-noted ones describe the look and each noted one lends only its noted thing; with 2–5 shots picked, the detail line names each shot's share of the word range; a stray `===` line no longer lands in a parsed section. Labelled REF2VA **Custom** pictures no longer need a typed note, are passed to the writer as a general reference, and get their own `custom@N` Cast card (contributed in [PR #92](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/92)).
 
@@ -201,6 +203,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.37 | 11-02 | Enhanced Video Combine accepts mapping-like AUDIO (VHS `LazyAudioMap`, PR #93) |
 | 0.5.36 | 11-01 | Join Clips copy: one-frame packet durations; Continuity accepts Select Filename before Publish; Forge note wording, per-shot word share, Custom pictures without a note + Cast card |
 | 0.5.35 | 11-01 | RTX disk-backed (mmap) output: 90% of free temp space instead of a fixed 64 GiB cap |
 | 0.5.34 | 10-30 | Continuity Segment Decode names swapped video/audio VAE slots; Sol-H3-VAE in the hints |
@@ -397,6 +400,8 @@ Patch Comfy Kitchen Attention was retired in **0.4.68**; the entries below descr
 - **08-01:** adaptive CPU RAM reserve shared with the Watermark compositor.
 
 ### Enhanced Video Combine
+
+- **11-02 (0.5.37):** `audio` accepts mapping-like AUDIO values such as VideoHelperSuite's `LazyAudioMap` (PR #93); the conversion happens before the `waveform`/`sample_rate` check, so plain dict AUDIO is unchanged.
 
 - **10-14 (0.5.18):** Includes fullscreen playback and dependable preview seeking from the post-0.5.16 Git update. The player retains the browser-compatible preview and original download paths; encoding settings are unchanged.
 

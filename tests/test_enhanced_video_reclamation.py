@@ -117,3 +117,18 @@ def test_target_charges_workspace_not_full_input(video):
     base = video._encode_ram_target(images, None, True, False)
     assert base == 1024 ** 3 + 16 * 16 * 16 * 3 * 4
     assert video._encode_ram_target(images, None, True, True) == base + 2 * images.numel() * 4
+
+
+class LazyAudioMap:  # VideoHelperSuite's audio: keys()/__getitem__, no dict base
+    def __init__(self, data):
+        self.data = data
+    def keys(self):
+        return self.data.keys()
+    def __getitem__(self, key):
+        return self.data[key]
+
+
+def test_audio_file_accepts_mapping_like_audio(video):
+    audio = LazyAudioMap({"waveform": torch.ones(1, 2, 800), "sample_rate": 16000})
+    (planar, rate), duration = video._audio_file(audio)
+    assert planar.shape == (2, 800) and rate == 16000 and duration == 0.05
