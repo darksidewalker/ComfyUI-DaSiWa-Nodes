@@ -513,14 +513,14 @@ class DaSiWa_MetadataImageSaver:
             except:
                 return default
 
-        positive_prompt_final = finalize(text_positive, "text_positive", detected_positive_prompt, "positive_prompt_not_found", search_keys=["text", "string", "value"], config_node_id=config_node_id)
-        negative_prompt_final = finalize(text_negative, "text_negative", detected_negative_prompt, "negative_prompt_not_found", search_keys=["text", "string", "value"], config_node_id=config_node_id)
-        steps_final = finalize(text_steps, "text_steps", detected_steps, "steps_not_found", int, search_keys=["steps", "num_steps", "iterations"], config_node_id=config_node_id)
-        cfg_final = finalize(text_cfg, "text_cfg", detected_cfg, "cfg_not_found", float, search_keys=["cfg", "cfg_scale", "scale"], config_node_id=config_node_id)
-        sampler_name_final = finalize(text_sampler, "text_sampler", detected_sampler_name, "sampler_not_found", search_keys=["sampler_name", "sampler"], config_node_id=config_node_id)
-        scheduler_final = finalize(text_scheduler, "text_scheduler", detected_scheduler, "scheduler_not_found", search_keys=["scheduler", "scheduler_name"], config_node_id=config_node_id)
-        seed_final = finalize(text_seed, "text_seed", detected_seed, "seed_not_found", int, search_keys=["seed", "noise_seed", "random_seed"], config_node_id=config_node_id)
-        model_name_final = finalize(text_model, "text_model", detected_model_name, "model_not_found.safetensors", search_keys=["ckpt_name", "model_name", "checkpoint"], config_node_id=config_node_id)
+        positive_prompt_final = finalize(text_positive, "text_positive", detected_positive_prompt, "", search_keys=["text", "string", "value"], config_node_id=config_node_id)
+        negative_prompt_final = finalize(text_negative, "text_negative", detected_negative_prompt, "", search_keys=["text", "string", "value"], config_node_id=config_node_id)
+        steps_final = finalize(text_steps, "text_steps", detected_steps, "", int, search_keys=["steps", "num_steps", "iterations"], config_node_id=config_node_id)
+        cfg_final = finalize(text_cfg, "text_cfg", detected_cfg, "", float, search_keys=["cfg", "cfg_scale", "scale"], config_node_id=config_node_id)
+        sampler_name_final = finalize(text_sampler, "text_sampler", detected_sampler_name, "", search_keys=["sampler_name", "sampler"], config_node_id=config_node_id)
+        scheduler_final = finalize(text_scheduler, "text_scheduler", detected_scheduler, "", search_keys=["scheduler", "scheduler_name"], config_node_id=config_node_id)
+        seed_final = finalize(text_seed, "text_seed", detected_seed, "", int, search_keys=["seed", "noise_seed", "random_seed"], config_node_id=config_node_id)
+        model_name_final = finalize(text_model, "text_model", detected_model_name, "", search_keys=["ckpt_name", "model_name", "checkpoint"], config_node_id=config_node_id)
 
         # Auto-calculate model hash if not provided
         if not model_hash and model_name_final != "unknown.safetensors":

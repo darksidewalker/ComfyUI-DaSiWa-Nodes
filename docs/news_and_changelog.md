@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-02**. Older history lives in the 
 
 ## News
 
+- **Metadata Image Saver: no more `*_not_found` placeholders (0.5.38):** when a prompt, sampler, seed, model or other field could not be detected, the embedded A1111 `parameters` text carried sentinels like `negative_prompt_not_found`, which prompt-reuse tools (DEAS, Civitai uploaders) refilled into the fields as if they were real prompts. Undetected fields are now embedded as empty values; readers treat them as absent. Images saved by earlier versions keep their sentinels (DEAS already ignores them on reuse).
+
 - **Enhanced Video Combine: VHS audio accepted (0.5.37):** VideoHelperSuite's *Load Video (Path)* returns audio as a `LazyAudioMap` that exposes `waveform`/`sample_rate` but is not a `dict`, so the node refused it with *audio must be a ComfyUI AUDIO value containing waveform and sample_rate*. Mapping-like audio is now read as a plain dict before validation (contributed in [PR #93](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/93)). The `free_memory_if_needed` RAM estimate still skips such audio, so it under-counts by that one buffer.
 
 - **Join Clips copy duration, Continuity Select Filename, Forge notes and shot share (0.5.36):** with *Copy video without re-encoding*, the last copied video packet kept its source duration (512 ticks at 1/12288 read as 512 frames), so a 34.9 s join reported 56.2 s; every copied packet now lasts one frame ([#89](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/89)). New segment only no longer fails with *Export images derived from, and audio directly from, the same Segment Decode* when Publish Export's filename comes through VHS Select Filename; capture checks the exporter behind such a pass-through ([#90](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/90)). Prompt Forge (contributed in [PR #91](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/91)): when some of a character's pictures carry a note and some none, the un-noted ones describe the look and each noted one lends only its noted thing; with 2–5 shots picked, the detail line names each shot's share of the word range; a stray `===` line no longer lands in a parsed section. Labelled REF2VA **Custom** pictures no longer need a typed note, are passed to the writer as a general reference, and get their own `custom@N` Cast card (contributed in [PR #92](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/92)).
@@ -203,6 +205,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.38 | 11-03 | Metadata Image Saver: undetected metadata fields embed as empty values, no `*_not_found` sentinels |
 | 0.5.37 | 11-02 | Enhanced Video Combine accepts mapping-like AUDIO (VHS `LazyAudioMap`, PR #93) |
 | 0.5.36 | 11-01 | Join Clips copy: one-frame packet durations; Continuity accepts Select Filename before Publish; Forge note wording, per-shot word share, Custom pictures without a note + Cast card |
 | 0.5.35 | 11-01 | RTX disk-backed (mmap) output: 90% of free temp space instead of a fixed 64 GiB cap |
