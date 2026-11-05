@@ -4,7 +4,9 @@
 
 ## Node inputs and controls
 
-- **positive_input** / **negative_input**: optional connected `STRING` inputs. When present, each value is prepended to that side's generated result. Blank values are ignored.
+- **positive_input** / **negative_input**: optional connected `STRING` inputs. When present, each value is prepended to that side's generated result. Blank values are ignored. The text may contain `$name` prompt variables (see Prompt Variables below).
+- **variables_json**: JSON object mapping variable names to lists of strings, resolved inside `positive_input`/`negative_input` — see Prompt Variables below.
+- **variable_selections**: JSON object pinning single occurrences, e.g. `{"hairstyle:0": "bob cut"}` — see Prompt Variables below.
 - **Seed**: makes wildcard alternatives reproducible.
 - **🎲 New Picks**: changes the stored reroll value while retaining the selection, weights, style, and seed.
 - **🎲 Random Select**: replaces the current selection with a secure-random set of 1–10 available subjects, drawn from both Presets and Wildcards for the current style. It preserves a prior weight only when that same subject is selected again; new selections use `1.0`.
@@ -20,10 +22,24 @@ The category list and prompt previews remain in a compact scroll panel in both t
 
 Each Presets/Wildcards category header shows a green, right-aligned `✓ N selected` badge when it contains enabled subjects, and the category border is highlighted. This stays visible when the category is collapsed, making Random Select results and manual selections easy to find. The badge count applies to that section only: a preset and wildcard with the same subject name are independent selections.
 
+## Prompt Variables
+
+`positive_input` and `negative_input` text can contain `$name` tokens that resolve from your own JSON library **before** the generated presets are prepended.
+
+```json
+{"hairstyle": ["bob cut", "long wavy", "ponytail"], "color": ["crimson", "azure"]}
+```
+
+- `$name` (or `${name}` to delimit, e.g. `${color}ball`) is replaced by a library entry. `$$` renders a literal `$`. Unknown names stay in the text untouched.
+- Every occurrence resolves independently: the same variable twice in one prompt yields two independent picks (occurrence keys are `name:index`).
+- Picks follow the node **Seed**: same seed + same library = same prompt. *New picks on every queue* re-rolls the generated presets only — variable picks stay stable with the seed.
+- Pin an occurrence by adding `variable_selections`: `{"hairstyle:0": "ponytail"}`. Pinned values beat the seed pick and survive seed changes.
+- Names must be letters/digits/underscores (not digit-leading), and every list needs at least one non-blank string.
+
 ## HTTP routes
 
 - `GET /dasiwa/wildcard-preset-prompt-builder/library` returns the library JSON.
-- `POST /dasiwa/wildcard-preset-prompt-builder/build` takes the node's inputs as JSON (`style`, `seed`, `reroll`, `token_budget`, `selection_state`) and returns `{"positive", "negative"}` resolved exactly as the node would with that reroll. DEAS uses it to seed the Prompt Writer with the active wildcards.
+- `POST /dasiwa/wildcard-preset-prompt-builder/build` takes the node's inputs as JSON (`style`, `seed`, `reroll`, `token_budget`, `selection_state`, optionally `positive_input`, `negative_input`, `variables_json`, `variable_selections`) and returns `{"positive", "negative"}` resolved exactly as the node would with that reroll — inputs with `$vars` resolved and presets prepended — plus `positive_base`/`negative_base` (the resolved input text without presets). DEAS uses it to seed the Prompt Writer with the active wildcards and to preview variable resolution.
 
 ## Library file
 
@@ -84,7 +100,7 @@ Each count is its own preset subject—not a wildcard—so selecting `3 Girls` a
 - Entries within one selected subject are joined with commas.
 - Enabled subjects are joined in category order.
 - Positive and negative selections are separate; selecting a subject on one side does not enable it on the other.
-- Optional connected `positive_input` and `negative_input` values are placed before the generated text on their respective sides.
+- Optional connected `positive_input` and `negative_input` values are placed before the generated text on their respective sides, after their `$name` prompt variables are resolved.
 
 ## Bundled category order
 

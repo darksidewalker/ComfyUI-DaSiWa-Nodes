@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-02**. Older history lives in the 
 
 ## News
 
+- **Wildcard & Preset Prompt Builder: prompt variables (0.5.39):** `positive_input`/`negative_input` text can now carry `$name` / `${name}` tokens resolved from your own `variables_json` library (`{"hairstyle": ["bob cut", "ponytail"]}`) before the generated presets are prepended. Every occurrence picks independently and follows the node seed (`$$` = literal `$`, unknown names stay in the text); `variable_selections` pins one occurrence (`{"hairstyle:0": "ponytail"}`) and survives seed changes, while *New picks on every queue* re-rolls presets only. The `/build` route accepts the same fields and additionally returns `positive_base`/`negative_base` — the resolved input text without presets — so DEAS previews exactly what the graph will render.
+
 - **Metadata Image Saver: no more `*_not_found` placeholders (0.5.38):** when a prompt, sampler, seed, model or other field could not be detected, the embedded A1111 `parameters` text carried sentinels like `negative_prompt_not_found`, which prompt-reuse tools (DEAS, Civitai uploaders) refilled into the fields as if they were real prompts. Undetected fields are now embedded as empty values; readers treat them as absent. Images saved by earlier versions keep their sentinels (DEAS already ignores them on reuse).
 
 - **Enhanced Video Combine: VHS audio accepted (0.5.37):** VideoHelperSuite's *Load Video (Path)* returns audio as a `LazyAudioMap` that exposes `waveform`/`sample_rate` but is not a `dict`, so the node refused it with *audio must be a ComfyUI AUDIO value containing waveform and sample_rate*. Mapping-like audio is now read as a plain dict before validation (contributed in [PR #93](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/pull/93)). The `free_memory_if_needed` RAM estimate still skips such audio, so it under-counts by that one buffer.
@@ -205,6 +207,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.39 | 11-05 | Wildcard & Preset Prompt Builder: `$name` prompt variables (seed-deterministic, per-occurrence pins); `/build` resolves inputs and returns `*_base` |
 | 0.5.38 | 11-03 | Metadata Image Saver: undetected metadata fields embed as empty values, no `*_not_found` sentinels |
 | 0.5.37 | 11-02 | Enhanced Video Combine accepts mapping-like AUDIO (VHS `LazyAudioMap`, PR #93) |
 | 0.5.36 | 11-01 | Join Clips copy: one-frame packet durations; Continuity accepts Select Filename before Publish; Forge note wording, per-shot word share, Custom pictures without a note + Cast card |

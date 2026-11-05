@@ -388,6 +388,7 @@ Bridge any string/text node through **DaSiWa Random String Picker** to randomize
 - **Dual style:** Switch globally between Booru and Natural Language source keys.
 - **Compact selector:** Collapsible categories expose subject checkboxes, weights, deterministic live selections, and right-aligned selected-subject counters that remain visible while a category is collapsed.
 - **Fast inspiration:** **Random Select** replaces the current selection with 1–10 secure-random available Preset/Wildcard subjects.
+- **Prompt variables:** `$name` / `${name}` tokens in your connected positive/negative input text resolve from your own `variables_json` library — seed-deterministic, one independent pick per occurrence, `$$` for a literal dollar, unknown names untouched, and `variable_selections` pins any single occurrence.
 - **Reproducible rerolls:** Seed plus the stored reroll value reproduce every `{A|B|C}` choice; **New Picks** only advances the reroll value, while **New picks on every queue** opts into fresh output for each queue—including Preview as Text selected-output execution.
 - **Weighted, bounded prompts:** Non-1.0 enabled subjects use ComfyUI emphasis syntax. Each positive/negative prompt independently removes complete lowest-weight subjects until it meets the token budget.
 - **Optional prompt prefixes:** Connect `positive_input` or `negative_input` to prepend an existing prompt to that generated side.

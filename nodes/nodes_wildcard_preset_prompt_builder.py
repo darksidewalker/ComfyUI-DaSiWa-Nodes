@@ -68,6 +68,70 @@ def count_tokens(text: str) -> int:
     return len(_TOKEN_RE.findall(text))
 
 
+_VAR_TOKEN_RE = re.compile(r"\$\$|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
+_VAR_LIBRARY_MAX_CHARS = 1_000_000
+_VAR_SELECTIONS_MAX_CHARS = 256_000
+
+
+def parse_var_library(raw: object) -> dict[str, list[str]]:
+    if isinstance(raw, str):
+        if len(raw) > _VAR_LIBRARY_MAX_CHARS:
+            raise ValueError(f"Variable library exceeds {_VAR_LIBRARY_MAX_CHARS} characters.")
+        try:
+            parsed = json.loads(raw or "{}")
+        except json.JSONDecodeError as error:
+            raise ValueError(f"Variable library is not valid JSON: {error}") from error
+    else:
+        parsed = raw
+    if not isinstance(parsed, dict):
+        raise ValueError('The variable library must be a JSON object: {"color": ["red", "blue"]}.')
+    for name, options in parsed.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(name)):
+            raise ValueError(f"Invalid variable name: {name}")
+        if not isinstance(options, list) or not options or any(not isinstance(x, str) or not x.strip() for x in options):
+            raise ValueError(f"${name} must contain a non-empty list of strings.")
+    return {str(name): list(options) for name, options in parsed.items()}
+
+
+def _var_selections(raw: object) -> dict[str, str]:
+    if isinstance(raw, dict):
+        return {str(k): v for k, v in raw.items() if isinstance(v, str)}
+    if isinstance(raw, str):
+        if len(raw) > _VAR_SELECTIONS_MAX_CHARS:
+            raise ValueError(f"Variable selections exceed {_VAR_SELECTIONS_MAX_CHARS} characters.")
+    try:
+        parsed = json.loads(str(raw or "{}"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Variable selections are not valid JSON: {error}") from error
+    if not isinstance(parsed, dict):
+        raise ValueError("Variable selections must be a JSON object: {\"color:0\": \"red\"}.")
+    return {str(k): v for k, v in parsed.items() if isinstance(v, str)}
+
+
+def resolve_variables(template: str, library: dict[str, list[str]], selections: dict[str, str], seed: int) -> str:
+    """Resolve $name / ${name} tokens; $$ is a literal dollar. Each occurrence resolves
+    independently (key name:index), pinning wins over the seed-hashed pick, and unknown
+    tokens stay in the text. Mirrored exactly by DEAS's golden vectors."""
+    counts: dict[str, int] = {}
+
+    def replace(match: re.Match[str]) -> str:
+        if match.group() == "$$":
+            return "$"
+        name = match.group(1) or match.group(2)
+        if name not in library:
+            return match.group()
+        index = counts.get(name, 0)
+        counts[name] = index + 1
+        key = f"{name}:{index}"
+        options = library[name]
+        selected = selections.get(key)
+        if selected in options:
+            return selected
+        return options[_hash_seed(seed, key) % len(options)]
+
+    return _VAR_TOKEN_RE.sub(replace, str(template))
+
+
 def _normalized_weight(value: object) -> float:
     try:
         return round(float(value), 2)
@@ -160,6 +224,8 @@ class DaSiWa_WildcardPresetPromptBuilder:
             "optional": {
                 "positive_input": ("STRING", {"forceInput": True}),
                 "negative_input": ("STRING", {"forceInput": True}),
+                "variables_json": ("STRING", {"default": "{}", "multiline": True}),
+                "variable_selections": ("STRING", {"default": "{}"}),
             },
         }
 
@@ -170,22 +236,30 @@ class DaSiWa_WildcardPresetPromptBuilder:
 
     @classmethod
     def IS_CHANGED(cls, style, seed, token_budget, selection_state, reroll, auto_reroll=False,
-                   positive_input=None, negative_input=None):
+                   positive_input=None, negative_input=None, variables_json="{}", variable_selections="{}"):
         if auto_reroll:
             # A newly allocated NaN is essential: ComfyUI cache keys are tuples and
             # Python treats tuples containing the same ``math.nan`` singleton as
             # equal by identity.  Fresh NaNs prevent Preview-as-Text selected-output
             # executions from reusing the prior builder output.
             return float("nan")
-        return (style, seed, token_budget, selection_state, reroll, positive_input, negative_input)
+        return (style, seed, token_budget, selection_state, reroll, positive_input, negative_input,
+                variables_json, variable_selections)
 
     def build(self, style, seed, token_budget, selection_state, reroll, auto_reroll=False,
-              positive_input=None, negative_input=None):
+              positive_input=None, negative_input=None, variables_json="{}", variable_selections="{}"):
         effective_reroll = secrets.randbits(31) if auto_reroll else reroll
+        # Prompt variables resolve on the fixed seed: auto_reroll re-rolls only the
+        # generated preset side, never the $var picks.
+        library = parse_var_library(variables_json)
+        selections = _var_selections(variable_selections)
         positive, negative, _, _ = build_prompts(
             _load_library(), style, seed, effective_reroll, token_budget, selection_state
         )
-        return _prepend_prompt(positive_input, positive), _prepend_prompt(negative_input, negative)
+        return (
+            _prepend_prompt(resolve_variables(positive_input or "", library, selections, seed), positive),
+            _prepend_prompt(resolve_variables(negative_input or "", library, selections, seed), negative),
+        )
 
 
 if PromptServer is not None:
@@ -200,13 +274,26 @@ if PromptServer is not None:
 
     @PromptServer.instance.routes.post("/dasiwa/wildcard-preset-prompt-builder/build")
     async def wildcard_preset_build(request):
-        """Resolve the node's inputs outside the graph, e.g. to seed an LLM prompt writer."""
+        """Resolve the node's inputs outside the graph, e.g. to seed an LLM prompt writer.
+        With positive_input/negative_input templates plus variables_json/variable_selections
+        it also returns the fully resolved final prompts (*_base = templates with $vars only,
+        positive/negative = templates + generated presets, identical to a node run)."""
         try:
             rules = await request.json()
+            seed = int(rules.get("seed", 0))
+            library = parse_var_library(rules.get("variables_json", "{}"))
+            selections = _var_selections(rules.get("variable_selections", "{}"))
+            positive_base = resolve_variables(str(rules.get("positive_input", "") or ""), library, selections, seed)
+            negative_base = resolve_variables(str(rules.get("negative_input", "") or ""), library, selections, seed)
             positive, negative, _, _ = build_prompts(
-                _load_library(), str(rules.get("style", "Booru")), int(rules.get("seed", 0)),
+                _load_library(), str(rules.get("style", "Booru")), seed,
                 int(rules.get("reroll", 0)), int(rules.get("token_budget", 200)), rules.get("selection_state"),
             )
-            return web.json_response({"positive": positive, "negative": negative})
+            return web.json_response({
+                "positive": _prepend_prompt(positive_base, positive),
+                "negative": _prepend_prompt(negative_base, negative),
+                "positive_base": positive_base,
+                "negative_base": negative_base,
+            })
         except (OSError, ValueError, TypeError, AttributeError, json.JSONDecodeError) as error:
             return web.json_response({"error": str(error)}, status=400)
