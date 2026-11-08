@@ -240,6 +240,17 @@ class MiniMaxH3Director:
             if isinstance(value, str) and input_directory:
                 value = load_image(value, input_directory)
             first_frame = scale_input_media(value, input_scaling, width, height)
+            # Native H3 stretches the first frame to the canvas ("geometry anchor,
+            # plain stretch"). Auto/Off scaling keeps the source aspect, so a
+            # mismatch silently distorts the output — name it in the log.
+            if input_scaling in ("Off", "Auto") and first_frame is not None:
+                frame_aspect = first_frame.shape[2] / first_frame.shape[1]
+                if abs(frame_aspect - width / height) > 0.02 * (width / height):
+                    log_dasiwa("MiniMax H3 Director",
+                               f"Image Inpaint: keyframe {first_frame.shape[2]}x{first_frame.shape[1]} does not "
+                               f"match the {width}x{height} canvas; H3 stretches the keyframe to the canvas and "
+                               "the output will look distorted. Use Auto aspect, or Input scaling "
+                               "'Fill and crop' / 'Fit and pad'.")
             last_frame = None
             length = 5
 

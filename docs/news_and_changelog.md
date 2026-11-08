@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-02**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-08**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Director Image Inpaint: stretched keyframe no longer silent (0.5.40):** with a custom canvas aspect different from the keyframe and Input scaling *Auto* (the default) or *Off*, native H3 treats the first frame as a geometry anchor and plain-stretches it to the canvas, so the output came out distorted with no warning (reported for 16:9 → 1:1). The Director now logs the keyframe/canvas mismatch and names the fixes: Auto aspect, or Input scaling *Fill and crop* / *Fit and pad*. Behavior is unchanged; REF2VA was never affected since its images are references, not geometry anchors.
 
 - **Wildcard & Preset Prompt Builder: prompt variables (0.5.39):** `positive_input`/`negative_input` text can now carry `$name` / `${name}` tokens resolved from your own `variables_json` library (`{"hairstyle": ["bob cut", "ponytail"]}`) before the generated presets are prepended. Every occurrence picks independently and follows the node seed (`$$` = literal `$`, unknown names stay in the text); `variable_selections` pins one occurrence (`{"hairstyle:0": "ponytail"}`) and survives seed changes, while *New picks on every queue* re-rolls presets only. The `/build` route accepts the same fields and additionally returns `positive_base`/`negative_base` — the resolved input text without presets — so DEAS previews exactly what the graph will render.
 
