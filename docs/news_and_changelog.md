@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-08**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-09**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Seamless Loop: audio follows the loop (0.5.41):** H3/LTX clips carry generated audio, but the loop trims frames, so picture and sound drifted apart and the sound jumped at the wrap. Seamless Loop now has an optional `audio` input/output plus `frame_rate`: the audio is cut and crossfaded with exactly the frame mapping of the video (frame *f* → sample `round(f × sample_rate / fps)`, output length exact to the sample), the tail→head transition uses an equal-power crossfade, and the wrap is sample-continuous. `audio_loop` *Beat-aware* (opt-in) estimates the tempo and prefers a loop spanning whole beats when its visual cost stays within 1.25× of the best; with an unclear tempo it falls back to *Crossfade* and logs why. Without audio the node behaves exactly as before; the second output is empty.
 
 - **Director Image Inpaint: stretched keyframe no longer silent (0.5.40):** with a custom canvas aspect different from the keyframe and Input scaling *Auto* (the default) or *Off*, native H3 treats the first frame as a geometry anchor and plain-stretches it to the canvas, so the output came out distorted with no warning (reported for 16:9 → 1:1). The Director now logs the keyframe/canvas mismatch and names the fixes: Auto aspect, or Input scaling *Fill and crop* / *Fit and pad*. Behavior is unchanged; REF2VA was never affected since its images are references, not geometry anchors.
 
@@ -209,6 +211,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.41 | 11-09 | Seamless Loop: optional audio in/out, sample-exact trim + equal-power crossfade, opt-in Beat-aware loop length |
 | 0.5.39 | 11-05 | Wildcard & Preset Prompt Builder: `$name` prompt variables (seed-deterministic, per-occurrence pins); `/build` resolves inputs and returns `*_base` |
 | 0.5.38 | 11-03 | Metadata Image Saver: undetected metadata fields embed as empty values, no `*_not_found` sentinels |
 | 0.5.37 | 11-02 | Enhanced Video Combine accepts mapping-like AUDIO (VHS `LazyAudioMap`, PR #93) |

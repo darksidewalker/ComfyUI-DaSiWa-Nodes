@@ -1,6 +1,6 @@
 # Seamless Loop
 
-**Seamless Loop**, under **DaSiWa / video**, turns a decoded RGB `IMAGE` batch into a looping `IMAGE` batch. Choose an interpolation backend and connect the output to Enhanced Video Combine or another saver. Keep source FPS for loop processing; align audio downstream if the frame count changes.
+**Seamless Loop**, under **DaSiWa / video**, turns a decoded RGB `IMAGE` batch into a looping `IMAGE` batch. Choose an interpolation backend and connect the output to Enhanced Video Combine or another saver. Keep source FPS for loop processing. Connect the clip's audio (with `frame_rate`) to get a matching looped soundtrack on the `audio` output.
 
 ## Interpolation backend
 
@@ -23,6 +23,16 @@ Requires ComfyUI's native Frame Interpolation Model Loader; no additional depend
 - **Transition:** morphs overlapping tail/head sequences with bidirectional interpolation, eased timing and bounded exposure correction. Middle frames stay unchanged; the playback wrap lies in the original sequence. Frame count and starting frame can change.
 - **Short/static clips:** very short batches use an interpolated endpoint bridge. Static batches pass through unchanged; already-closed batches skip interpolation and drop the duplicated endpoint when `exact_endpoint` is off.
 - **Memory:** interpolates one frame pair at a time. RIFE/FILM uses native ComfyUI model management; RTX retains one SDK effect for the transition. Resolution and dtype are preserved; processed output uses the configured intermediate device. Full batches still require memory proportional to duration; the loop does not inherit the separate frame-generation node's mmap/output-budget controls.
+
+## Audio
+
+Optional. Connect `audio` (ComfyUI AUDIO) and set `frame_rate` to the clip's FPS; without `frame_rate` the node stops with an error. Without audio the `audio` output is empty and the images are exactly as in earlier versions.
+
+- **Same mapping as the video:** frame *f* starts at sample `round(f × sample_rate / frame_rate)`, always from the absolute frame index, so rounding never accumulates. The output audio is exactly `round(output_frames × sample_rate / frame_rate)` samples long. Batch, channels, dtype and device are kept.
+- **Per case:** static clips return the audio unchanged; already-closed clips drop the last frame's samples (unless `exact_endpoint`); short-clip bridges append an equal-power crossfade of the last frames' audio into the first frames' audio; normal loops keep the untouched middle and crossfade the tail into the head with equal power (cos/sin). The output end continues straight into the audio that starts the output, so the repeat is sample-continuous. `exact_endpoint` appends one frame of the audio that follows the wrap. The tail start may differ by one sample from its exact frame boundary (rounding).
+- **Shorter audio:** if the audio is shorter than the video, missing samples are silence and this is logged.
+- **`audio_loop`:** *Crossfade* (default) keeps the visual loop choice. *Beat-aware* estimates the tempo (spectral-flux onsets, autocorrelation over 60–200 BPM). If the tempo is clear, it also tests every end trim within the 10% range and picks the loop closest to a whole number of beats whose visual cost is at most 1.25× the visually best choice. The crossfade then blends beat-aligned material; there is no time-stretching, so the remaining error is frame quantization (at most half a frame). With an unclear tempo, or no whole-beat loop within the tolerance, it uses the Crossfade choice and logs why.
+- **Logs:** e.g. `[DaSiWa Loop] Beat-aware: 120.0 BPM, loop 7.00 beats (visual cost 1.07x best)` and `[DaSiWa Loop] audio 96 → 84 frames = 192000 → 168000 samples @ 48000 Hz / 24.000 fps; source frames 0..91 → sample 0; tempo 120.0 BPM (confidence 0.91)`.
 
 ## Exact endpoints versus smooth playback
 

@@ -1,0 +1,142 @@
+{
+ "closed": {
+  "analyze": [
+   0,
+   16,
+   4
+  ],
+  "sha256": "a76309938d962ea8781c1ba5ee59a8187e65d678df7f70687cf2171ffd43f351",
+  "shape": [
+   16,
+   9,
+   11,
+   3
+  ]
+ },
+ "closed_exact": {
+  "analyze": [
+   0,
+   16,
+   4
+  ],
+  "sha256": "55732939afa7f7f21a6aaa83560458a81d2f0eab7c755f167d641de493aded7f",
+  "shape": [
+   17,
+   9,
+   11,
+   3
+  ]
+ },
+ "linear30": {
+  "analyze": [
+   3,
+   27,
+   6
+  ],
+  "sha256": "3b4122153e78546fc0b2bdbddf26bf07a79259f41535f45e8d21091bfff18f7d",
+  "shape": [
+   19,
+   9,
+   11,
+   3
+  ]
+ },
+ "overlap40": {
+  "analyze": [
+   2,
+   36,
+   8
+  ],
+  "sha256": "d45d604e02861c4f38fff26daf23bf5ca692516313b84b1170954173e7855d40",
+  "shape": [
+   26,
+   9,
+   11,
+   3
+  ]
+ },
+ "overlap40_exact": {
+  "analyze": [
+   2,
+   36,
+   8
+  ],
+  "sha256": "a71b05feea3e09ae05f33c7c1bfc0a2816c2f9df080a403a60219979319a6f30",
+  "shape": [
+   27,
+   9,
+   11,
+   3
+  ]
+ },
+ "overlap57": {
+  "analyze": [
+   5,
+   52,
+   12
+  ],
+  "sha256": "636252d618e22b7728bb777afc4e9aa867d929db1aafc17df16d3e40a260ed84",
+  "shape": [
+   35,
+   9,
+   11,
+   3
+  ]
+ },
+ "short2": {
+  "analyze": [
+   0,
+   2,
+   0
+  ],
+  "sha256": "300bcfacb358fc02349014c08c56ba55b4fb4d7fed34f12b9768fb5eacf5c60f",
+  "shape": [
+   5,
+   9,
+   11,
+   3
+  ]
+ },
+ "short4": {
+  "analyze": [
+   0,
+   4,
+   0
+  ],
+  "sha256": "53c3906a851e1b6f5738a97b8229c51a0c761d2f4387487475ddb65b33a7f6ca",
+  "shape": [
+   8,
+   9,
+   11,
+   3
+  ]
+ },
+ "short4_exact": {
+  "analyze": [
+   0,
+   4,
+   0
+  ],
+  "sha256": "c3f2764dd761aab5bd2e31e1a3e20298179c7d40ebd1059a8d62eba3b0149241",
+  "shape": [
+   9,
+   9,
+   11,
+   3
+  ]
+ },
+ "static": {
+  "analyze": [
+   0,
+   10,
+   3
+  ],
+  "sha256": "8d7edf5e9f4694cfab29c73b4a92f9cf986443997e1c7fc5cdba99eee998d6ae",
+  "shape": [
+   10,
+   9,
+   11,
+   3
+  ]
+ }
+}

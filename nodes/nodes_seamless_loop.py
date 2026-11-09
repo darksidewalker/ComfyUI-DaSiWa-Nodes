@@ -44,15 +44,19 @@ def _pair_metrics(a, b):
     return float(mse), float(ssim), float(edge)
 
 
-def _analyze(preview):
+# A beat-aligned loop may cost up to 25% more visually: small enough to stay seamless, large enough to reach a beat.
+BEAT_VISUAL_TOLERANCE = 1.25
+# Normalized autocorrelation height above its median; noise stays near 0.1 on clip-length audio, steady beats exceed 0.3.
+BEAT_MIN_CONFIDENCE = 0.2
+
+
+def _candidates(preview, end_offsets=None):
     n = len(preview)
-    if n < 6:
-        return 0, n, 0, 0.0
     trim = int(n * .10)
     offsets = sorted({0, trim // 2, trim})
-    best = None
+    result = []
     for start in offsets:
-        for end_trim in offsets:
+        for end_trim in (offsets if end_offsets is None else end_offsets):
             _check_interrupt()
             end = n - end_trim
             length = end - start
@@ -69,11 +73,71 @@ def _analyze(preview):
                 cut = float(step.max()) / typical
                 cost = mse + .012 * (1 - ssim) + .25 * edge + 2 * motion
                 cost += .015 * ((n - length + k) / n) + .002 * min(cut / 100, 1)
-                candidate = (cost, start, end, k, mse)
-                if best is None or candidate < best:
-                    best = candidate
+                result.append((cost, start, end, k, mse))
+    return result
+
+
+def _analyze(preview, beat=None):
+    """beat=(period_seconds, fps) biases the loop length to whole beats within BEAT_VISUAL_TOLERANCE."""
+    n = len(preview)
+    if n < 6:
+        return 0, n, 0, 0.0
+    best = min(_candidates(preview))
+    if beat is not None:
+        period, fps = beat
+
+        def beat_error(candidate):
+            length = (candidate[2] - candidate[1] - candidate[3]) / fps
+            return abs(length - max(1, round(length / period)) * period) / period
+        near = [c for c in _candidates(preview, range(int(n * .10) + 1)) if c[0] <= best[0] * BEAT_VISUAL_TOLERANCE]
+        aligned = min(near, key=lambda c: (beat_error(c), c[0]))
+        beats = (aligned[2] - aligned[1] - aligned[3]) / fps / period
+        # Frame quantization leaves at most half a frame of beat error; anything above is not aligned.
+        if beat_error(aligned) * period * fps <= .5 + 1e-9:
+            log.info("[DaSiWa Loop] Beat-aware: %.1f BPM, loop %.2f beats (visual cost %.2fx best)",
+                     60 / period, beats, aligned[0] / max(best[0], 1e-12))
+            best = aligned
+        else:
+            log.info("[DaSiWa Loop] Beat-aware: %.1f BPM but no whole-beat loop within %.2fx visual cost "
+                     "(closest %.2f beats); using Crossfade choice", 60 / period, BEAT_VISUAL_TOLERANCE, beats)
     _, start, end, k, mse = best
     return start, end, k, -10 * math.log10(max(mse, 1e-12))
+
+
+def _estimate_tempo(waveform, sample_rate):
+    """Returns (bpm, confidence) from spectral-flux onset autocorrelation over 60-200 BPM."""
+    mono = waveform.float().mean((0, 1)).cpu()
+    hop = max(1, round(sample_rate / 100))
+    n_fft = 1 << (4 * hop - 1).bit_length()
+    if mono.numel() < n_fft:
+        return 0.0, 0.0
+    spec = torch.stft(mono, n_fft, hop, window=torch.hann_window(n_fft), return_complex=True).abs()
+    env = torch.log1p(100 * spec).diff(dim=1).clamp_min(0).sum(0)
+    env = env - env.mean()
+    rate = sample_rate / hop
+    lo, hi = math.floor(rate * 60 / 200), math.ceil(rate * 60 / 60)
+    if len(env) < 2 * hi:
+        return 0.0, 0.0
+    ac = torch.stack([(env[:len(env)-lag] * env[lag:]).sum() for lag in range(hi + 2)]) / max(float(env.square().sum()), 1e-12)
+    lag = lo + int(ac[lo:hi+1].argmax())
+    # Parabolic peak refinement: one-hop lag resolution alone is ~1.3% at 150 BPM.
+    y0, y1, y2 = (float(v) for v in ac[lag-1:lag+2])
+    shift = .5 * (y0 - y2) / (y0 - 2 * y1 + y2) if y0 - 2 * y1 + y2 < 0 else 0.0
+    return 60 * rate / (lag + shift), y1 - float(ac[lo:hi+1].median())
+
+
+def _take(wave, lo, length):
+    """wave[..., lo:lo+length], zero-filled where the range leaves the source."""
+    out = wave.new_zeros((*wave.shape[:-1], length))
+    a, b = max(lo, 0), min(lo + length, wave.shape[-1])
+    if b > a:
+        out[..., a-lo:b-lo] = wave[..., a:b]
+    return out
+
+
+def _equal_power(tail, head):
+    theta = torch.linspace(0, math.pi / 2, tail.shape[-1], dtype=torch.float32, device=tail.device)
+    return (tail.float() * theta.cos() + head.float() * theta.sin()).to(tail.dtype)
 
 
 def _load_interpolator(model_name, shape):
@@ -169,8 +233,8 @@ def _load_rtx_interpolator(shape, mode, device_id):
 
 
 class DaSiWa_SeamlessLoop:
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("images",)
+    RETURN_TYPES = ("IMAGE", "AUDIO")
+    RETURN_NAMES = ("images", "audio")
     FUNCTION = "execute"
     CATEGORY = "DaSiWa/video"
     DESCRIPTION = "Automatically selects and morphs a circular overlap. Arbitrary footage cannot be guaranteed artifact-free."
@@ -186,11 +250,15 @@ class DaSiWa_SeamlessLoop:
             "interpolation_backend": (["RIFE / FILM", "RTX Frame Generation"], {"default": "RIFE / FILM", "tooltip": "RIFE / FILM: native checkpoint interpolation (default). RTX Frame Generation: NVIDIA VFX pair interpolation without a RIFE/FILM checkpoint; requires a supported NVIDIA GPU and SDK. Both morph only the loop transition, not the whole video's frame rate."}),
             "rtx_mode": (["LOW", "MEDIUM", "HIGH"], {"default": "HIGH", "tooltip": "RTX only: LOW favors speed, MEDIUM is the middle tier, HIGH favors quality. Ignored for RIFE / FILM."}),
             "rtx_device_id": ("INT", {"default": 0, "min": 0, "max": 8, "tooltip": "RTX only: CUDA device index, 0 is the first GPU. Ignored for RIFE / FILM. Output still follows ComfyUI's intermediate-device policy."}),
+            "audio": ("AUDIO", {"tooltip": "Optional soundtrack of the same clip. It is trimmed and crossfaded with exactly the same frame mapping as the video (sample-exact) and returned on the audio output. Requires frame_rate."}),
+            "frame_rate": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 0.001, "tooltip": "Video frames per second; required when audio is connected (maps frame f to sample round(f × sample_rate / frame_rate)). Ignored without audio."}),
+            "audio_loop": (["Crossfade", "Beat-aware"], {"default": "Crossfade", "tooltip": "Crossfade: audio follows the visual loop choice with an equal-power crossfade (default). Beat-aware: estimates the tempo and prefers a loop spanning whole beats if its visual cost stays within 1.25× of the best; falls back to Crossfade when the tempo is unclear. Ignored without audio."}),
         }}
 
     @classmethod
     def IS_CHANGED(cls, images, model_name='', exact_endpoint=False,
-                   interpolation_backend='RIFE / FILM', rtx_mode='HIGH', rtx_device_id=0):
+                   interpolation_backend='RIFE / FILM', rtx_mode='HIGH', rtx_device_id=0,
+                   audio=None, frame_rate=0.0, audio_loop='Crossfade'):
         import folder_paths
         if interpolation_backend == 'RTX Frame Generation':
             return interpolation_backend
@@ -202,18 +270,50 @@ class DaSiWa_SeamlessLoop:
 
     @torch.inference_mode()
     def execute(self, images, model_name='', exact_endpoint=False,
-                interpolation_backend='RIFE / FILM', rtx_mode='HIGH', rtx_device_id=0):
+                interpolation_backend='RIFE / FILM', rtx_mode='HIGH', rtx_device_id=0,
+                audio=None, frame_rate=0.0, audio_loop='Crossfade'):
         if interpolation_backend not in ('RIFE / FILM', 'RTX Frame Generation'):
             raise ValueError("Unsupported Seamless Loop interpolation backend.")
+        if audio_loop not in ('Crossfade', 'Beat-aware'):
+            raise ValueError("Unsupported Seamless Loop audio_loop mode.")
         if images.ndim != 4 or images.shape[-1] != 3 or images.shape[0] == 0 or min(images.shape[1:3]) < 1:
             raise ValueError("Seamless Loop expects a non-empty RGB IMAGE batch [frames, height, width, 3].")
+        n = len(images)
+        wave = None
+        if audio is not None:
+            audio = {key: audio[key] for key in audio.keys()}  # mapping-like AUDIO (VHS LazyAudioMap)
+            wave, sr = audio.get('waveform'), audio.get('sample_rate')
+            if (not isinstance(wave, torch.Tensor) or wave.ndim != 3 or isinstance(sr, bool)
+                    or not isinstance(sr, int) or sr <= 0):
+                raise ValueError("Seamless Loop audio must be a ComfyUI AUDIO value with waveform [batch, channels, samples] and a positive integer sample_rate.")
+            if not frame_rate or frame_rate <= 0:
+                raise ValueError("Seamless Loop needs frame_rate (the video FPS) when audio is connected, to map frames to audio samples.")
+
+            def sample(frame):
+                return round(frame * sr / frame_rate)  # absolute index: rounding never accumulates
+
+            def audio_out(*pieces):
+                return {**audio, 'waveform': torch.cat(pieces, -1)}
+            if wave.shape[-1] < sample(n):
+                log.info("[DaSiWa Loop] audio is shorter than the video (%d < %d samples); missing samples are silence",
+                         wave.shape[-1], sample(n))
         preview = _preview(images)
         if all(torch.equal(images[0], frame) for frame in images):
-            return (images.clone(),)
+            return (images.clone(), None if wave is None else audio_out(wave.clone()))
         # Already closed footage should not be shortened or re-interpolated.
         if torch.equal(images[0], images[-1]):
-            return (images.clone() if exact_endpoint else images[:-1].clone(),)
-        start, end, k, psnr = _analyze(preview)
+            frames = images.clone() if exact_endpoint else images[:-1].clone()
+            return (frames, None if wave is None else audio_out(_take(wave, 0, sample(len(frames)))))
+        beat, tempo = None, ''
+        if wave is not None and audio_loop == 'Beat-aware':
+            bpm, confidence = _estimate_tempo(wave, sr)
+            tempo = f"; tempo {bpm:.1f} BPM (confidence {confidence:.2f})"
+            if confidence >= BEAT_MIN_CONFIDENCE:
+                beat = (60 / bpm, frame_rate)
+            else:
+                log.info("[DaSiWa Loop] Beat-aware: tempo confidence %.2f < %.2f (%.1f BPM); using Crossfade choice",
+                         confidence, BEAT_MIN_CONFIDENCE, bpm)
+        start, end, k, psnr = _analyze(preview, beat)
         import comfy.model_management as mm
         output_device = mm.intermediate_device()
         backend = (_load_rtx_interpolator(images.shape, rtx_mode, rtx_device_id)
@@ -230,8 +330,19 @@ class DaSiWa_SeamlessLoop:
                     _check_interrupt()
                     output[len(images)+j] = interpolate(images[-1], images[0], (j+1)/(k+1))
                 count = len(images) + k
+                if wave is not None:
+                    span, bridge = sample(n), sample(count) - sample(n)
+                    pieces = [_take(wave, 0, span), _equal_power(_take(wave, span - bridge, bridge), _take(wave, 0, bridge))]
+                    wrap = 0
             else:
                 count = end - start - k
+                if wave is not None:
+                    # Head ends exactly where the middle starts, so the wrap is sample-continuous; the tail
+                    # start may differ from round((end-k)·sr/fps) by one sample of rounding.
+                    wrap, head = sample(start + k), sample(start + k) - sample(start)
+                    middle_samples = sample(count) - head
+                    pieces = [_take(wave, wrap, middle_samples),
+                              _equal_power(_take(wave, wrap + middle_samples, head), _take(wave, sample(start), head))]
                 output = torch.empty((count + int(exact_endpoint), *images.shape[1:]),
                                      dtype=images.dtype, device=output_device)
                 middle = end - start - 2*k
@@ -266,4 +377,13 @@ class DaSiWa_SeamlessLoop:
                  len(images), len(output), start, len(images)-end, k, psnr, ratio)
         if ratio > 12:
             log.warning("[DaSiWa Loop] Strong motion/scene discontinuity remains. Endpoint equality does not guarantee a visually seamless loop.")
-        return (output,)
+        if wave is None:
+            return (output, None)
+        if exact_endpoint:
+            # Mirrors the copied first frame: one frame of the audio that follows the wrap.
+            pieces.append(_take(wave, wrap, sample(len(output)) - sample(count)))
+        result = audio_out(*pieces)
+        log.info("[DaSiWa Loop] audio %d → %d frames = %d → %d samples @ %d Hz / %.3f fps; source frames %d..%d → sample %d%s",
+                 n, len(output), wave.shape[-1], result['waveform'].shape[-1], sr, frame_rate,
+                 start, end, sample(start), tempo)
+        return (output, result)

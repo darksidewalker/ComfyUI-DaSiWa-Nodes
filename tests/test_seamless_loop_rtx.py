@@ -37,7 +37,7 @@ def test_rtx_backend_uses_overlap_without_native_checkpoint(monkeypatch):
 
     monkeypatch.setattr(loop, '_load_rtx_interpolator', rtx, raising=False)
     monkeypatch.setattr(loop, '_load_interpolator', lambda *args: pytest.fail('RTX must not load a checkpoint'))
-    result, = loop.DaSiWa_SeamlessLoop().execute(images, exact_endpoint=True,
+    result, _ = loop.DaSiWa_SeamlessLoop().execute(images, exact_endpoint=True,
         interpolation_backend='RTX Frame Generation', rtx_mode='MEDIUM', rtx_device_id=1)
     start, end, k, _ = loop._analyze(loop._preview(images))
     middle = end - start - 2*k
@@ -53,7 +53,8 @@ def test_rtx_schema_preserves_legacy_slots_without_models(monkeypatch):
     monkeypatch.setattr(folder_paths, 'get_filename_list', lambda category: [])
     loop = load_loop()
     optional = loop.DaSiWa_SeamlessLoop.INPUT_TYPES()['optional']
-    assert list(optional) == ['model_name', 'exact_endpoint', 'interpolation_backend', 'rtx_mode', 'rtx_device_id']
+    assert list(optional) == ['model_name', 'exact_endpoint', 'interpolation_backend', 'rtx_mode', 'rtx_device_id',
+                              'audio', 'frame_rate', 'audio_loop']
     assert optional['model_name'][0], 'RTX must be queueable with no native checkpoints'
     assert optional['interpolation_backend'][1]['default'] == 'RIFE / FILM'
     assert all(options.get('tooltip') for _, options in optional.values())
@@ -125,7 +126,7 @@ def test_real_rtx_loop(input_device, short, custom_stream):
     original = images.clone()
     stream = torch.cuda.Stream() if custom_stream else torch.cuda.default_stream()
     with torch.cuda.stream(stream):
-        result, = loop.DaSiWa_SeamlessLoop().execute(images, exact_endpoint=True,
+        result, _ = loop.DaSiWa_SeamlessLoop().execute(images, exact_endpoint=True,
             interpolation_backend='RTX Frame Generation')
     torch.cuda.synchronize()
     assert torch.isfinite(result).all()
