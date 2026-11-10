@@ -142,7 +142,9 @@ def verify_segment_export(path, metadata):
             if samples > wanted + max_frame:
                 raise ValueError('Segment audio exceeds its global sample boundary.')
         declared = float(stream.duration*stream.time_base)*rate if stream.duration is not None else None
-        padded = (samples > wanted and samples-wanted < max_frame and declared is not None and abs(declared-wanted) <= 1)
+        # WebM/MKV report no audio stream duration, and AAC/Opus always pad the
+        # final codec frame; one frame of padding the container cannot signal is not a boundary error.
+        padded = (samples > wanted and samples-wanted < max_frame and (declared is None or abs(declared-wanted) <= 1))
         if samples != wanted and not padded:
             raise ValueError(f'Segment audio ends at {samples} samples; expected {wanted} at {rate} Hz.')
         audio_info = dict(codec=stream.codec_context.name,sample_rate=rate,channels=2,samples=wanted)

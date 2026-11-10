@@ -84,6 +84,16 @@ def test_publish_accepts_actual_h264_aac_priming_and_padding(tmp_path,monkeypatc
     assert data['export']['audio']['codec'] == 'aac'
 
 
+def test_publish_accepts_audio_tail_padding_without_declared_duration(tmp_path,monkeypatch):
+    # WebM/MKV report no audio stream duration, and AAC/Opus always pad the final
+    # codec frame; one frame of undetectable tail padding must not fail the boundary.
+    nodes,store,ticket = setup(tmp_path,monkeypatch)
+    path = tmp_path/'segment.mkv'
+    media_file(path,audio_samples=158667+107)
+    nodes.DaSiWaH3ContinuityPublish().publish(str(path),ticket)
+    assert store.inspect('s',ticket['clip_id'])['export']['audio']['samples'] == 158667
+
+
 def test_publish_checks_segment_duration_not_timeline(tmp_path,monkeypatch):
     nodes,store,ticket = setup(tmp_path,monkeypatch)
     path = tmp_path/'segment.mkv'
