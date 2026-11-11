@@ -11,6 +11,7 @@ node; the truncated schedule is core BasicScheduler -> SplitSigmasDenoise, and t
 the baseline track (MAINodes' reference_mix 1.0 default), so neither needs a node here.
 """
 import json
+import logging
 import math
 
 import numpy as np
@@ -275,17 +276,120 @@ class DaSiWaH3DeropePrepare:
         return (latent, json.dumps({"holds": holds, "world_len": n}), report, conditioning)
 
 
+def _recover_interrupt():
+    from comfy import model_management
+    model_management.throw_exception_if_processing_interrupted()
+
+
+@torch.no_grad()
+def _preserve_background(recovered, baseline):
+    log = logging.getLogger(__name__)
+    if (not isinstance(baseline, torch.Tensor) or baseline.shape != recovered.shape
+            or recovered.ndim != 4 or any(s == 0 for s in recovered.shape)
+            or recovered.shape[-1] not in (3, 4)
+            or not baseline.is_floating_point() or not recovered.is_floating_point()):
+        raise ValueError("De-rope keep_background: baseline must be a floating IMAGE with identical recovered T,H,W,C (RGB/RGBA)")
+    n, h, w, _ = recovered.shape
+    log.info("De-rope keep_background: validating/compositing %d frames at %dx%d on CPU", n, w, h)
+    for i in range(n):
+        _recover_interrupt()
+        for frame in (baseline[i], recovered[i]):
+            if not bool(torch.isfinite(frame).all() & (frame >= 0).all() & (frame <= 1).all()):
+                raise ValueError("De-rope keep_background: baseline and recovered images must be finite in [0, 1]")
+
+    pool = torch.nn.functional
+    blurred, masks = {}, {}
+    radius, feather = max(6, round(min(h, w) / 32)), max(2, round(min(h, w) / 80))
+    previous_alpha = None
+    fallback, raw_total, total, low, high = 0, 0.0, 0.0, 1.0, 0.0
+
+    def box(x, size):
+        # Separable boxes bound work for the wider structural scale without another video buffer.
+        x = pool.avg_pool2d(x, (size, 1), 1, (size // 2, 0), count_include_pad=False)
+        return pool.avg_pool2d(x, (1, size), 1, (0, size // 2), count_include_pad=False)
+
+    def smooth(frame):
+        x = frame.detach().to(device="cpu", dtype=torch.float32).permute(2, 0, 1)[None]
+        return box(x, 9)
+
+    def raw_mask(i):
+        nonlocal fallback, raw_total
+        _recover_interrupt()
+        for j in range(max(0, i - 1), min(n, i + 2)):
+            if j not in blurred:
+                blurred[j] = smooth(baseline[j])
+        base = blurred[i]
+        motion = torch.zeros((1, 1, h, w))
+        for j in (max(0, i - 1), min(n - 1, i + 1)):
+            motion = torch.maximum(motion, (base - blurred[j]).abs().mean(1, keepdim=True))
+        delta = box(smooth(recovered[i]) - base, max(1, round(min(h, w) / 56) * 2 + 1))
+        # Calibrated on H3 A/B: ignore VAE colour drift and softened fine texture, not changed poses.
+        delta = delta - delta.flatten(2).median(2).values[:, :, None, None]
+        changed = delta.abs().mean(1, keepdim=True) > 0.075
+        moving = motion > 0.025
+        mask = changed | moving
+        raw_total += float(mask.float().mean())
+        broad_change = (float(changed.float().mean()) > 0.1
+                        and int((pool.adaptive_avg_pool2d(changed.float(), (3, 3)) > 0.1).sum()) >= 5)
+        if float(moving.float().mean()) > 0.55 or broad_change:
+            mask = torch.ones_like(mask)  # broad/camera motion: prefer the complete second pass
+            fallback += 1
+        for j in list(blurred):
+            if j < i:
+                del blurred[j]
+        return mask.float()
+
+    for i in range(n):
+        _recover_interrupt()
+        for j in range(max(0, i - 1), min(n, i + 2)):
+            if j not in masks:
+                masks[j] = raw_mask(j)
+        # A symmetric three-frame union prevents threshold chatter without fading a repaired limb.
+        mask = torch.stack(list(masks.values())).amax(0)
+        core = pool.max_pool2d(mask, 2 * radius + 1, 1, radius)
+        outer = pool.max_pool2d(core, 2 * feather + 1, 1, feather)
+        alpha = torch.maximum(core, pool.avg_pool2d(outer, 2 * feather + 1, 1, feather,
+                                                  count_include_pad=False))[0].permute(1, 2, 0)
+        if previous_alpha is not None:
+            tail = previous_alpha * 0.75
+            alpha = torch.maximum(alpha, torch.where(tail >= 0.01, tail, 0.0))
+        previous_alpha = alpha
+        coverage = float(alpha.mean())
+        total, low, high = total + coverage, min(low, coverage), max(high, coverage)
+        original = baseline[i].detach().to(device="cpu", dtype=recovered.dtype)
+        weight = alpha.to(dtype=recovered.dtype)
+        # Keep both endpoints exact, including float64 inputs and the full-motion fallback.
+        mixed = original + weight * (recovered[i] - original)
+        recovered[i].copy_(torch.where(weight == 1, recovered[i], torch.where(weight == 0, original, mixed)))
+        masks.pop(i - 1, None)
+    log.info("De-rope keep_background: raw mask coverage %.1f%%; feathered coverage mean %.1f%% "
+             "(%.1f–%.1f%%); broad-motion fallback %d/%d frames", raw_total / n * 100,
+             total / n * 100, low * 100, high * 100, fallback, n)
+    return recovered
+
+
 class DaSiWaH3DeropeRecover:
-    DESCRIPTION = "Drops the held frames of a de-roped second pass: exact frame selection back to the original clock."
+    DESCRIPTION = ("Drops held frames by exact selection. Optional keep_background composites static baseline "
+                   "detail around motion and meaningful second-pass changes; no audio processing.")
 
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"images": ("IMAGE",), "hold_map": ("STRING", {"forceInput": True})}}
+        return {"required": {"images": ("IMAGE",), "hold_map": ("STRING", {"forceInput": True})},
+                "optional": {
+                    "baseline": ("IMAGE",),
+                    "keep_background": ("BOOLEAN", {"default": False, "tooltip": "Preserve static baseline detail; motion/changed regions use de-rope. Broad motion uses the complete second pass. Off is exact legacy recovery."}),
+                }}
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "recover"
     CATEGORY = "DaSiWa/MiniMax H3"
 
-    def recover(self, images, hold_map):
+    def recover(self, images, hold_map, baseline=None, keep_background=False):
+        if keep_background and (not isinstance(images, torch.Tensor) or images.ndim != 4
+                                or any(s == 0 for s in images.shape)):
+            raise ValueError("De-rope keep_background: images must be a nonempty T,H,W,C IMAGE batch")
         holds = json.loads(hold_map)["holds"]
-        return (images[torch.tensor(hold_starts(holds, images.shape[0]))].cpu(),)
+        recovered = images[torch.tensor(hold_starts(holds, images.shape[0]))].cpu()
+        if not keep_background:
+            return (recovered,)
+        return (_preserve_background(recovered, baseline),)

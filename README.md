@@ -133,6 +133,9 @@ One `IMAGE` batch in, one `IMAGE` batch out. Choose native **RIFE / FILM** (defa
 
 Fixes H3's fast-motion smear after generation: the baseline latent's own jerk profile picks the hot spans, those frames are held, the slowed clip is re-rendered at partial denoise and the original clock is recovered by exact frame selection. Two nodes (*De-rope Prepare*, *De-rope Recover*), ported from MATLOWAI's MAINodes Motion Lab with bit-identical hold planning.
 
+- **Optional static-background preservation (default OFF):** connect original decoded frames to Recover's `baseline`, then enable `keep_background`. Motion and meaningful pose changes use the second pass; static regions retain baseline detail. Broad camera/scene changes fall back to full de-rope.
+- **Unchanged timing/audio:** exact frame selection and the existing IMAGE output; combine with the original baseline audio. No extra model or dependency.
+
 [Usage, presets and second-pass settings →](docs/minimax_h3_derope.md)
 
 ---

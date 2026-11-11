@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-11**. Older history lives in the 
 
 ## News
 
+- **De-rope Recover: optional static-background preservation (0.5.45):** append-only `baseline` IMAGE and `keep_background` BOOLEAN (default OFF) retain original static detail around baseline-neighbor motion and meaningful structural second-pass changes. Spatial dilation/feathering, a three-frame union and gradual mask release protect moved limbs without treating normal VAE softening as motion. Broad camera/scene changes use the full second pass. ON validates matching finite [0,1] RGB/RGBA frames; OFF remains exact legacy recovery and ignores baseline. CPU frame loops bound scratch memory, check ComfyUI interruption and log coverage. No model/dependency or audio change. [Wiring and limits](minimax_h3_derope.md#optional-static-background-preservation)
+
 - **MiniMax H3 De-rope (0.5.43):** two new nodes, *De-rope Prepare* and *De-rope Recover*, fix H3's smear on whip-fast motion after generation. Prepare reads the baseline latent's jerk profile, holds the frames of hot spans, encodes the slowed clip plus the baseline audio stretched onto the same clock, and returns the AV latent for a partial-denoise second pass; Recover drops the held frames by exact selection. Ported from MATLOWAI's MAINodes Motion Lab (GPL-3.0) and condensed from five nodes to two (the truncated schedule is core `BasicScheduler` → `SplitSigmasDenoise`); hold planning and audio stretching are bit-identical to the original. [Docs](minimax_h3_derope.md)
 
 - **System Monitor: AMD VRAM on Linux (0.5.44):** with an AMD GPU on Linux the top-bar meter showed utilization and temperature but no VRAM — `memory_used`/`memory_total`/`memory_percent` were null. The `rocm-smi` call asked only for `--showmemuse`, which returns percentage fields, so the used/total lookups found nothing; it also assumed MiB while `--showmeminfo vram` reports bytes. The call now includes `--showmeminfo vram` and the values are used as reported. Values match `mem_info_vram_used`/`mem_info_vram_total` under `/sys/class/drm/card*/device/`. Windows (ADLX) and NVIDIA paths untouched. (Issue #95, reported for RX 9070 XT / ROCm 10.)
@@ -217,6 +219,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.45 | 11-11 | De-rope Recover: optional static-background preservation, default OFF; bounded CPU motion/change masks and broad-motion fallback; original audio unchanged |
 | 0.5.41 | 11-09 | Seamless Loop: optional audio in/out, sample-exact trim + equal-power crossfade, opt-in Beat-aware loop length |
 | 0.5.39 | 11-05 | Wildcard & Preset Prompt Builder: `$name` prompt variables (seed-deterministic, per-occurrence pins); `/build` resolves inputs and returns `*_base` |
 | 0.5.38 | 11-03 | Metadata Image Saver: undetected metadata fields embed as empty values, no `*_not_found` sentinels |
