@@ -241,3 +241,4 @@ lorainfo/
 !/tests/test_h3_refmod_export_integration.cjs
 !/tests/test_tiled_diffusion.py
 !/tests/test_batch_output_disk.py
+!/tests/test_h3_derope.py

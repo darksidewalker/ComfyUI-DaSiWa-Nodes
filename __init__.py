@@ -26,6 +26,7 @@ if __package__:
     continuity_routes.register_routes(PromptServer.instance)
     from .nodes.nodes_minimax_h3_cache import MiniMaxH3Cache
     from .nodes.nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
+    from .nodes.nodes_minimax_h3_derope import DaSiWaH3DeropePrepare, DaSiWaH3DeropeRecover
     from .nodes.nodes_tiled_diffusion import DaSiWaTiledDiffusion
 
     from .nodes import nodes_system_monitor
@@ -71,6 +72,8 @@ if __package__:
         "DaSiWaH3TransitionRender": DaSiWaH3TransitionRender,
         "MiniMaxH3Cache": MiniMaxH3Cache,
         "DaSiWaH3TiledUpscale": DaSiWaH3TiledUpscale,
+        "DaSiWaH3DeropePrepare": DaSiWaH3DeropePrepare,
+        "DaSiWaH3DeropeRecover": DaSiWaH3DeropeRecover,
         "DaSiWaTiledDiffusion": DaSiWaTiledDiffusion,
 
     }
@@ -109,6 +112,8 @@ if __package__:
         "DaSiWaH3TransitionRender": "MiniMaxH3 • Transition Render",
         "MiniMaxH3Cache": "MiniMaxH3 Cache",
         "DaSiWaH3TiledUpscale": "MiniMaxH3 Enhanced Upscale",
+        "DaSiWaH3DeropePrepare": "MiniMaxH3 • De-rope Prepare",
+        "DaSiWaH3DeropeRecover": "MiniMaxH3 • De-rope Recover",
         "DaSiWaTiledDiffusion": "Tiled Diffusion (Image)",
 
     }

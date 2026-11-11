@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-09**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-11**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **MiniMax H3 De-rope (0.5.43):** two new nodes, *De-rope Prepare* and *De-rope Recover*, fix H3's smear on whip-fast motion after generation. Prepare reads the baseline latent's jerk profile, holds the frames of hot spans, encodes the slowed clip plus the baseline audio stretched onto the same clock, and returns the AV latent for a partial-denoise second pass; Recover drops the held frames by exact selection. Ported from MATLOWAI's MAINodes Motion Lab (GPL-3.0) and condensed from five nodes to two (the truncated schedule is core `BasicScheduler` → `SplitSigmasDenoise`); hold planning and audio stretching are bit-identical to the original. [Docs](minimax_h3_derope.md)
 
 - **Continuity Publish Export: segment audio tail padding accepted (0.5.42):** in *New segment only*, Publish Export re-reads the exported file and checks the audio length against the exact global sample boundary. AAC and Opus always pad the final codec frame (up to 1024/960 samples), and WebM/MKV carry no audio stream duration to signal that padding, so the check failed with *Segment audio ends at N samples; expected M* even for intact exports — segment mode only, since Full timeline runs no such check. Padding shorter than one codec frame is now accepted when the container cannot declare a duration; real mismatches (wrong trimming, retime, too-long audio) still fail. (Reported for MKV/WebM exports.)
 

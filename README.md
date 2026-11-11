@@ -129,6 +129,12 @@ One `IMAGE` batch in, one `IMAGE` batch out. Choose native **RIFE / FILM** (defa
 
 [Usage, model compatibility and references →](docs/seamless_loop.md)
 
+### 🌀 MiniMax H3 De-rope
+
+Fixes H3's fast-motion smear after generation: the baseline latent's own jerk profile picks the hot spans, those frames are held, the slowed clip is re-rendered at partial denoise and the original clock is recovered by exact frame selection. Two nodes (*De-rope Prepare*, *De-rope Recover*), ported from MATLOWAI's MAINodes Motion Lab with bit-identical hold planning.
+
+[Usage, presets and second-pass settings →](docs/minimax_h3_derope.md)
+
 ---
 
 ### 💎 RTX Upscaler & Refiner
