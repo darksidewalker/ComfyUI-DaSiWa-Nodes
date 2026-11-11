@@ -302,7 +302,7 @@ def _rocm_value(data, field):
 
 
 def _amd_gpus(run=_run):
-    output = run(["rocm-smi", "--showproductname", "--showuse", "--showmemuse", "--showtemp", "--json"])
+    output = run(["rocm-smi", "--showproductname", "--showuse", "--showmemuse", "--showmeminfo", "vram", "--showtemp", "--json"])
     try:
         devices = json.loads(output)
     except json.JSONDecodeError:
@@ -310,12 +310,9 @@ def _amd_gpus(run=_run):
     gpus = []
     for index, (device_id, data) in enumerate(devices.items()):
         name = next((str(value) for key, value in data.items() if "product name" in key.lower()), "AMD GPU")
+        # rocm-smi --showmeminfo reports bytes, so no MiB conversion here.
         used = _rocm_value(data, "used memory")
         total = _rocm_value(data, "total memory")
-        if used is not None:
-            used *= 1024 * 1024
-        if total is not None:
-            total *= 1024 * 1024
         gpus.append({
             "id": f"AMD:{device_id}", "index": index, "vendor": "AMD", "name": name,
             "uuid": device_id, "utilization": _rocm_value(data, "gpu use"),
