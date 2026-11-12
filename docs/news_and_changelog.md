@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-11**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-12**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **`beta57` scheduler (0.5.46):** the pack adds `beta57` to every KSampler / KSampler Advanced / BasicScheduler scheduler list: core's beta scheduler with alpha 0.5 / beta 0.7 (core `beta` uses 0.6/0.6), the name RES4LYF made common. Own implementation, no RES4LYF code or dependency; an already registered `beta57` (RES4LYF installed) keeps the name. Pairs with core `res_multistep` for res-style sampling. [Details](extra_samplers.md)
 
 - **De-rope Recover: optional static-background preservation (0.5.45):** append-only `baseline` IMAGE and `keep_background` BOOLEAN (default OFF) retain original static detail around baseline-neighbor motion and meaningful structural second-pass changes. Spatial dilation/feathering, a three-frame union and gradual mask release protect moved limbs without treating normal VAE softening as motion. Broad camera/scene changes use the full second pass. ON validates matching finite [0,1] RGB/RGBA frames; OFF remains exact legacy recovery and ignores baseline. CPU frame loops bound scratch memory, check ComfyUI interruption and log coverage. No model/dependency or audio change. [Wiring and limits](minimax_h3_derope.md#optional-static-background-preservation)
 
@@ -219,6 +221,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.46 | 11-12 | `beta57` scheduler in every KSampler/BasicScheduler list (own implementation, no new dependency) |
 | 0.5.45 | 11-11 | De-rope Recover: optional static-background preservation, default OFF; bounded CPU motion/change masks and broad-motion fallback; original audio unchanged |
 | 0.5.41 | 11-09 | Seamless Loop: optional audio in/out, sample-exact trim + equal-power crossfade, opt-in Beat-aware loop length |
 | 0.5.39 | 11-05 | Wildcard & Preset Prompt Builder: `$name` prompt variables (seed-deterministic, per-occurrence pins); `/build` resolves inputs and returns `*_base` |

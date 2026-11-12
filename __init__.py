@@ -30,6 +30,8 @@ if __package__:
     from .nodes.nodes_tiled_diffusion import DaSiWaTiledDiffusion
 
     from .nodes import nodes_system_monitor
+    from .nodes import extra_samplers
+    extra_samplers.register()  # beta57 scheduler in every KSampler/BasicScheduler list
     from .nodes import about  # registers /dasiwa/version route
     from .nodes import input_images  # registers /dasiwa/input-images route
     from .nodes import h3_forge  # registers /dasiwa/h3/forge routes

@@ -242,4 +242,5 @@ lorainfo/
 !/tests/test_tiled_diffusion.py
 !/tests/test_batch_output_disk.py
 !/tests/test_h3_derope.py
+!/tests/test_extra_samplers.py
 !/tests/test_h3_derope_background.py
