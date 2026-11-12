@@ -39,6 +39,7 @@ def test_segment_upscale_native_sampling_prefix_and_original_audio(tmp_path,monk
         monkeypatch.setattr(backend,'upscale_model_names',lambda:['synthetic'])
         class Scale:
             temporal_halo = 1
+            sharpness_tiers = False
             dtype = torch.float32
             def __init__(self,*a,**k): pass
             def upscale(self,x,h,w): return node.resize_video(x,h,w)

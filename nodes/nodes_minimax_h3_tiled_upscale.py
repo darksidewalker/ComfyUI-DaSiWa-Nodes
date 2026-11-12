@@ -207,10 +207,13 @@ class DaSiWaH3TiledUpscale:
     def INPUT_TYPES(cls):
         import comfy.samplers
         from .h3_latent_upscale import upscale_model_names
+        names = upscale_model_names()
+        # Prefer the 2D release (better on 32/36 scales, sharpness tiers) when installed.
+        preferred = next((n for n in names if '2d_conv' in n.replace('\\', '/').rsplit('/', 1)[-1].lower()), 'interpolation')
         return {'required': {
             'model': ('MODEL',), 'conditioning': ('CONDITIONING',), 'latent': ('LATENT',),
             'scale': ('FLOAT', {'default': 2.0, 'min': 1.0, 'max': 8.0, 'step': 0.1}),
-            'upscale_model': (['interpolation'] + upscale_model_names(),),
+            'upscale_model': (['interpolation'] + names, {'default': preferred}),
             'steps': ('INT', {'default': 1, 'min': 1, 'max': 100}),
             'denoise': ('FLOAT', {'default': 0.2, 'min': 0.0, 'max': 1.0, 'step': 0.01}),
             'seed': ('INT', {'default': 0, 'min': 0, 'max': 0xffffffffffffffff, 'control_after_generate': True}),
@@ -248,6 +251,9 @@ class DaSiWaH3TiledUpscale:
             'memory_reserve_pct': ('FLOAT', {'default': 5.0, 'min': 0.0, 'max': 100.0, 'step': 5.0, 'display': 'slider',
                 'display_name': 'Memory Reserve (%)',
                 'tooltip': 'Workspace reserve after device and model reservations. Default 5% is aggressive, not a VRAM guarantee. 0% still enforces explicit estimated costs; 100% leaves no refinement budget. Ignored when Memory Planning is off.'}),
+            'upscale_sharpness': ('INT', {'default': 1, 'min': 1, 'max': 6, 'step': 1,
+                'display_name': 'Upscale Sharpness (2D tier)',
+                'tooltip': 'Sharpness tier of the 2D learned upscaler (2d_conv_v1): 1 = most faithful (default, lowest error), 6 = sharpest with slightly more color shift. Ignored by the 3D upscaler and interpolation, which have no tiers.'}),
         }}
 
     @torch.inference_mode()
@@ -259,7 +265,7 @@ class DaSiWaH3TiledUpscale:
                 continuity_soft_refine=False, continuity_mask_strength=1.0,
                 spatial_tiling=True, temporal_chunking=True,
                 spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
-                enforce_memory_budget=True, memory_reserve_pct=5.0):
+                enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1):
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -355,9 +361,11 @@ class DaSiWaH3TiledUpscale:
         backend = None
         try:
             if selected != 'interpolation':
-                backend = H3LatentUpscaler(selected, device, precision=upscale_precision)
+                backend = H3LatentUpscaler(selected, device, precision=upscale_precision, sharpness=upscale_sharpness)
             halo = backend.temporal_halo if backend is not None else 0
             actual_precision = str(backend.dtype).removeprefix('torch.') if backend is not None else 'not used (interpolation)'
+            sharpness_note = (f'sharpness=t{upscale_sharpness}' if backend is not None and backend.sharpness_tiers
+                              else 'sharpness=n/a (no tiers)')
             for start, end in ranges:
                 mm.throw_exception_if_processing_interrupted()
                 a, z = max(0, start - halo), min(video.shape[2], end + halo)
@@ -382,7 +390,7 @@ class DaSiWaH3TiledUpscale:
             if negative is not None:
                 negative = align_continuity_conditioning(negative, upscaled, audio_cpu, continuity, inject_tail=False)
         report = (f"{video.shape[-1]*16}x{video.shape[-2]*16} → {width}x{height}; "
-                  f"upscale={selected}; precision={actual_precision}; tile={plan['tile_width']}x{plan['tile_height']}px; "
+                  f"upscale={selected}; precision={actual_precision}; {sharpness_note}; tile={plan['tile_width']}x{plan['tile_height']}px; "
                   f"overlap={plan['overlap']}px; temporal={len(ranges)} chunks; "
                   f"spatial_tiling={'on' if spatial_tiling else 'off'}; "
                   f"temporal_chunking={'on' if temporal_chunking else 'off'}; "

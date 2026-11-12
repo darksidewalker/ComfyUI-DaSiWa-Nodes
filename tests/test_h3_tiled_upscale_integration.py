@@ -92,6 +92,7 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     lengths,closed,sampled=[],[],[]
     class Backend:
         temporal_halo=1
+        sharpness_tiers=False
         dtype=torch.float32
         def __init__(self,*args,**kwargs): pass
         def upscale(self,video,h,w):
@@ -121,7 +122,7 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     assert f"enforce_memory_budget={'on' if enforce else 'off'}" in report
     assert f"spatial_split={'on' if spatial and denoise else 'off'}" in report
     assert f"temporal_split={'on' if temporal else 'off'}" in report
-    assert list(schema)[-2:]==['enforce_memory_budget','memory_reserve_pct']
+    assert list(schema)[-3:]==['enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
     assert schema['spike_guard'][1]['default'] is False
     assert schema['guard_mode'][0] == ['burn_direction','both']
     assert schema['spatial_tiling'][1]['default'] is True
@@ -255,7 +256,7 @@ def test_refine_schema_and_callable_defaults_without_external_sigmas():
     assert list(schema['optional']) == ['director_guide','vae','start_image','negative','cfg','sampler_name',
         'scheduler','memory_budget_mb','sampler','noise','continuity_context','upscale_precision',
         'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking',
-        'spike_guard','guard_sensitivity','guard_strength','guard_mode','enforce_memory_budget','memory_reserve_pct']
+        'spike_guard','guard_sensitivity','guard_strength','guard_mode','enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
     assert u.DaSiWaH3TiledUpscale.RETURN_TYPES == ('LATENT','STRING')
     assert 'sigmas' not in schema['required']
     assert 'sigmas' not in schema['optional']
@@ -286,7 +287,7 @@ def test_legacy_widget_values_keep_their_slots(setup_node,guard_enabled,mode):
         if isinstance(spec[0],list) or spec[0] in ('INT','FLOAT','BOOLEAN','STRING')]
     restored=dict(zip(widget_names,legacy_values))
     assert restored == dict(zip(legacy_names,legacy_values))
-    assert widget_names[-2:] == ['enforce_memory_budget','memory_reserve_pct']
+    assert widget_names[-3:] == ['enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
     assert schema['optional']['memory_reserve_pct'][1]['default'] == 5.0
     assert schema['optional']['enforce_memory_budget'][1]['default'] is True
 
@@ -305,12 +306,36 @@ def test_old_positional_callable_keeps_guard_parameters(setup_node,monkeypatch):
     assert bound.arguments['guard_mode'] == 'both'
     assert bound.arguments['enforce_memory_budget'] is True
     assert bound.arguments['memory_reserve_pct'] == 5.0
+    assert bound.arguments['upscale_sharpness'] == 1
 
 
 def test_model_selector_has_only_explicit_choices(setup_node,monkeypatch):
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:['h3.safetensors'])
     choices=u.DaSiWaH3TiledUpscale.INPUT_TYPES()['required']['upscale_model'][0]
     assert choices==['interpolation','h3.safetensors']
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:['a_3d_conv_v1.safetensors','H3/x_2D_conv_v1_fp16.safetensors'])
+    spec=u.DaSiWaH3TiledUpscale.INPUT_TYPES()['required']['upscale_model']
+    assert spec[1]['default']=='H3/x_2D_conv_v1_fp16.safetensors'
+
+
+@pytest.mark.parametrize('tiers,note',[(True,'sharpness=t4'),(False,'sharpness=n/a (no tiers)')])
+def test_sharpness_reaches_learned_backend(setup_node,monkeypatch,tiers,note):
+    monkeypatch.setattr(upscale,'upscale_model_names',lambda:['h3.safetensors'])
+    monkeypatch.setattr(mm,'unload_model_and_clones',lambda *a,**k:None)
+    seen={}
+    class Backend:
+        temporal_halo=0
+        dtype=torch.float32
+        sharpness_tiers=tiers
+        def __init__(self,*args,**kwargs): seen.update(kwargs)
+        def upscale(self,video,h,w): return u.resize_video(video,h,w)
+        def close(self): pass
+    monkeypatch.setattr(upscale,'H3LatentUpscaler',Backend)
+    latent={'samples':NestedTensor((torch.zeros(1,24,2,2,2),torch.zeros(1,32,2,8)))}
+    _,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[],latent,upscale_model='h3.safetensors',
+                                              denoise=0,upscale_sharpness=4)
+    assert seen['sharpness']==4
+    assert note in report
 
 
 @pytest.mark.parametrize('choice',['auto','missing.safetensors'])
@@ -477,6 +502,7 @@ def test_guard_wiring_preserves_audio_and_runs_before_refine(setup_node,monkeypa
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:['test.safetensors'])
     class Backend:
         temporal_halo=0
+        sharpness_tiers=False
         dtype=torch.float32
         def __init__(self,*a,**kw): pass
         def upscale(self,v,h,w): return u.resize_video(v,h,w)
@@ -533,6 +559,7 @@ def test_real_guard_pipeline_aligns_corrected_tail_before_refinement(setup_node,
     burned=[]
     class Backend:
         temporal_halo=0
+        sharpness_tiers=False
         dtype=torch.float32
         def __init__(self,*a,**kw): pass
         def upscale(self,v,h,w):

@@ -63,6 +63,11 @@ function install(node) {
                 info.widgets_values.length <= this.widgets.indexOf(reserve)) {
                 reserve.value = 5;
             }
+            const sharpness = widget(this, "upscale_sharpness");
+            if (sharpness && Array.isArray(info?.widgets_values) &&
+                info.widgets_values.length <= this.widgets.indexOf(sharpness)) {
+                sharpness.value = 1;
+            }
             refresh(this);
             return result;
         };

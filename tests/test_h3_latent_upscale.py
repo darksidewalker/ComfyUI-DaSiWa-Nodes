@@ -141,7 +141,8 @@ def test_symlink_to_pickle_rejected(checkpoint, tmp_path):
 def test_exact_architecture_module_indices(attn, cadence, kernel):
     model = h3._LatentResizer3D(channels=32, in_blocks=4, out_blocks=3,
         temporal_every=cadence, temporal_kernel=kernel, attn=attn, dropout=0)
-    sd, config = h3._validated_state_dict(model.state_dict())
+    sd, arch, config = h3._validated_state_dict(model.state_dict())
+    assert arch is h3._LatentResizer3D
     with torch.device("meta"):
         rebuilt = h3._LatentResizer3D(**config)
     assert list(rebuilt.state_dict()) == list(sd)
@@ -255,3 +256,59 @@ def test_dtype_selection_uses_backend_policy():
     assert h3._compute_dtype(torch.device("mps"), mm) == torch.float16
     mm.should_use_fp16 = lambda **_: False
     assert h3._compute_dtype(torch.device("xpu"), mm) == torch.float32
+
+
+@pytest.fixture
+def checkpoint_2d(tmp_path, monkeypatch, native):
+    folders, _, save_file = native
+    monkeypatch.setitem(folders.folder_names_and_paths, h3._FOLDER, ([str(tmp_path)], set(h3._EXTENSIONS)))
+    torch.manual_seed(0)
+    model = h3._LatentResizer2D(channels=32, embed_dim=16, in_blocks=3, out_blocks=2, temporal_kernel=3)
+    for p in model.parameters():
+        torch.nn.init.normal_(p, std=0.05)
+    # Upstream key layout ("resizer." prefix kept, no "upscaler." wrapper).
+    save_file(model.state_dict(), str(tmp_path / "h3_2d.safetensors"))
+    return "h3_2d.safetensors", model
+
+
+def test_2d_release_runs_with_tiers_and_exact_halo(checkpoint_2d):
+    name, reference = checkpoint_2d
+    video = torch.randn(1, 24, 9, 3, 4)
+    mean, std = h3._make_norm_tensors("cpu", torch.float32)
+    with torch.inference_mode():
+        expected = reference.eval()((video - mean) / std, (5, 7), 3) * std + mean
+    with h3.H3LatentUpscaler(name, "cpu", sharpness=3) as owner:
+        result = owner.upscale(video, 5, 7)
+        assert owner.sharpness_tiers
+        halo = owner.temporal_halo
+        assert halo == 1 * (2 + 1)  # radius 1, temporal after blocks 0,2 (in) and 0 (out)
+        part = owner.upscale(video[:, :, 4 - halo:6 + halo], 5, 7)[:, :, halo:halo + 2]
+    torch.testing.assert_close(result, expected)
+    torch.testing.assert_close(part, result[:, :, 4:6])  # 2D chunks equal a full forward
+    with h3.H3LatentUpscaler(name, "cpu", sharpness=6) as owner:
+        assert not torch.allclose(owner.upscale(video, 5, 7), result)
+
+
+@pytest.mark.parametrize("variant", ["coord", "se", "kernel"])
+def test_2d_unsupported_variants_rejected(variant):
+    model = h3._LatentResizer2D(channels=32, embed_dim=16, in_blocks=1, out_blocks=1, temporal_kernel=3)
+    sd = dict(model.state_dict())
+    if variant == "coord":
+        sd["resizer.conv_in.weight"] = torch.empty(32, 26, 3, 3)
+    elif variant == "se":
+        sd["resizer.in_blocks.0.se.fc.2.weight"] = torch.empty(16, 32)
+    else:
+        sd["temporal_blocks.0.dwconv.weight"] = torch.empty(32, 1, 4, 1, 1)
+    with pytest.raises(ValueError):
+        h3._validated_state_dict(sd)
+
+
+@pytest.mark.parametrize("sharpness", [0, 7, True, "3"])
+def test_invalid_sharpness_fails_before_loading(sharpness):
+    with pytest.raises(ValueError, match="sharpness"):
+        h3.H3LatentUpscaler("unused.sft", "cpu", sharpness=sharpness)
+
+
+def test_3d_release_reports_no_tiers(checkpoint):
+    with h3.H3LatentUpscaler(checkpoint[0], "cpu", sharpness=5) as owner:
+        assert not owner.sharpness_tiers

@@ -2,7 +2,9 @@
 
 Network/normalization adapted from LBH-123-AI's
 https://github.com/LBH-123-AI/Comfyui_Minimax_h3_latent_Upscaler
-and its MMH3-UltimateUpscale adaptation. No external node-pack imports.
+(3D v1; 2D v1 with sharpness tiers ported from commit f34cadb, exact
+2d_conv_v1 layout only) and its MMH3-UltimateUpscale adaptation.
+No external node-pack imports.
 
 MIT License
 
@@ -121,12 +123,12 @@ class _AttnBlock3D(nn.Module):
 
 
 class _ResBlockEmb3D(nn.Module):
-    def __init__(self, channels, emb_channels, dropout=0, out_channels=None):
+    def __init__(self, channels, emb_channels, dropout=0, out_channels=None, conv=nn.Conv3d):
         super().__init__()
         self.out_channels = out_channels or channels
         self.in_layers = nn.Sequential(
             _normalization(channels), nn.SiLU(),
-            nn.Conv3d(channels, self.out_channels, 3, padding=1),
+            conv(channels, self.out_channels, 3, padding=1),
         )
         self.emb_layers = nn.Sequential(
             nn.SiLU(), nn.Linear(emb_channels, 2 * self.out_channels),
@@ -134,10 +136,10 @@ class _ResBlockEmb3D(nn.Module):
         self.out_norm = _normalization(self.out_channels)
         self.out_layers = nn.Sequential(
             nn.SiLU(), nn.Dropout(p=dropout),
-            _zero_module(nn.Conv3d(self.out_channels, self.out_channels, 3, padding=1)),
+            _zero_module(conv(self.out_channels, self.out_channels, 3, padding=1)),
         )
         self.skip = (
-            nn.Conv3d(channels, self.out_channels, 1)
+            conv(channels, self.out_channels, 1)
             if self.out_channels != channels else nn.Identity()
         )
 
@@ -153,8 +155,9 @@ class _ResBlockEmb3D(nn.Module):
 
 
 class _TemporalConv(nn.Module):
-    def __init__(self, channels, kernel_size=5):
+    def __init__(self, channels, kernel_size=5, per_frame_norm=False):
         super().__init__()
+        self.per_frame_norm = per_frame_norm
         padding = kernel_size // 2
         self.norm = _normalization(channels)
         self.dwconv = nn.Conv3d(channels, channels,
@@ -167,7 +170,10 @@ class _TemporalConv(nn.Module):
 
     def forward(self, x):
         identity = x
-        h = self.norm(x)
+        if self.per_frame_norm:  # 2D release normalizes each frame, not over T
+            h = self.norm(x.transpose(1, 2).flatten(0, 1)).unflatten(0, (x.shape[0], x.shape[2])).transpose(1, 2)
+        else:
+            h = self.norm(x)
         h = F.silu(h)
         h = self.dwconv(h)
         h = self.pwconv(h)
@@ -249,11 +255,84 @@ class _LatentResizer3D(nn.Module):
         x = self.conv_out(x)
         return x
 
+    @property
+    def temporal_halo(self):
+        return sum((b.dwconv.kernel_size[0] - 1) // 2
+                   for b in self.modules() if isinstance(b, _TemporalConv))
+
+
+class _LatentResizer2D(nn.Module):
+    """LBH 2d_conv_v1: per-frame Conv2d backbone, two shared temporal convs
+    applied after every even in/out block, Fourier scale+tier embedding."""
+
+    def __init__(self, channels=640, embed_dim=128, tier_dim=32, in_blocks=12,
+                 out_blocks=12, temporal_kernel=5, in_channels=24):
+        super().__init__()
+        self.tier_dim = tier_dim
+        r = self.resizer = nn.Module()
+        r.embed = nn.Module()
+        r.embed.linear = nn.Sequential(nn.Linear(64 + tier_dim, embed_dim), nn.SiLU(),
+                                       nn.Linear(embed_dim, embed_dim))
+        r.conv_in = nn.Conv2d(in_channels, channels, 3, padding=1)
+        r.in_blocks = nn.ModuleList(_ResBlockEmb3D(channels, embed_dim, conv=nn.Conv2d) for _ in range(in_blocks))
+        r.out_blocks = nn.ModuleList(_ResBlockEmb3D(channels, embed_dim, conv=nn.Conv2d) for _ in range(out_blocks))
+        r.norm_out = _normalization(channels)
+        r.conv_out = nn.Conv2d(channels, in_channels, 3, padding=1)
+        self.temporal_blocks = nn.ModuleList(
+            _TemporalConv(channels, temporal_kernel, per_frame_norm=True) for _ in range(2))
+
+    @property
+    def temporal_halo(self):
+        # Exact receptive field: every other op is per frame, so chunks with this
+        # halo equal a full-clip forward.
+        radius = (self.temporal_blocks[0].dwconv.kernel_size[0] - 1) // 2
+        return radius * sum((len(s) + 1) // 2 for s in (self.resizer.in_blocks, self.resizer.out_blocks))
+
+    def _embed(self, scale_h, scale_w, tier):
+        weight = self.resizer.embed.linear[0].weight
+        values = [scale_h, scale_w] + ([tier - 1] if self.tier_dim else [])
+        # Upstream: fp32 sin/cos of value * 2^k (no pi), tier phase 0 = t1.
+        freqs = 2.0 ** torch.arange(16, device=weight.device, dtype=torch.float32)
+        phases = torch.tensor(values, device=weight.device, dtype=torch.float32)[:, None] * freqs
+        emb = torch.cat([torch.cat([p.sin(), p.cos()]) for p in phases])[None]
+        return self.resizer.embed.linear(emb.to(weight.dtype))
+
+    def forward(self, x, size, tier=1):
+        b, _, t, h, w = x.shape
+        emb = self._embed(size[0] / h, size[1] / w, tier).expand(b * t, -1)
+        out = self.resizer.conv_in(x.transpose(1, 2).flatten(0, 1))
+        for stage, temporal in ((self.resizer.in_blocks, self.temporal_blocks[0]),
+                                (self.resizer.out_blocks, self.temporal_blocks[1])):
+            if stage is self.resizer.out_blocks:
+                out = F.interpolate(out, size=size, mode="bilinear", align_corners=False)
+            for i, block in enumerate(stage):
+                out = block(out, emb)
+                if i % 2 == 0:
+                    out = temporal(out.unflatten(0, (b, t)).transpose(1, 2)).transpose(1, 2).flatten(0, 1)
+        out = self.resizer.conv_out(F.silu(self.resizer.norm_out(out)))
+        return out.unflatten(0, (b, t)).transpose(1, 2)
+
+
+def _detect_arch_2d(sd):
+    conv, emb, temporal = (sd.get(k) for k in ("resizer.conv_in.weight", "resizer.embed.linear.0.weight",
+                                               "temporal_blocks.0.dwconv.weight"))
+    if (not all(isinstance(v, torch.Tensor) for v in (conv, emb, temporal))
+            or conv.ndim != 4 or emb.ndim != 2 or temporal.ndim != 5):
+        raise ValueError("Not a supported H3 2D upscaler: expected the LBH 2d_conv_v1 layout")
+    channels, inputs = conv.shape[:2]
+    if inputs != 24 or channels < 32 or channels % 32 or emb.shape[1] not in (64, 96) or temporal.shape[2] % 2 == 0:
+        raise ValueError("Unsupported H3 2D upscaler variant (24 latent channels, 2d_conv_v1 layout only)")
+    blocks = {stage: len({m.group(1) for k in sd if (m := re.match(rf"resizer\.{stage}\.(\d+)\.", k))})
+              for stage in ("in_blocks", "out_blocks")}
+    return {"channels": channels, "embed_dim": emb.shape[0], "tier_dim": emb.shape[1] - 64,
+            "temporal_kernel": temporal.shape[2], **blocks}
+
+
 def _detect_arch(sd):
     """Infer exact module indices and per-block temporal kernels, not a cadence."""
     weight = sd.get("conv_in.weight")
     if not isinstance(weight, torch.Tensor) or weight.ndim != 5:
-        raise ValueError("Not an H3 3D upscaler: missing conv_in.weight")
+        raise ValueError("Not an H3 latent upscaler: missing conv_in.weight (3D) or resizer.conv_in.weight (2D)")
     channels, inputs, *kernel = weight.shape
     if inputs != 24 or kernel != [3, 3, 3] or channels < 32 or channels % 32:
         raise ValueError("H3 requires 24 latent channels and 32-divisible hidden channels")
@@ -293,15 +372,16 @@ def _validated_state_dict(raw):
           if all(k.startswith("upscaler.") for k in raw) else raw)
     if any(not isinstance(v, torch.Tensor) or not v.is_floating_point() for v in sd.values()):
         raise ValueError("H3 checkpoint must contain floating-point weights only")
-    config = _detect_arch(sd)
+    arch, config = ((_LatentResizer2D, _detect_arch_2d(sd)) if "resizer.conv_in.weight" in sd
+                    else (_LatentResizer3D, _detect_arch(sd)))
     with torch.device("meta"):
-        expected = _LatentResizer3D(**config).state_dict()
+        expected = arch(**config).state_dict()
     missing, extra = expected.keys() - sd.keys(), sd.keys() - expected.keys()
     mismatched = [k for k in sorted(expected.keys() & sd.keys()) if expected[k].shape != sd[k].shape]
     if missing or extra or mismatched:
         raise ValueError(f"Invalid H3 checkpoint: missing={sorted(missing)[:5]}, "
                          f"unexpected={sorted(extra)[:5]}, shape_mismatch={mismatched[:5]}")
-    return sd, config
+    return sd, arch, config
 
 
 def _compute_dtype(device, mm, precision="auto"):
@@ -333,10 +413,13 @@ class H3LatentUpscaler:
     Insufficient memory raises; no global eviction, fallback, or model cache.
     """
 
-    def __init__(self, model_name, device, precision="auto"):
+    def __init__(self, model_name, device, precision="auto", sharpness=1):
         if precision not in ("auto", "bf16", "fp16", "fp32"):
             raise ValueError(f"Unknown H3 upscale precision: {precision}")
+        if isinstance(sharpness, bool) or sharpness not in range(1, 7):
+            raise ValueError("H3 upscale sharpness must be an integer tier 1-6")
         self.precision = precision
+        self.sharpness = sharpness
         self.model_name = model_name
         self.device = torch.device(device)
         self.model = self.patcher = self._loaded = self._mm = None
@@ -352,10 +435,10 @@ class H3LatentUpscaler:
         from comfy import utils, model_management as mm
         from comfy.model_patcher import ModelPatcher
         raw = utils.load_torch_file(path, safe_load=True, device=torch.device("cpu"))
-        sd, config = _validated_state_dict(raw)
+        sd, arch, config = _validated_state_dict(raw)
         dtype = _compute_dtype(self.device, mm, self.precision)
         with torch.device("meta"):
-            model = _LatentResizer3D(**config)
+            model = arch(**config)
         model.load_state_dict(sd, strict=True, assign=True)
         model = model.to(dtype=dtype).eval().requires_grad_(False)
         del sd, raw
@@ -370,16 +453,21 @@ class H3LatentUpscaler:
             raise
 
     @property
-    def temporal_halo(self):
-        """Sum of depthwise temporal radii across both stages (loads lazily).
+    def sharpness_tiers(self):
+        """True when the loaded checkpoint responds to the sharpness tier (2D with tier embedding)."""
+        self._load()
+        return getattr(self.model, "tier_dim", 0) > 0
 
-        This is the explicit temporal-conv halo, NOT a guarantee of chunk/full
-        equivalence: residual Conv3d, GroupNorm over THW and optional attention
-        also couple frames. Bounded temporal chunks remain an approximation.
+    @property
+    def temporal_halo(self):
+        """Temporal-conv halo in latent frames (loads lazily).
+
+        3D: sum of depthwise radii, NOT a chunk/full equivalence guarantee
+        (residual Conv3d, GroupNorm over THW and attention also couple frames).
+        2D: the exact receptive field; chunked output equals a full forward.
         """
         self._load()
-        return sum((b.dwconv.kernel_size[0] - 1) // 2
-                   for b in self.model.modules() if isinstance(b, _TemporalConv))
+        return self.model.temporal_halo
 
     def upscale(self, video, target_height_latent, target_width_latent):
         if self._closed:
@@ -406,8 +494,11 @@ class H3LatentUpscaler:
             x = video.to(device=self.device, dtype=self.dtype).contiguous()
             mean, std = _make_norm_tensors(self.device, self.dtype)
             x = (x - mean) / std
-            result = self.model(x, scale=(th / h + tw / w) / 2,
-                                target_size=(video.shape[2], th, tw))
+            if isinstance(self.model, _LatentResizer2D):
+                result = self.model(x, (th, tw), self.sharpness)
+            else:
+                result = self.model(x, scale=(th / h + tw / w) / 2,
+                                    target_size=(video.shape[2], th, tw))
             result = result * std + mean
             return result.to(device=video.device, dtype=video.dtype)
 

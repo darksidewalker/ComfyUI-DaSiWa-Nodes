@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-12**. Older history lives in the 
 
 ## News
 
+- **MiniMaxH3 Enhanced Upscale: 2D latent upscaler with sharpness tiers (0.5.47):** selecting LBH-123-AI's new `minimax_h3_latent_upscaler_2d_conv_v1` checkpoint failed with *Not an H3 3D upscaler: missing conv_in.weight* — the loader only knew the 3D release. The 2D release (half the parameters, lower latent error than 3D on 32 of 36 scales) is now detected from its weights and runs inside the same node, so tiling, temporal windows, Continuity, Spike Guard, precision and memory planning stay as they are. New append-only `upscale_sharpness` (1–6, default **1** = most faithful) selects the 2D tier; the 3D checkpoint and interpolation ignore it, and the plan line reports the tier used. When a 2D checkpoint is installed it is the node's default model choice; saved workflows keep their selection. Network ported condensed (exact `2d_conv_v1` layout only, other experimental variants are rejected with a clear error) and bit-identical to the upstream node on the real checkpoint; with 2D the temporal windows are exact, not an approximation. ([#96](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/96)) [Details](minimax_h3_tiled_upscale.md)
+
 - **`beta57` scheduler (0.5.46):** the pack adds `beta57` to every KSampler / KSampler Advanced / BasicScheduler scheduler list: core's beta scheduler with alpha 0.5 / beta 0.7 (core `beta` uses 0.6/0.6), the name RES4LYF made common. Own implementation, no RES4LYF code or dependency; an already registered `beta57` (RES4LYF installed) keeps the name. Pairs with core `res_multistep` for res-style sampling. [Details](extra_samplers.md)
 
 - **De-rope Recover: optional static-background preservation (0.5.45):** append-only `baseline` IMAGE and `keep_background` BOOLEAN (default OFF) retain original static detail around baseline-neighbor motion and meaningful structural second-pass changes. Spatial dilation/feathering, a three-frame union and gradual mask release protect moved limbs without treating normal VAE softening as motion. Broad camera/scene changes use the full second pass. ON validates matching finite [0,1] RGB/RGBA frames; OFF remains exact legacy recovery and ignores baseline. CPU frame loops bound scratch memory, check ComfyUI interruption and log coverage. No model/dependency or audio change. [Wiring and limits](minimax_h3_derope.md#optional-static-background-preservation)
@@ -221,6 +223,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.47 | 11-12 | H3 Enhanced Upscale: 2D latent upscaler (`2d_conv_v1`) + `upscale_sharpness` tier 1–6, 2D preferred as default model (#96) |
 | 0.5.46 | 11-12 | `beta57` scheduler in every KSampler/BasicScheduler list (own implementation, no new dependency) |
 | 0.5.45 | 11-11 | De-rope Recover: optional static-background preservation, default OFF; bounded CPU motion/change masks and broad-motion fallback; original audio unchanged |
 | 0.5.41 | 11-09 | Seamless Loop: optional audio in/out, sample-exact trim + equal-power crossfade, opt-in Beat-aware loop length |
