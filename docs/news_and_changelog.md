@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-12**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-13**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Continuity Segment Decode: Core import collision fixed (0.5.48):** Full timeline and uncaptured takes could fail after sampling with `module 'nodes' has no attribute 'VAEDecode'` when another package occupied that module name. Video decoding now calls the VAE directly with Core's nested-latent selection and batch flattening; native audio decoding and loudness normalization remain unchanged. New segment only and saved workflow interfaces are unchanged. ([#98](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/98))
 
 - **MiniMaxH3 Enhanced Upscale: 2D latent upscaler with sharpness tiers (0.5.47):** selecting LBH-123-AI's new `minimax_h3_latent_upscaler_2d_conv_v1` checkpoint failed with *Not an H3 3D upscaler: missing conv_in.weight* — the loader only knew the 3D release. The 2D release (half the parameters, lower latent error than 3D on 32 of 36 scales) is now detected from its weights and runs inside the same node, so tiling, temporal windows, Continuity, Spike Guard, precision and memory planning stay as they are. New append-only `upscale_sharpness` (1–6, default **1** = most faithful) selects the 2D tier; the 3D checkpoint and interpolation ignore it, and the plan line reports the tier used. When a 2D checkpoint is installed it is the node's default model choice; saved workflows keep their selection. Network ported condensed (exact `2d_conv_v1` layout only, other experimental variants are rejected with a clear error) and bit-identical to the upstream node on the real checkpoint; with 2D the temporal windows are exact, not an approximation. ([#96](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/96)) [Details](minimax_h3_tiled_upscale.md)
 
@@ -223,6 +225,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.48 | 11-13 | Continuity Segment Decode: avoid ambiguous Core nodes import; preserve video batch handling and native audio (#98) |
 | 0.5.47 | 11-12 | H3 Enhanced Upscale: 2D latent upscaler (`2d_conv_v1`) + `upscale_sharpness` tier 1–6, 2D preferred as default model (#96) |
 | 0.5.46 | 11-12 | `beta57` scheduler in every KSampler/BasicScheduler list (own implementation, no new dependency) |
 | 0.5.45 | 11-11 | De-rope Recover: optional static-background preservation, default OFF; bounded CPU motion/change masks and broad-motion fallback; original audio unchanged |

@@ -1,7 +1,18 @@
 """G0: actual Core temporal stitching and full BigVGAN topology, CPU only."""
 from test_h3_segment_backend import core, torch, importlib
-from types import SimpleNamespace
+from types import SimpleNamespace, ModuleType
+import ast
+from pathlib import Path
+import sys
+import comfy
 import pytest
+
+# Load the installed Core class without trusting sys.modules['nodes'].
+_core_tree = ast.parse((Path(comfy.cli_args.__file__).resolve().parent.parent / 'nodes.py').read_text(encoding='utf-8'))
+_core_class = next(n for n in _core_tree.body if isinstance(n, ast.ClassDef) and n.name == 'VAEDecode')
+_core_namespace = {}
+exec(compile(ast.Module(body=[_core_class], type_ignores=[]), '<Core VAEDecode>', 'exec'), _core_namespace)
+CoreVAEDecode = _core_namespace['VAEDecode']
 policy = importlib.import_module('h3_segment_test.nodes.h3_continuity.segment_policy')
 
 def video_decoder():
@@ -67,7 +78,6 @@ def test_segment_decode_rejects_unvalidated_audio_topology():
 
 @pytest.mark.parametrize('frames',[22,39])
 def test_disabled_capture_decodes_first_take_without_staging(monkeypatch,frames):
-    import nodes as comfy_nodes
     from comfy_extras.nodes_audio import vae_decode_audio
     from test_h3_segment_backend import latent
     mod = importlib.import_module('h3_segment_test.nodes.h3_continuity.segment_nodes')
@@ -80,7 +90,7 @@ def test_disabled_capture_decodes_first_take_without_staging(monkeypatch,frames)
     avae = SimpleNamespace(decode=lambda z:torch.rand(1,z.shape[-1]*800,2,generator=torch.Generator().manual_seed(2))*4,audio_sample_rate=32000)
     images,audio = mod.DaSiWaH3ContinuitySegmentDecode().decode(render,vae,avae,context)
     assert render is take and context is ctx and ticket == {'disabled':True}
-    assert torch.equal(images,comfy_nodes.VAEDecode().decode(vae,take)[0])
+    assert torch.equal(images,CoreVAEDecode().decode(vae,take)[0])
     core_audio = vae_decode_audio(avae,take)
     assert audio['waveform'].shape == (1,2,take['samples'].tensors[1].shape[-1]*800)
     assert torch.equal(audio['waveform'],core_audio['waveform'])
@@ -125,18 +135,22 @@ def test_full_mode_prepare_is_append_and_stage(tmp_path,monkeypatch):
     for a,b in zip(render['samples'].tensors,expected['samples'].tensors): assert torch.equal(a,b)
     assert store.inspect('s',ticket['clip_id'],ready=False).get('schema') != 2
 
-def test_full_mode_decode_matches_core_decoders(monkeypatch):
-    import nodes as comfy_nodes
+@pytest.mark.parametrize('shape', [(39,8,8,3), (1,39,8,8,3), (2,39,8,8,3)])
+def test_full_mode_decode_matches_core_decoders(monkeypatch,shape):
+    monkeypatch.setitem(sys.modules,'nodes',ModuleType('nodes'))
     from test_h3_segment_backend import latent
     from comfy_extras.nodes_audio import vae_decode_audio
     mod = importlib.import_module('h3_segment_test.nodes.h3_continuity.segment_nodes')
     monkeypatch.setattr(mod,'validate_segment_vaes',lambda *a: pytest.fail('Full mode must not require segment VAE checks'))
     take = latent(39)
     torch.manual_seed(0)
-    vae = SimpleNamespace(decode=lambda z: torch.rand(1,39,8,8,3,generator=torch.Generator().manual_seed(1)))
+    def decode_video(z):
+        assert z is take['samples'].tensors[0]
+        return torch.rand(*shape,generator=torch.Generator().manual_seed(1))
+    vae = SimpleNamespace(decode=decode_video)
     avae = SimpleNamespace(decode=lambda z: torch.rand(1,z.shape[-1]*800,2,generator=torch.Generator().manual_seed(2))*4,audio_sample_rate=32000)
     images,audio = mod.DaSiWaH3ContinuitySegmentDecode().decode(take,vae,avae,{'output_mode':'full','operation':'new'})
-    assert torch.equal(images,comfy_nodes.VAEDecode().decode(vae,take)[0])
+    assert torch.equal(images,CoreVAEDecode().decode(vae,take)[0])
     core_audio = vae_decode_audio(avae,take)
     assert torch.equal(audio['waveform'],core_audio['waveform']) and audio['sample_rate'] == core_audio['sample_rate']
 

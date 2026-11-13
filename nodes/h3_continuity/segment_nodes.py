@@ -132,9 +132,15 @@ class DaSiWaH3ContinuitySegmentDecode:
         reject_swapped_vaes(vae,audio_vae)
         if context.get('render_kind') != 'segment':
             # Full timeline: exactly the core VAE Decode / VAE Decode Audio results.
-            import nodes as comfy_nodes
             from comfy_extras.nodes_audio import vae_decode_audio
-            return comfy_nodes.VAEDecode().decode(vae, latent)[0], vae_decode_audio(audio_vae, latent)
+            # Match Core VAEDecode without importing the ambiguous top-level 'nodes'.
+            video = latent['samples']
+            if video.is_nested:
+                video = video.unbind()[0]
+            images = vae.decode(video)
+            if len(images.shape) == 5:
+                images = images.reshape(-1, images.shape[-3], images.shape[-2], images.shape[-1])
+            return images, vae_decode_audio(audio_vae, latent)
         video,audio = latent['samples'].tensors
         plan = segment_render_plan(video,audio,context)
         validate_segment_vaes(vae,audio_vae)
