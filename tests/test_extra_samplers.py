@@ -1,13 +1,18 @@
 """beta57 scheduler (nodes/extra_samplers.py).
 
-Run: PYTHONPATH=<ComfyUI> <venv>/bin/python -m pytest tests/test_extra_samplers.py
+Run: <venv>/bin/python -m pytest tests/test_extra_samplers.py
 """
 import importlib.util
+import sys
 from pathlib import Path
 
 import torch
 
+COMFY = str(Path(__file__).resolve().parents[2] / "ComfyUI")
+sys.path.append(COMFY)
 import comfy.samplers as samplers
+# The pack's nodes/ is a namespace package, so ComfyUI's nodes.py on sys.path would shadow it for later test modules.
+sys.path.remove(COMFY)
 
 spec = importlib.util.spec_from_file_location("extra_samplers", Path(__file__).resolve().parents[1] / "nodes" / "extra_samplers.py")
 extra = importlib.util.module_from_spec(spec)
