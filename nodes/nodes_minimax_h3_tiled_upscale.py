@@ -17,6 +17,10 @@ def target_size(video, scale):
         raise ValueError('H3 upscale scale must be finite and at least 1.')
     w = int(round(video.shape[-1] * 16 * scale / 32)) * 32
     h = int(round(video.shape[-2] * 16 * scale / 32)) * 32
+    return checked_size(video, w, h)
+
+
+def checked_size(video, w, h):
     if w < 32 or h < 32 or w % 32 or h % 32:
         raise ValueError('H3 target dimensions must be positive multiples of 32 pixels.')
     if w < video.shape[-1] * 16 or h < video.shape[-2] * 16:
@@ -265,7 +269,10 @@ class DaSiWaH3TiledUpscale:
                 continuity_soft_refine=False, continuity_mask_strength=1.0,
                 spatial_tiling=True, temporal_chunking=True,
                 spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
-                enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1):
+                enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1,
+                *, sigmas=None, sizes=None):
+        # Keyword-only, not node inputs: preset nodes (H3 Regenerate 2K) pin the schedule and
+        # the (width, height) upscale stages; the last stage is the target.
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -299,7 +306,8 @@ class DaSiWaH3TiledUpscale:
         if continuity_context is not None:
             from .h3_upscale_continuity import continuity_plan
             continuity = continuity_plan(video, audio, continuity_context)
-        width, height = target_size(video, scale)
+        stages = [target_size(video, scale)] if sizes is None else [checked_size(video, *s) for s in sizes]
+        width, height = stages[-1]
         if director_guide is not None and not isinstance(director_guide, dict):
             raise ValueError('director_guide must be a MiniMax H3 Director guide.')
         # Director Image Inpaint is a native five-frame I2V pass. Keep its
@@ -369,9 +377,10 @@ class DaSiWaH3TiledUpscale:
             for start, end in ranges:
                 mm.throw_exception_if_processing_interrupted()
                 a, z = max(0, start - halo), min(video.shape[2], end + halo)
-                part = video[:, :, a:z]
-                result = (backend.upscale(part, height // 16, width // 16) if backend is not None
-                          else resize_video(part, height // 16, width // 16))
+                result = video[:, :, a:z]
+                for w, h in stages:
+                    result = (backend.upscale(result, h // 16, w // 16) if backend is not None
+                              else resize_video(result, h // 16, w // 16))
                 upscaled[:, :, start:end] = result[:, :, start - a:end - a].to('cpu')
                 del result
         finally:
@@ -389,7 +398,8 @@ class DaSiWaH3TiledUpscale:
             positive = align_continuity_conditioning(positive, upscaled, audio_cpu, continuity)
             if negative is not None:
                 negative = align_continuity_conditioning(negative, upscaled, audio_cpu, continuity, inject_tail=False)
-        report = (f"{video.shape[-1]*16}x{video.shape[-2]*16} → {width}x{height}; "
+        via = ''.join(f'{w}x{h} → ' for w, h in stages[:-1])
+        report = (f"{video.shape[-1]*16}x{video.shape[-2]*16} → {via}{width}x{height}; "
                   f"upscale={selected}; precision={actual_precision}; {sharpness_note}; tile={plan['tile_width']}x{plan['tile_height']}px; "
                   f"overlap={plan['overlap']}px; temporal={len(ranges)} chunks; "
                   f"spatial_tiling={'on' if spatial_tiling else 'off'}; "
@@ -405,13 +415,16 @@ class DaSiWaH3TiledUpscale:
                        else '; soft_refine_mask=off')
         if denoise == 0:
             report += '; diffusion skipped (denoise=0)'
+        elif sigmas is not None:
+            report += '; sigmas=[' + ', '.join(f'{float(s):.6g}' for s in sigmas) + ']'
         from .helper_logging import log_dasiwa
         log_dasiwa('MiniMaxH3 Enhanced Upscale', report)
         if denoise == 0:
             result = dict(latent)
             result['samples'] = NestedTensor((upscaled, audio))
             return result, report
-        sigmas = BasicScheduler.execute(model, scheduler, steps, denoise)[0]
+        sigmas = (BasicScheduler.execute(model, scheduler, steps, denoise)[0] if sigmas is None
+                  else torch.as_tensor(sigmas, dtype=torch.float32))
         if sigmas.ndim != 1 or len(sigmas) < 2 or not torch.isfinite(sigmas).all() or (sigmas[:-1] < sigmas[1:]).any():
             raise ValueError('SIGMAS must be a finite, nonincreasing schedule with at least two entries.')
         sampler = sampler if sampler is not None else comfy.samplers.sampler_object(sampler_name)

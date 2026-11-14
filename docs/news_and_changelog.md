@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-13**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **New node: MiniMaxH3 • Regenerate 2K (0.5.49):** the Open-H3-Regenerate-2K refine recipe in one node. Learned latent upscale to 1080P, 2K or 4K (4K via 2K), then three Euler steps at CFG 1 on the published sigmas `0.909375, 0.857143, 0.666667, 0`, with the refiner LoRA patched onto a clone of the connected model only. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio work unchanged. A LoRA with Diffusers keys is rejected with a conversion hint instead of silently running without the refiner. Enhanced Upscale itself has no new inputs; the plan line now names intermediate upscale stages and pinned sigmas when a preset uses them. [Details](minimax_h3_tiled_upscale.md#regenerate-2k-preset)
 
 - **Continuity Segment Decode: Core import collision fixed (0.5.48):** Full timeline and uncaptured takes could fail after sampling with `module 'nodes' has no attribute 'VAEDecode'` when another package occupied that module name. Video decoding now calls the VAE directly with Core's nested-latent selection and batch flattening; native audio decoding and loudness normalization remain unchanged. New segment only and saved workflow interfaces are unchanged. ([#98](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/98))
 
@@ -225,6 +227,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.49 | 11-14 | New MiniMaxH3 • Regenerate 2K node (Open-H3-Regenerate-2K refine preset on the Enhanced Upscale core) |
 | 0.5.48 | 11-13 | Continuity Segment Decode: avoid ambiguous Core nodes import; preserve video batch handling and native audio (#98) |
 | 0.5.47 | 11-12 | H3 Enhanced Upscale: 2D latent upscaler (`2d_conv_v1`) + `upscale_sharpness` tier 1–6, 2D preferred as default model (#96) |
 | 0.5.46 | 11-12 | `beta57` scheduler in every KSampler/BasicScheduler list (own implementation, no new dependency) |

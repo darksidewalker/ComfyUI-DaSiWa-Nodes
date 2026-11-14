@@ -261,7 +261,9 @@ def test_refine_schema_and_callable_defaults_without_external_sigmas():
     assert 'sigmas' not in schema['required']
     assert 'sigmas' not in schema['optional']
     params=inspect.signature(u.DaSiWaH3TiledUpscale.upscale).parameters
-    assert 'sigmas' not in params
+    # Preset nodes pass a pinned schedule/stages; never reachable as widget or positional value.
+    for name in ['sigmas','sizes']:
+        assert params[name].kind is inspect.Parameter.KEYWORD_ONLY and params[name].default is None
     for name in ['target_width','target_height']:
         assert name not in schema['required'] and name not in schema['optional']
         assert name not in params

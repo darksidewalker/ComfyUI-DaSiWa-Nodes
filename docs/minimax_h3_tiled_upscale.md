@@ -195,6 +195,24 @@ A small exposure or color change at the join can originate in the continuation g
 
 Use a fixed seed for these comparisons. More diffusion steps or higher CFG are not an established fix. A representative output comparison is required before attributing the flicker or claiming it solved.
 
+## Regenerate 2K preset
+
+`MiniMaxH3 • Regenerate 2K` (`DaSiWaH3Regenerate2K`) reproduces the refine stage of [NVlabs Open-H3-Regenerate-2K](https://github.com/NVlabs/Sana/tree/sol-engine/models/Open-H3-Regenerate-2K) (`open_h3/pipeline.py`, `open_h3/sigmas.py`) on this node's core:
+
+| Step | Reference | This node |
+|---|---|---|
+| Upscale | author 3D latent upscaler to the target grid; above 2K via 2K | same; the `3d_conv_v1` checkpoint is the default choice, 2D and `interpolation` stay selectable |
+| Targets | 768P draft → 1920×1088 / 2560×1440 / 3840×2176, centre crop to 1080/2160 rows after decode | same grids; crop after decode if you need exactly 1080/2160 rows |
+| Refine | Euler, CFG 1, sigmas `0.909375, 0.857143, 0.666667, 0`, start `(1-σ₀)·upscaled + σ₀·noise` | same, pinned; scheduler, steps, denoise and the model shift do not apply |
+| LoRA | merged refiner + LightX2V FL2VA Turbo + LMS Sharp, strength 1 | `lora_name` + `strength` on a model clone; needs native H3 keys |
+| Audio | fixed encoded silence | the draft's own audio, returned unchanged |
+
+Inputs: `model`, `conditioning`, `latent`, `lora_name`, `strength` (default 1), `upscale_model`, `target` (default 2K), `seed`; optional `director_guide`, `vae`, `start_image`, `noise`, `continuity_context`, `spatial_tiling` (default on; off samples the full canvas like the reference). There is no `negative` input because CFG is fixed at 1.
+
+Aspect rule: drafts within 5 % of 16:9 get the exact 16:9 grid (orientation kept); other drafts keep their aspect at the target's short side (e.g. 768×768 → 1440×1440 at 2K). The node rejects a LoRA with Diffusers keys (ComfyUI would otherwise skip every key without an error and run without the refiner) and a LoRA that matches no layer. Masked latents, ControlNet conditioning and non-native models are rejected by the shared core.
+
+Model choice: the LoRA was trained on the FL2VA base; behaviour on Ref2VA and fine-tunes is not verified yet. Licence: the refiner LoRA follows the MiniMax H3 Community License; the merged Turbo and Sharp parts keep their own licences.
+
 ## Credits and reference implementations
 
 Thanks to the upstream authors for the ideas and reference code used to develop this integration:

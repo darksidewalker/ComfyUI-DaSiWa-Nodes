@@ -244,3 +244,4 @@ lorainfo/
 !/tests/test_h3_derope.py
 !/tests/test_extra_samplers.py
 !/tests/test_h3_derope_background.py
+!/tests/test_h3_regenerate.py

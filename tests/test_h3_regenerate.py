@@ -1,0 +1,182 @@
+"""CPU contract tests for DaSiWa H3 Regenerate 2K; fakes test wiring, not visual quality."""
+import importlib.util
+import inspect
+import sys
+import types
+from pathlib import Path
+
+import pytest
+import torch
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT.parent / 'ComfyUI'))
+import comfy.cli_args
+comfy.cli_args.args.cpu = True
+import comfy.lora
+import comfy.model_base
+import comfy.model_management as mm
+import folder_paths
+from comfy.nested_tensor import NestedTensor
+
+PACKAGE = '_dasiwa_h3_regenerate'
+package = types.ModuleType(PACKAGE)
+package.__path__ = [str(ROOT / 'nodes')]
+sys.modules[PACKAGE] = package
+spec = importlib.util.spec_from_file_location(PACKAGE + '.node', ROOT / 'nodes/nodes_minimax_h3_regenerate.py')
+r = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = r
+spec.loader.exec_module(r)
+u = sys.modules[PACKAGE + '.nodes_minimax_h3_tiled_upscale']
+helpers = __import__(PACKAGE + '.h3_tiled_sampling', fromlist=['*'])
+upscale = __import__(PACKAGE + '.h3_latent_upscale', fromlist=['*'])
+
+LAYER = 'diffusion_model.blocks.0.attn.out_proj'
+NATIVE_LORA = {f'{LAYER}.lora_A.weight': torch.ones(2, 4), f'{LAYER}.lora_B.weight': torch.ones(4, 2)}
+
+
+class TestH3Base:
+    pass
+
+
+class FakePatcher:
+    def __init__(self):
+        self.model = TestH3Base()
+        self.model_options = {'transformer_options': {}}
+        self.patches = []
+        self.clones = []
+
+    def model_size(self): return 0
+    def loaded_size(self): return 0
+    def current_loaded_device(self): return torch.device('cpu')
+    def set_model_unet_function_wrapper(self, wrapper): self.model_options['model_function_wrapper'] = wrapper
+
+    def clone(self):
+        cloned = FakePatcher()
+        cloned.model = self.model
+        cloned.patches = list(self.patches)
+        self.clones.append(cloned)
+        return cloned
+
+    def add_patches(self, patches, strength):
+        self.patches.append((dict(patches), strength))
+        return list(patches)
+
+
+@pytest.mark.parametrize('size,target,expected', [
+    ((1344, 768), '2K', [(2560, 1440)]),          # the reference draft
+    ((1344, 768), '1080P', [(1920, 1088)]),
+    ((1344, 768), '4K', [(2560, 1440), (3840, 2176)]),
+    ((1024, 576), '2K', [(2560, 1440)]),
+    ((768, 1344), '2K', [(1440, 2560)]),          # portrait keeps its orientation
+    ((768, 768), '2K', [(1440, 1440)]),           # non-16:9 keeps its aspect, no stretch
+    ((2560, 1440), '4K', [(3840, 2176)]),         # no same-size intermediate pass
+])
+def test_stages_follow_reference_grid(size, target, expected):
+    assert r.regenerate_stages(*size, target) == expected
+
+
+def test_sigmas_are_the_published_three_step_schedule():
+    assert r.SIGMAS == (0.909375, 6 / 7, 2 / 3, 0.0)
+
+
+def test_diffusers_keys_are_detected():
+    assert r.is_diffusers_lora({'transformer.transformer_blocks.0.attn.to_q.lora_A.weight': 0})
+    assert not r.is_diffusers_lora(NATIVE_LORA)
+
+
+@pytest.fixture
+def node(monkeypatch):
+    monkeypatch.setattr(mm, 'get_torch_device', lambda: torch.device('cpu'))
+    monkeypatch.setattr(mm, 'get_free_memory', lambda *a, **k: 64 * 1024**3)
+    monkeypatch.setattr(mm, 'unload_model_and_clones', lambda *a, **k: None)
+    monkeypatch.setattr(comfy.model_base, 'MiniMaxH3', TestH3Base)
+    monkeypatch.setattr(comfy.lora, 'model_lora_keys_unet', lambda model, key_map: {LAYER: LAYER + '.weight'})
+    monkeypatch.setattr(helpers, 'plan_tiles', lambda *a, **k: dict(tile_width=4096, tile_height=4096, overlap=0,
+                        chunk_tokens=10, temporal_overlap_tokens=5, explanation='TEST plan'))
+    instance = r.DaSiWaH3Regenerate2K()
+    instance.lora = dict(NATIVE_LORA)
+    monkeypatch.setattr(instance, 'load_lora', lambda name: instance.lora)
+    return instance
+
+
+def latent(t=22, h=48, w=84):
+    return {'samples': NestedTensor((torch.randn(1, 24, t, h, w), torch.randn(1, 32, 2, 120)))}
+
+
+def test_pinned_sigmas_euler_cfg1_and_lora_only_on_clone(node, monkeypatch):
+    calls, stages = [], []
+    name = 'minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors'
+    monkeypatch.setattr(upscale, 'upscale_model_names', lambda: [name])
+
+    class Backend:
+        temporal_halo, sharpness_tiers, dtype = 1, False, torch.float32
+        def __init__(self, *a, **k): pass
+        def upscale(self, video, h, w):
+            stages.append((h, w))
+            return u.resize_video(video, h, w)
+        def close(self): pass
+    monkeypatch.setattr(upscale, 'H3LatentUpscaler', Backend)
+
+    def sample(working, positive, negative, cfg, samples, mask, noise, sampler, sigmas, seed):
+        calls.append((working, negative, cfg, sampler, sigmas))
+        return samples
+    monkeypatch.setattr(u, 'sample_chunk', sample)
+    import comfy.samplers
+    euler = comfy.samplers.sampler_object('euler')
+    monkeypatch.setattr(comfy.samplers, 'sampler_object', lambda n: euler if n == 'euler' else pytest.fail(n))
+    model = FakePatcher()
+    source = latent()
+    out, plan = node.regenerate(model, [[torch.zeros(1, 3, 4), {}]], source, 'regen.safetensors',
+                                strength=0.8, upscale_model=name, target='4K')
+    assert model.patches == []                       # caller's generation chain stays unpatched
+    working = calls[0][0]
+    assert working.patches[0][1] == 0.8 and set(working.patches[0][0]) == {LAYER + '.weight'}
+    assert all(torch.equal(c[4], torch.tensor(r.SIGMAS)) for c in calls)
+    assert all(c[1] is None and c[2] == 1.0 and c[3] is euler for c in calls)
+    assert stages[:2] == [(90, 160), (136, 240)]     # 4K via 2K inside each temporal window
+    assert out['samples'].tensors[0].shape == (1, 24, 22, 136, 240)
+    assert out['samples'].tensors[1] is source['samples'].tensors[1]
+    assert '1344x768 → 2560x1440 → 3840x2176' in plan and 'sigmas=[0.909375, 0.857143, 0.666667, 0]' in plan
+    assert 'lora=regen.safetensors (1 layers, strength 0.8)' in plan
+
+
+@pytest.mark.parametrize('lora,match', [
+    ({'transformer.transformer_blocks.0.attn.to_q.lora_A.weight': torch.ones(2, 4)}, 'Diffusers keys'),
+    ({'unet.foo.lora_A.weight': torch.ones(2, 4), 'unet.foo.lora_B.weight': torch.ones(4, 2)}, 'matches no layer'),
+])
+def test_unusable_loras_fail_before_sampling(node, monkeypatch, lora, match):
+    node.lora = lora
+    monkeypatch.setattr(u, 'sample_chunk', lambda *a: pytest.fail('sampled'))
+    with pytest.raises(ValueError, match=match):
+        node.regenerate(FakePatcher(), [], latent(), 'x.safetensors')
+
+
+def test_non_native_model_masks_and_controlnet_are_rejected(node, monkeypatch):
+    monkeypatch.setattr(u, 'sample_chunk', lambda *a: pytest.fail('sampled'))
+    other = FakePatcher()
+    other.model = object()
+    with pytest.raises(ValueError, match='native MiniMax H3'):
+        node.regenerate(other, [], latent(), 'x')
+    masked = latent(2, 4, 4)
+    masked['noise_mask'] = torch.ones(1)
+    with pytest.raises(ValueError, match='Masked/inpaint'):
+        node.regenerate(FakePatcher(), [], masked, 'x', upscale_model='interpolation')
+    with pytest.raises(ValueError, match='ControlNet'):
+        node.regenerate(FakePatcher(), [[torch.zeros(1), {'control': object()}]], latent(2, 4, 4), 'x',
+                        upscale_model='interpolation')
+
+
+def test_schema_and_defaults(monkeypatch):
+    monkeypatch.setattr(folder_paths, 'get_filename_list', lambda kind: ['regen.safetensors'])
+    monkeypatch.setattr(upscale, 'upscale_model_names',
+                        lambda: ['x_2d_conv_v1.safetensors', 'H3/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors'])
+    schema = r.DaSiWaH3Regenerate2K.INPUT_TYPES()
+    assert list(schema['required']) == ['model', 'conditioning', 'latent', 'lora_name', 'strength',
+                                        'upscale_model', 'target', 'seed']
+    assert list(schema['optional']) == ['director_guide', 'vae', 'start_image', 'noise',
+                                        'continuity_context', 'spatial_tiling']
+    assert schema['required']['upscale_model'][1]['default'].endswith('3d_conv_v1_bf16.safetensors')
+    assert schema['required']['target'] == (['1080P', '2K', '4K'], schema['required']['target'][1])
+    assert schema['required']['target'][1]['default'] == '2K'
+    params = inspect.signature(r.DaSiWaH3Regenerate2K.regenerate).parameters
+    assert params['target'].default == '2K' and params['strength'].default == 1.0
