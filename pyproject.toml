@@ -1,6 +1,6 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
-description = "DaSiWa Custom Nodes Collection"
+description = "ComfyUI nodes for MiniMax H3 video/audio authoring, continuity and latent refinement, RTX enhancement, LLM prompting, media export and workflow utilities."
 version = "0.5.49"
 license = {file = "LICENSE"}
 dependencies = [

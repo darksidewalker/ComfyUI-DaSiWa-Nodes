@@ -197,7 +197,18 @@ Use a fixed seed for these comparisons. More diffusion steps or higher CFG are n
 
 ## Regenerate 2K preset
 
-`MiniMaxH3 • Regenerate 2K` (`DaSiWaH3Regenerate2K`) reproduces the refine stage of [NVlabs Open-H3-Regenerate-2K](https://github.com/NVlabs/Sana/tree/sol-engine/models/Open-H3-Regenerate-2K) (`open_h3/pipeline.py`, `open_h3/sigmas.py`) on this node's core:
+`MiniMaxH3 • Regenerate 2K` (`DaSiWaH3Regenerate2K`) reproduces the refine stage of [NVlabs Open-H3-Regenerate-2K](https://github.com/NVlabs/Sana/tree/sol-engine/models/Open-H3-Regenerate-2K) (`open_h3/pipeline.py`, `open_h3/sigmas.py`) using the Enhanced Upscale core. It is a separate optional node, not a mode on Enhanced Upscale; it outputs a packed AV latent and a text plan, not an encoded video. The shared implementation adds tiled/chunked execution and preserves source audio, so this is an adaptation of the recipe, not a claim of identical rendered output:
+
+### Setup and wiring
+
+1. Put the converted native-H3 refiner LoRA in `ComfyUI/models/loras/` and the learned upscaler checkpoint in `ComfyUI/models/latent_upscale_models/`. The original [published LoRA](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K) needs conversion first; select the converted file, not the Diffusers original.
+2. Connect the completed sampler's packed video/audio `LATENT` to `latent`, the plain H3 `MODEL` to `model`, and the positive H3 `CONDITIONING` to `conditioning`. Do not add Turbo/Sharp again to the refinement model; they are already merged into the refiner LoRA.
+3. Connect the returned `latent` to your AV decode chain, then send decoded frames and audio to the exporter. For Director endpoints, also connect `director_guide` and the H3 video `vae`; `start_image` provides an explicit first-frame override.
+4. With Continuity, assemble before refinement and connect the matching `continuity_context`; keep the [existing Segment Prepare/Decode or Append & Stage order](h3_continuity.md#which-option-to-use).
+
+Defaults are **2K**, **strength 1**, **seed 0** and **spatial tiling on**. The learned-upscaler picker prefers an installed 3D checkpoint, then 2D, then `interpolation`; interpolation is not the learned reference recipe. Full-canvas refinement with tiling off needs more VRAM. Temporal windows and memory planning use the shared core defaults; this node does not expose Enhanced Upscale's full control set.
+
+### Recipe and differences
 
 | Step | Reference | This node |
 |---|---|---|

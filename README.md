@@ -1,6 +1,6 @@
 # DaSiWa Custom Nodes Collection
 
-A high-performance collection of custom nodes for ComfyUI, optimized for video workflows, resolution management, and logic control. Its installed version is shown in **ComfyUI → Settings → About**.
+Custom nodes for ComfyUI covering MiniMax H3 video/audio authoring, continuity and latent refinement, RTX enhancement, LLM prompting, media export, resolution management and workflow utilities. Its installed version is shown in **ComfyUI → Settings → About**.
 
 Use **ComfyUI → Settings → Other → DaSiWa → ...** to enable or disable extra settings.
 
@@ -59,6 +59,9 @@ The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3
 - The LoRA is patched onto a clone of the connected model only; the generation chain stays untouched. Connect the plain H3 model: the merged LoRA already contains LightX2V Turbo and LMS Sharp.
 - The published LoRA has Diffusers keys and is rejected with a hint; convert it to native H3 keys first (DaSiWa Quant Station **Diffusers → H3**, exact or SVD).
 - Near-16:9 drafts get the reference grid (1344×768 → 2560×1440); other aspects keep their aspect at the target's short side. 1080P/4K are computed at 1088/2176 rows like the reference, 4K goes through 2K.
+
+- **Wiring:** completed sampler AV latent → Regenerate 2K → AV decode → video exporter; connect the plain H3 model and positive conditioning to Regenerate 2K.
+- **Defaults:** 2K target, LoRA strength 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
 
 [Regenerate 2K details →](docs/minimax_h3_tiled_upscale.md#regenerate-2k-preset)
 

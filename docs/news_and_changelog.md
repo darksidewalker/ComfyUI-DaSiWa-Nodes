@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 ## News
 
+- **Documentation and descriptions (0.5.49):** clarified Regenerate 2K setup, converted-LoRA paths, wiring, defaults, outputs and differences from the reference recipe; completed its input hover help and refreshed the collection description. No execution or workflow-interface changes.
+
 - **New node: MiniMaxH3 • Regenerate 2K (0.5.49):** the Open-H3-Regenerate-2K refine recipe in one node. Learned latent upscale to 1080P, 2K or 4K (4K via 2K), then three Euler steps at CFG 1 on the published sigmas `0.909375, 0.857143, 0.666667, 0`, with the refiner LoRA patched onto a clone of the connected model only. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio work unchanged. A LoRA with Diffusers keys is rejected with a conversion hint instead of silently running without the refiner. Enhanced Upscale itself has no new inputs; the plan line now names intermediate upscale stages and pinned sigmas when a preset uses them. [Details](minimax_h3_tiled_upscale.md#regenerate-2k-preset)
 
 - **Continuity Segment Decode: Core import collision fixed (0.5.48):** Full timeline and uncaptured takes could fail after sampling with `module 'nodes' has no attribute 'VAEDecode'` when another package occupied that module name. Video decoding now calls the VAE directly with Core's nested-latent selection and batch flattening; native audio decoding and loudness normalization remain unchanged. New segment only and saved workflow interfaces are unchanged. ([#98](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/98))
@@ -171,7 +173,7 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 - **H3 Forge: Transformers GQA compatibility (09-25, #55):** Fixed compatibility with newer Transformers versions that changed the GQA helper signature, restoring Forge operation on recent ComfyUI builds.
 
-- **Prompt Forge guide:** The [Director guide](minimax_h3_director.md#prompt-forge-writing-and-applying-a-draft) now walks through idea, model, creativity and detail choices, reference roles, draft review, applying, cancellation, and saved-history behavior. The README lists Prompt Forge as a separate major Director feature.
+- **Prompt Forge guide:** The [Director guide](minimax_h3_director.md#prompt-forge-optional) now walks through idea, model, creativity and detail choices, reference roles, draft review, applying, cancellation, and saved-history behavior. The README lists Prompt Forge as a separate major Director feature.
 
 - **H3 Forge saved drafts (09-24, 0.4.57):** Each Director keeps its last three successful Forge generations in its saved workflow. Reopen Forge to preview and apply one; **Clear history** removes drafts only, while the Director's **Clear** also clears its Forge history. [Director guide →](minimax_h3_director.md)
 

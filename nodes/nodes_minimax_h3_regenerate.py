@@ -64,18 +64,25 @@ class DaSiWaH3Regenerate2K:
                          next((n for n in names if '2d_conv' in base(n)), 'interpolation'))
         return {'required': {
             'model': ('MODEL', {'tooltip': 'Native MiniMax H3 model without Turbo/Sharp LoRAs.'}),
-            'conditioning': ('CONDITIONING',), 'latent': ('LATENT',),
+            'conditioning': ('CONDITIONING', {'tooltip': 'Positive H3 conditioning for refinement. CFG is fixed at 1; no negative conditioning is needed.'}),
+            'latent': ('LATENT', {'tooltip': 'Completed native H3 packed video+audio latent. Original audio passes through unchanged.'}),
             'lora_name': (folder_paths.get_filename_list('loras'), {
                 'tooltip': 'Open-H3-Regenerate-2K LoRA converted to native H3 keys (exact or SVD).'}),
-            'strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 2.0, 'step': 0.05}),
-            'upscale_model': (['interpolation'] + names, {'default': preferred}),
+            'strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 2.0, 'step': 0.05,
+                'tooltip': 'Refiner LoRA strength, default 1 as in the reference recipe. Zero disables the LoRA, not the three-step refinement.'}),
+            'upscale_model': (['interpolation'] + names, {'default': preferred,
+                'tooltip': 'Learned latent upscaler from latent_upscale_models. Prefers 3D, then 2D when installed; interpolation uses no learned checkpoint and differs from the reference recipe.'}),
             'target': (list(TARGETS), {'default': '2K',
                 'tooltip': '1080P/4K are computed at 1088/2176 rows like the reference; crop after decode if needed. '
                            'Near-16:9 drafts get the exact 16:9 grid, other aspects keep their aspect at this short side.'}),
-            'seed': ('INT', {'default': 0, 'min': 0, 'max': 0xffffffffffffffff, 'control_after_generate': True}),
+            'seed': ('INT', {'default': 0, 'min': 0, 'max': 0xffffffffffffffff, 'control_after_generate': True,
+                'tooltip': 'Refinement noise seed. A connected noise input supplies the noise instead.'}),
         }, 'optional': {
-            'director_guide': ('MINIMAX_H3_DIRECTOR_GUIDE',), 'vae': ('VAE',), 'start_image': ('IMAGE',),
-            'noise': ('NOISE',), 'continuity_context': ('DF_H3_CONTINUITY_CONTEXT',),
+            'director_guide': ('MINIMAX_H3_DIRECTOR_GUIDE', {'tooltip': 'Optional matching Director Guide for endpoint re-encoding at the target size; also connect the H3 video VAE.'}),
+            'vae': ('VAE', {'tooltip': 'H3 video VAE for optional endpoint image re-encoding, not the audio VAE.'}),
+            'start_image': ('IMAGE', {'tooltip': 'Optional explicit first-frame image for target-size re-encoding; requires the H3 video VAE.'}),
+            'noise': ('NOISE', {'tooltip': 'Optional ComfyUI noise source replacing the seed-generated refinement noise.'}),
+            'continuity_context': ('DF_H3_CONTINUITY_CONTEXT', {'tooltip': 'Matching Guide continuity context. Follow the Continuity assembly order; protects the old prefix from diffusion refinement.'}),
             'spatial_tiling': ('BOOLEAN', {'default': True,
                 'tooltip': 'Allow automatic spatial tiling. Off samples the full canvas like the reference (more VRAM).'}),
         }}
