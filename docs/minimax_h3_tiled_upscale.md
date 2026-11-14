@@ -208,6 +208,12 @@ Use a fixed seed for these comparisons. More diffusion steps or higher CFG are n
 
 Defaults are **2K**, **strength 1**, **seed 0** and **spatial tiling on**. The learned-upscaler picker prefers an installed 3D checkpoint, then 2D, then `interpolation`; interpolation is not the learned reference recipe. Full-canvas refinement with tiling off needs more VRAM. Temporal windows and memory planning use the shared core defaults; this node does not expose Enhanced Upscale's full control set.
 
+### Processing diagnostics
+
+From node pack 0.5.51, Hi-Res Regenerate reports `lora`, `latent-upscale` and `refine` at their actual operation boundaries. Upscale records include source/target pixel dimensions, resolution-pass index (4K via 2K) and temporal-window index/count. Refinement records include the window, three steps, CFG 1 and whether spatial splitting is actually used. Protected Continuity-only prefix windows are not reported as refined. Timings are wall time at these call boundaries, not isolated GPU benchmarks; normal ComfyUI sampling progress remains unchanged.
+
+Records distinguish started/completed/failed/cancelled; failures and cancellation preserve the original exception and cleanup. New phase records omit prompt, seed, filenames and exception payloads; existing plan/raw backend output is not generally anonymized. The executor's prompt/node IDs scope directed `dasiwa_h3_regenerate_stage` events; DEAS 0.2.29 associates them with its job. Without execution context/client ownership, only local logs are written, never a broadcast. WebSocket failures leave generation unaffected and retain local logs. Older DEAS versions ignore these optional events; older node packs provide graph-level logging only.
+
 ### Recipe and differences
 
 | Step | Reference | This node |

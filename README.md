@@ -62,6 +62,7 @@ The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3
 
 - **Wiring:** completed sampler AV latent → Hi-Res Regenerate → AV decode → video exporter; connect the plain H3 model and positive conditioning to Hi-Res Regenerate.
 - **Defaults:** 2K target, LoRA strength 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
+- **Processing logs:** LoRA preparation, latent-upscale passes/windows and refinement windows report actual starts, completions, failures or interruption. DEAS 0.2.29 can show these phases under the owning job with node pack 0.5.51; missing telemetry does not change the result.
 
 [Hi-Res Regenerate details →](docs/minimax_h3_tiled_upscale.md#hi-res-regenerate-preset)
 

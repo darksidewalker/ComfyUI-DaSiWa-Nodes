@@ -6,6 +6,7 @@ sigmas with the merged refiner LoRA. Tiling, temporal windows, Continuity, Direc
 reference tokens and draft-audio passthrough are the unchanged DaSiWaH3TiledUpscale path.
 """
 from .nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
+from .h3_regenerate_telemetry import make_telemetry, phase
 
 # open_h3/sigmas.py SCHEDULES[3]; unshifted, so the model's shift setting does not apply.
 SIGMAS = (0.909375, 0.8571428571428571, 0.6666666666666666, 0.0)
@@ -111,20 +112,22 @@ class DaSiWaH3HiResRegenerate:
             raise ValueError('Expected native H3 packed video+audio LATENT, not an IMAGE or video-only latent.')
         video = samples.tensors[0]
         stages = regenerate_stages(video.shape[-1] * 16, video.shape[-2] * 16, target)
-        lora = self.load_lora(lora_name)
-        if is_diffusers_lora(lora):
-            # ComfyUI would skip every Diffusers key silently and run without the refiner.
-            raise ValueError(f'{lora_name} has Diffusers keys. Convert it to native H3 keys first '
-                             '(Quant Station "Diffusers → H3" or DEAS tools/convert_open_h3_regenerate_lora.py).')
-        patches = comfy.lora.load_lora(comfy.lora_convert.convert_lora(lora),
-                                       comfy.lora.model_lora_keys_unet(model.model, {}))
-        if not patches:
-            raise ValueError(f'{lora_name} matches no layer of this H3 model; it is not an H3 refiner LoRA.')
-        patched = model.clone()  # the caller's model and its generation chain stay unpatched
-        patched.add_patches(patches, strength)
+        telemetry = make_telemetry()
+        with phase(telemetry, 'lora'):
+            lora = self.load_lora(lora_name)
+            if is_diffusers_lora(lora):
+                # ComfyUI would skip every Diffusers key silently and run without the refiner.
+                raise ValueError(f'{lora_name} has Diffusers keys. Convert it to native H3 keys first '
+                                 '(Quant Station "Diffusers → H3" or DEAS tools/convert_open_h3_regenerate_lora.py).')
+            patches = comfy.lora.load_lora(comfy.lora_convert.convert_lora(lora),
+                                           comfy.lora.model_lora_keys_unet(model.model, {}))
+            if not patches:
+                raise ValueError(f'{lora_name} matches no layer of this H3 model; it is not an H3 refiner LoRA.')
+            patched = model.clone()  # the caller's model and its generation chain stay unpatched
+            patched.add_patches(patches, strength)
         output, report = DaSiWaH3TiledUpscale().upscale(
             patched, conditioning, latent, upscale_model=upscale_model, steps=len(SIGMAS) - 1, denoise=1.0,
             seed=seed, director_guide=director_guide, vae=vae, start_image=start_image, cfg=1.0,
             sampler_name='euler', noise=noise, continuity_context=continuity_context,
-            spatial_tiling=spatial_tiling, sigmas=SIGMAS, sizes=stages)
+            spatial_tiling=spatial_tiling, sigmas=SIGMAS, sizes=stages, telemetry=telemetry)
         return output, f'H3 Hi-Res Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); {report}'

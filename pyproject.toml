@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-DaSiWa-Nodes"
 description = "ComfyUI nodes for MiniMax H3 video/audio authoring, continuity and latent refinement, RTX enhancement, LLM prompting, media export and workflow utilities."
-version = "0.5.50"
+version = "0.5.51"
 license = {file = "LICENSE"}
 dependencies = [
     "torch",

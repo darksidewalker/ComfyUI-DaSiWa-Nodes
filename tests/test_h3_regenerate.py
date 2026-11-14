@@ -104,7 +104,8 @@ def latent(t=22, h=48, w=84):
 
 
 def test_pinned_sigmas_euler_cfg1_and_lora_only_on_clone(node, monkeypatch):
-    calls, stages = [], []
+    calls, stages, events = [], [], []
+    monkeypatch.setattr(r, 'make_telemetry', lambda: events.append, raising=False)
     name = 'minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors'
     monkeypatch.setattr(upscale, 'upscale_model_names', lambda: [name])
 
@@ -134,6 +135,17 @@ def test_pinned_sigmas_euler_cfg1_and_lora_only_on_clone(node, monkeypatch):
     assert all(torch.equal(c[4], torch.tensor(r.SIGMAS)) for c in calls)
     assert all(c[1] is None and c[2] == 1.0 and c[3] is euler for c in calls)
     assert stages[:2] == [(90, 160), (136, 240)]     # 4K via 2K inside each temporal window
+    assert [(e['phase'], e['outcome']) for e in events[:2]] == [('lora', 'started'), ('lora', 'completed')]
+    up = [e for e in events if e['phase'] == 'latent-upscale']
+    assert [(e['pass'], e['width'], e['height'], e['outcome']) for e in up[:4]] == [
+        (1, 2560, 1440, 'started'), (1, 2560, 1440, 'completed'),
+        (2, 3840, 2176, 'started'), (2, 3840, 2176, 'completed')]
+    refine = [e for e in events if e['phase'] == 'refine']
+    assert len(refine) == len(calls) * 2
+    assert all(e['steps'] == 3 and e['cfg'] == 1.0 and e['chunk'] <= e['chunks'] for e in refine)
+    assert all(e['elapsed_ms'] >= 0 for e in events)
+    assert all(e['spatial_tiling'] and not e['spatial_split'] for e in refine)
+    assert all('regen.safetensors' not in str(e) for e in events)
     assert out['samples'].tensors[0].shape == (1, 24, 22, 136, 240)
     assert out['samples'].tensors[1] is source['samples'].tensors[1]
     assert '1344x768 → 2560x1440 → 3840x2176' in plan and 'sigmas=[0.909375, 0.857143, 0.666667, 0]' in plan
@@ -164,6 +176,108 @@ def test_non_native_model_masks_and_controlnet_are_rejected(node, monkeypatch):
     with pytest.raises(ValueError, match='ControlNet'):
         node.regenerate(FakePatcher(), [[torch.zeros(1), {'control': object()}]], latent(2, 4, 4), 'x',
                         upscale_model='interpolation')
+
+
+@pytest.mark.parametrize('phase_name', ['lora', 'latent-upscale', 'refine'])
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_phase_failure_is_reported_once_and_original_error_is_preserved(node, monkeypatch, phase_name, cancelled):
+    events = []
+    monkeypatch.setattr(r, 'make_telemetry', lambda: events.append)
+    monkeypatch.setattr(r, 'regenerate_stages', lambda *a: [(128, 64)])
+    error = mm.InterruptProcessingException() if cancelled else RuntimeError('private model path and prompt')
+
+    def fail(*args, **kwargs):
+        raise error
+
+    if phase_name == 'lora':
+        monkeypatch.setattr(node, 'load_lora', fail)
+    elif phase_name == 'latent-upscale':
+        monkeypatch.setattr(u, 'resize_video', fail)
+    else:
+        monkeypatch.setattr(u, 'sample_chunk', fail)
+    with pytest.raises(type(error)) as caught:
+        node.regenerate(FakePatcher(), [], latent(2, 4, 4), 'private.safetensors')
+    assert caught.value is error
+    affected = [e for e in events if e['phase'] == phase_name]
+    assert [e['outcome'] for e in affected] == ['started', 'cancelled' if cancelled else 'failed']
+    assert all('private' not in str(e) for e in events)
+    if phase_name != 'refine':
+        assert not any(e['phase'] == 'refine' for e in events)
+
+
+def test_continuity_prefix_is_not_reported_as_refined(node, monkeypatch):
+    events, sampled = [], []
+    monkeypatch.setattr(r, 'make_telemetry', lambda: events.append)
+    monkeypatch.setattr(r, 'regenerate_stages', lambda *a: [(128, 64)])
+    continuity_helpers = __import__(PACKAGE + '.h3_upscale_continuity', fromlist=['*'])
+    monkeypatch.setattr(continuity_helpers, 'continuity_plan', lambda *a: {
+        'refine_start_token': 10, 'explanation': 'test continuity'})
+    monkeypatch.setattr(continuity_helpers, 'align_continuity_conditioning', lambda positive, *a, **kw: positive)
+    monkeypatch.setattr(u, 'continuity_refine_mask', lambda part, *a, **kw: torch.ones_like(part))
+    def sample(model, pos, neg, cfg, samples, *args):
+        sampled.append(samples)
+        return samples
+    monkeypatch.setattr(u, 'sample_chunk', sample)
+    source = latent(22, 4, 4)
+    out, _ = node.regenerate(FakePatcher(), [], source, 'private.safetensors', continuity_context={})
+    starts = [e for e in events if e['phase'] == 'refine' and e['outcome'] == 'started']
+    assert starts and all(e['chunk'] > 1 for e in starts)
+    assert len(starts) == len(sampled)
+    assert torch.equal(out['samples'].tensors[0][:, :, :10],
+                       u.resize_video(source['samples'].tensors[0], 4, 8)[:, :, :10])
+
+
+def test_telemetry_failure_cannot_change_processing(node, monkeypatch):
+    def broken(data):
+        raise RuntimeError('diagnostic transport failed')
+    monkeypatch.setattr(r, 'make_telemetry', lambda: broken)
+    monkeypatch.setattr(r, 'regenerate_stages', lambda *a: [(128, 64)])
+    monkeypatch.setattr(u, 'sample_chunk', lambda model, pos, neg, cfg, samples, *args: samples)
+    source = latent(2, 4, 4)
+    out, _ = node.regenerate(FakePatcher(), [], source, 'private.safetensors')
+    assert out['samples'].tensors[0].shape == (1, 24, 2, 4, 8)
+    assert out['samples'].tensors[1] is source['samples'].tensors[1]
+
+
+def test_phase_transport_is_directed_scoped_private_and_best_effort(monkeypatch, caplog):
+    import uuid
+    from comfy_execution.utils import CurrentNodeContext
+    import server
+    telemetry = __import__(PACKAGE + '.h3_regenerate_telemetry', fromlist=['*'])
+    sent = []
+    instance = types.SimpleNamespace(client_id='owned-client', send_sync=lambda *args: sent.append(args))
+    monkeypatch.setattr(server.PromptServer, 'instance', instance, raising=False)
+    prompt = str(uuid.uuid4())
+    caplog.set_level('INFO')
+    with CurrentNodeContext(prompt_id=prompt, node_id='U'):
+        emit = telemetry.make_telemetry()
+        with telemetry.phase(emit, 'refine', steps=3, cfg=1.0):
+            pass
+    assert len(sent) == 2
+    assert all(event == 'dasiwa_h3_regenerate_stage' and sid == 'owned-client' for event, data, sid in sent)
+    assert all(data['prompt_id'] == prompt and data['node'] == 'U' for event, data, sid in sent)
+    assert [data['outcome'] for event, data, sid in sent] == ['started', 'completed']
+    assert 'phase=refine' in caplog.text and prompt in caplog.text
+
+    # No active executor context means local logs only, not a broadcast.
+    with telemetry.phase(telemetry.make_telemetry(), 'lora'):
+        pass
+    assert len(sent) == 2
+    instance.client_id = None
+    with CurrentNodeContext(prompt_id=prompt, node_id='U'):
+        with telemetry.phase(telemetry.make_telemetry(), 'lora'):
+            pass
+    assert len(sent) == 2
+
+    def broken(*args):
+        raise RuntimeError('private credentials and model path')
+    instance.client_id = 'owned-client'
+    instance.send_sync = broken
+    with CurrentNodeContext(prompt_id=prompt, node_id='U'):
+        with telemetry.phase(telemetry.make_telemetry(), 'lora'):
+            pass
+    assert caplog.text.count('telemetry transport unavailable') == 1
+    assert 'private credentials' not in caplog.text
 
 
 def test_schema_and_defaults(monkeypatch):

@@ -270,9 +270,10 @@ class DaSiWaH3TiledUpscale:
                 spatial_tiling=True, temporal_chunking=True,
                 spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
                 enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1,
-                *, sigmas=None, sizes=None):
+                *, sigmas=None, sizes=None, telemetry=None):
         # Keyword-only, not node inputs: preset nodes (H3 Hi-Res Regenerate) pin the schedule and
         # the (width, height) upscale stages; the last stage is the target.
+        from .h3_regenerate_telemetry import phase
         import comfy.model_management as mm
         import comfy.model_base
         import comfy.samplers
@@ -374,13 +375,16 @@ class DaSiWaH3TiledUpscale:
             actual_precision = str(backend.dtype).removeprefix('torch.') if backend is not None else 'not used (interpolation)'
             sharpness_note = (f'sharpness=t{upscale_sharpness}' if backend is not None and backend.sharpness_tiers
                               else 'sharpness=n/a (no tiers)')
-            for start, end in ranges:
+            for chunk, (start, end) in enumerate(ranges, 1):
                 mm.throw_exception_if_processing_interrupted()
                 a, z = max(0, start - halo), min(video.shape[2], end + halo)
                 result = video[:, :, a:z]
-                for w, h in stages:
-                    result = (backend.upscale(result, h // 16, w // 16) if backend is not None
-                              else resize_video(result, h // 16, w // 16))
+                for pass_index, (w, h) in enumerate(stages, 1):
+                    with phase(telemetry, 'latent-upscale', pass_index=pass_index, chunk=chunk, chunks=len(ranges),
+                               source_width=result.shape[-1] * 16, source_height=result.shape[-2] * 16,
+                               width=w, height=h):
+                        result = (backend.upscale(result, h // 16, w // 16) if backend is not None
+                                  else resize_video(result, h // 16, w // 16))
                 upscaled[:, :, start:end] = result[:, :, start - a:end - a].to('cpu')
                 del result
         finally:
@@ -440,25 +444,28 @@ class DaSiWaH3TiledUpscale:
             working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap'], coordinates='local'))
         completed = None
         try:
-            for start, end in ranges:
+            for chunk, (start, end) in enumerate(ranges, 1):
                 mm.throw_exception_if_processing_interrupted()
                 a, z = audio_window(video.shape[2], audio.shape[-1], start, end)
                 part = upscaled[:, :, start:end]
                 if continuity is not None and end <= continuity['refine_start_token']:
                     completed = append_video(completed, part, start)
                     continue
-                ac = audio_cpu[..., a:z]
-                chunk_samples = NestedTensor((part, ac))
-                video_mask = continuity_refine_mask(part, start, continuity,
-                    soft=continuity_soft_refine, strength=continuity_mask_strength)
-                mask = NestedTensor((video_mask, torch.zeros_like(ac)))
-                previous = completed
-                pc = prepare_conditioning(positive, start, end, (height // 16, width // 16), previous_video=previous)
-                nc = (prepare_conditioning(negative, start, end, (height // 16, width // 16)) if negative is not None else None)
-                chunk_noise = NestedTensor((full_noise.tensors[0][:, :, start:end], full_noise.tensors[1][..., a:z]))
-                result = sample_chunk(working, pc, nc, cfg, chunk_samples, mask, chunk_noise,
-                                      sampler, sigmas, getattr(noise, 'seed', seed))
-                completed = append_video(completed, result.tensors[0].to('cpu'), start)
+                with phase(telemetry, 'refine', chunk=chunk, chunks=len(ranges),
+                           width=width, height=height, steps=len(sigmas) - 1, cfg=cfg,
+                           spatial_tiling=spatial_tiling, spatial_split=spatial_split):
+                    ac = audio_cpu[..., a:z]
+                    chunk_samples = NestedTensor((part, ac))
+                    video_mask = continuity_refine_mask(part, start, continuity,
+                        soft=continuity_soft_refine, strength=continuity_mask_strength)
+                    mask = NestedTensor((video_mask, torch.zeros_like(ac)))
+                    previous = completed
+                    pc = prepare_conditioning(positive, start, end, (height // 16, width // 16), previous_video=previous)
+                    nc = (prepare_conditioning(negative, start, end, (height // 16, width // 16)) if negative is not None else None)
+                    chunk_noise = NestedTensor((full_noise.tensors[0][:, :, start:end], full_noise.tensors[1][..., a:z]))
+                    result = sample_chunk(working, pc, nc, cfg, chunk_samples, mask, chunk_noise,
+                                          sampler, sigmas, getattr(noise, 'seed', seed))
+                    completed = append_video(completed, result.tensors[0].to('cpu'), start)
         finally:
             # No wrapper escapes into the upstream model; drop execution-local
             # conditioning/layout/tensor references after success or cancellation.

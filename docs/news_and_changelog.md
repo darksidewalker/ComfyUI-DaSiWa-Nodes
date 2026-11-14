@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 ## News
 
+- **Hi-Res Regenerate phase diagnostics (0.5.51):** execution-scoped logs identify LoRA preparation, each latent-upscale resolution pass/window (including 4K via 2K), and each refinement window with start/completion, elapsed time, dimensions and the fixed three-step CFG-1 recipe. Failures and ComfyUI interruption are distinct and rethrow the original exception. Directed `dasiwa_h3_regenerate_stage` events let DEAS correlate phases with its job; missing context never broadcasts, and a failed telemetry transport never changes generation. Protected Continuity prefix windows are not reported as sampled. No new workflow inputs, model changes or dependencies.
+
 - **Renamed: MiniMaxH3 • Hi-Res Regenerate (0.5.50):** the former *Regenerate 2K* node is now `DaSiWaH3HiResRegenerate` / *MiniMaxH3 • Hi-Res Regenerate*, since it targets 1080P, 2K and 4K. Same inputs, defaults and behaviour; workflows saved with `DaSiWaH3Regenerate2K` must swap the node.
 
 - **Documentation and descriptions (0.5.49):** clarified Regenerate 2K setup, converted-LoRA paths, wiring, defaults, outputs and differences from the reference recipe; completed its input hover help and refreshed the collection description. No execution or workflow-interface changes.
@@ -231,6 +233,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.51 | 11-14 | H3 Hi-Res Regenerate: LoRA/upscale/refine phase logs and directed execution telemetry for DEAS; workflow interface unchanged |
 | 0.5.50 | 11-14 | MiniMaxH3 • Regenerate 2K renamed to MiniMaxH3 • Hi-Res Regenerate (`DaSiWaH3HiResRegenerate`); behaviour unchanged |
 | 0.5.49 | 11-14 | New MiniMaxH3 • Regenerate 2K node (Open-H3-Regenerate-2K refine preset on the Enhanced Upscale core) |
 | 0.5.48 | 11-13 | Continuity Segment Decode: avoid ambiguous Core nodes import; preserve video batch handling and native audio (#98) |
