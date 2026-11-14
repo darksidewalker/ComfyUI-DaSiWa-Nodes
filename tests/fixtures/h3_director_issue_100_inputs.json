@@ -1,0 +1,19 @@
+{
+  "mode": "REF2VA",
+  "prompt": "S1 is the saxophone player in <Picture 1>\n<Audio 1> is the reference audio played as-is.\n\n[Shot 1] Static camera. S1 is playing the saxophone, bubbles ejecting from the saxophone as he plays.",
+  "width": 768,
+  "height": 1152,
+  "duration": 5.4,
+  "ref_image_size": "match",
+  "timeline_data": "{\"version\":1,\"items\":[{\"id\":\"image-1794665323641-0\",\"enabled\":true,\"order\":0,\"slot\":0,\"start\":0,\"duration\":1,\"type\":\"image\",\"value\":\"03-aquarium-after-hours-sax.png\",\"thumbnail\":null,\"source_width\":688,\"source_height\":1032},{\"id\":\"audio-1794665521190-1\",\"enabled\":true,\"order\":1,\"slot\":0,\"start\":0,\"duration\":2,\"type\":\"audio\",\"value\":\"2026-10-10-19h54m52s_seed311511801_sax-loop.flac\",\"thumbnail\":null,\"trim_start\":0,\"trim_end\":null}],\"prompt_blocks\":[],\"builder_state\":{\"version\":1,\"mode\":\"REF2VA\",\"imd\":\"\",\"soundscape\":\"\",\"music\":\"\",\"duration\":5.4,\"ref\":{\"subject_defs\":[],\"summary_types\":[\"reference generation\"],\"summary_text\":\"\",\"retention\":[],\"style_line\":\"\",\"detail\":\"\",\"soundscape\":\"\",\"music\":\"\"},\"simple_prompt\":\"S1 is the saxophone player in <Picture 1>\\n<Audio 1> is the reference audio played as-is.\\n\\n[Shot 1] Static camera. S1 is playing the saxophone, bubbles ejecting from the saxophone as he plays.\",\"prompt_mode\":\"simple\"},\"resolution\":{\"input_scaling\":\"Fill and crop\"},\"continuity\":{\"capture\":false,\"output_mode\":\"full\",\"session\":\"deas\",\"version\":3,\"source_kind\":\"checkpoint\",\"source_id\":\"\",\"source_video_id\":\"\",\"source_video\":null,\"use_references\":false,\"operation\":\"new\",\"overlap_frames\":22,\"continuation_prompt\":\"S1 is the saxophone player in <Picture 1>\\n<Audio 1> is the reference audio played as-is.\\n\\n[Shot 1] Static camera. S1 is playing the saxophone, bubbles ejecting from the saxophone as he plays.\",\"idea\":\"\"},\"field_heights\":{},\"resolved_prompt\":\"S1 is the saxophone player in <Picture 1>\\n<Audio 1> is the reference audio played as-is.\\n\\n[Shot 1] Static camera. S1 is playing the saxophone, bubbles ejecting from the saxophone as he plays.\"}",
+  "builder_state": "{\"version\":1,\"mode\":\"REF2VA\",\"imd\":\"\",\"soundscape\":\"\",\"music\":\"\",\"duration\":5.4,\"ref\":{\"subject_defs\":[],\"summary_types\":[\"reference generation\"],\"summary_text\":\"\",\"retention\":[],\"style_line\":\"\",\"detail\":\"\",\"soundscape\":\"\",\"music\":\"\"},\"simple_prompt\":\"S1 is the saxophone player in <Picture 1>\\n<Audio 1> is the reference audio played as-is.\\n\\n[Shot 1] Static camera. S1 is playing the saxophone, bubbles ejecting from the saxophone as he plays.\",\"prompt_mode\":\"simple\"}",
+  "frame_rate": 24.0,
+  "fl2va_model": [
+    "1",
+    0
+  ],
+  "ref2va_model": [
+    "1",
+    0
+  ]
+}

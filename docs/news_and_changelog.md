@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 ## News
 
+- **H3 Director: API workflow import preserves authoring state (0.5.54):** importing an API-format graph no longer lets duration/frame-rate callbacks overwrite its prompt or reference timeline with fresh-node defaults. The Director restores its builder before ComfyUI snapshots the imported workflow and preserves explicit width/height when an API producer supplies only input scaling. Directors nested in subgraphs are restored as well. Visual workflow reloads and backend-only API execution keep the same input contract; this also covers DEAS-authored graphs. ([#100](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/100))
+
 - **H3 refinement: stale loaded-model entries skipped (0.5.53):** Hi-Res Regenerate and Enhanced Upscale no longer crash in memory planning when ComfyUI's loaded-model weakrefs return `None` after a patcher is released. Valid resident weights, deduplication, dependency exclusions and memory caps are unchanged. DEAS uses the same nodes and receives the fix through a node-pack update; no graph or input changes. This fixes the planning crash, not the underlying model-reference leak warnings. ([#99](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/99))
 
 - **Hi-Res Regenerate at input resolution (0.5.52):** appended target `Original` refines the incoming latent at its exact existing canvas, without a learned-upscaler load or resize. The saved upscaler selection is ignored in this mode; the native refiner LoRA, three pinned Euler steps, CFG 1, model cloning, original audio and Continuity behavior stay intact. LoRA/refine telemetry remains active without inventing an upscale phase. Existing targets and widget ordering/defaults are unchanged.
@@ -237,6 +239,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.54 | 11-14 | H3 Director API import preserves prompt, reference timeline, builder and explicit canvas (#100) |
 | 0.5.53 | 11-14 | H3 refinement memory planning skips expired loaded-model weakrefs; fixes #99 for Regenerate and Enhanced Upscale |
 | 0.5.52 | 11-14 | H3 Hi-Res Regenerate: appended Original target refines at input resolution without learned upscaling |
 | 0.5.51 | 11-14 | H3 Hi-Res Regenerate: LoRA/upscale/refine phase logs and directed execution telemetry for DEAS; workflow interface unchanged |

@@ -6,6 +6,7 @@ import { forgeReferences, refPromptFields, refTemplate, inheritedDefinitions, re
 import { CONTINUITY_DEFAULTS as DEFAULT_CONTINUITY, continuityTiming, normalizeContinuity, installSegmentGraphValidation, newContinuitySession, sourceId as continuitySourceId } from "./minimax_h3_continuity.js";
 
 let h3VaeErrorPopupInstalled = false;
+let loadingGraph = false;
 
 function installH3VaeErrorPopup() {
   if (h3VaeErrorPopupInstalled) return;
@@ -320,7 +321,7 @@ function install(node) {
     builderState.prompt_mode = "simple";
   }
   migratePromptToSingleField();
-  const emit = () => { continuityState(); builderState.mode = mode(); const duration = Number(node.widgets?.find(w => w.name === "duration")?.value); if (Number.isFinite(duration)) builderState.duration = duration; const resolved = builderPromptForWidget(builderState, mode()); if (promptWidget && promptWidget.value !== resolved) { promptWidget.value = resolved; promptWidget.callback?.(resolved); } state.field_heights = { ...fieldHeights }; state.builder_state = builderState; state.resolved_prompt = resolved; dataWidget.value = JSON.stringify(state); dataWidget.callback?.(dataWidget.value); if (builderWidget) { builderWidget.value = JSON.stringify(builderState); builderWidget.callback?.(builderWidget.value); } node.graph?.setDirtyCanvas(true, true); };
+  const emit = () => { if (loadingGraph) return; continuityState(); builderState.mode = mode(); const duration = Number(node.widgets?.find(w => w.name === "duration")?.value); if (Number.isFinite(duration)) builderState.duration = duration; const resolved = builderPromptForWidget(builderState, mode()); if (promptWidget && promptWidget.value !== resolved) { promptWidget.value = resolved; promptWidget.callback?.(resolved); } state.field_heights = { ...fieldHeights }; state.builder_state = builderState; state.resolved_prompt = resolved; dataWidget.value = JSON.stringify(state); dataWidget.callback?.(dataWidget.value); if (builderWidget) { builderWidget.value = JSON.stringify(builderState); builderWidget.callback?.(builderWidget.value); } node.graph?.setDirtyCanvas(true, true); };
   const refModLibrary = { loaded: false, loading: false, entries: [], error: "" };
   let refModPromptField = null;
   let refModActiveBadge = null;
@@ -1744,7 +1745,7 @@ function install(node) {
     if (settings.resolution === "custom") { const pixels = Math.max(.01, Number(settings.custom_mp) || 1) * 1024 * 1024; const h = Math.sqrt(pixels / aspect); return [snap16(h * aspect), snap16(h)]; }
     const pixels = Number(RESOLUTION_PRESETS[settings.resolution]) * 1024 * 1024; const h = Math.sqrt(pixels / aspect); return [snap16(h * aspect), snap16(h)];
   };
-  const applyResolution = () => { if (hasExternalCanvas()) return; const canvas = resolveCanvas(resolutionState()); if (canvas) setCanvasWidgets(...canvas); };
+  const applyResolution = () => { if (loadingGraph || hasExternalCanvas()) return; const canvas = resolveCanvas(resolutionState()); if (canvas) setCanvasWidgets(...canvas); };
 
   const fileInput = document.createElement("input"); fileInput.type = "file"; fileInput.multiple = true; fileInput.accept = "image/*,video/*,audio/*"; fileInput.hidden = true;
   fileInput.onchange = async () => { for (const file of fileInput.files || []) await acceptFile(file); fileInput.value = ""; };
@@ -2028,7 +2029,10 @@ function install(node) {
     if (!syncingNodeBounds) syncNodeBounds("grow");
   };
   const restorePersistedState = () => {
+    if (loadingGraph) return;
     state = parseState(dataWidget.value);
+    // API producers may specify only input scaling; keep their explicit canvas.
+    if (!state.resolution?.resolution) state.resolution = { ...state.resolution, resolution: "custom", custom_mode: "fixed", custom_width: Number(widthWidget?.value), custom_height: Number(heightWidget?.value) };
     for (const key of Object.keys(fieldHeights)) delete fieldHeights[key];
     for (const [key, value] of Object.entries(state.field_heights || {})) {
       const height = Number(value);
@@ -2096,7 +2100,7 @@ function install(node) {
       requestAnimationFrame(render);
     }
   };
-  node.__dasiwaH3RestorePersistedState = () => requestAnimationFrame(restorePersistedState);
+  node.__dasiwaH3RestorePersistedState = restorePersistedState;
   node.__dasiwaH3State = () => state; node.__dasiwaH3Render = render;
   // H3 Forge (js/minimax_h3_forge.js) reads the timeline from here and writes
   // its result back through apply(), so the builder fields, the Simple box and
@@ -2244,6 +2248,17 @@ installSegmentGraphValidation(app);
 
 app.registerExtension({
   name: "DaSiWa.MiniMaxH3Director",
+  beforeLoadGraph() { loadingGraph = true; },
+  afterConfigureGraph() {
+    loadingGraph = false;
+    // API imports skip loadedGraphNode; restore before the host saves its snapshot.
+    // Recurse: loadingGraph also suppressed loadedGraphNode restores inside subgraphs.
+    const seen = new Set();
+    const visit = graph => { if (!graph || seen.has(graph)) return; seen.add(graph); for (const node of graph._nodes || []) { node.__dasiwaH3RestorePersistedState?.(); visit(node.subgraph); } };
+    visit(app.graph);
+  },
+  afterLoadGraph() { loadingGraph = false; },
+  onGraphLoadError() { loadingGraph = false; },
   nodeCreated(node) {
     if (node.comfyClass === "MiniMaxH3Director") install(node);
   },
