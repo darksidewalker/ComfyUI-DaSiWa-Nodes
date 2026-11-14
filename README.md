@@ -60,6 +60,7 @@ The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3
 - The published LoRA has Diffusers keys and is rejected with a hint; convert it to native H3 keys first (DaSiWa Quant Station **Diffusers → H3**, exact or SVD).
 - Near-16:9 drafts get the reference grid (1344×768 → 2560×1440); other aspects keep their aspect at the target's short side. 1080P/4K are computed at 1088/2176 rows like the reference, 4K goes through 2K.
 
+- **Original target:** regenerate at the incoming draft’s exact resolution, without a learned upscaler or resize; the Regenerate LoRA and three CFG-1 steps still apply. Details can change even though the canvas does not.
 - **Wiring:** completed sampler AV latent → Hi-Res Regenerate → AV decode → video exporter; connect the plain H3 model and positive conditioning to Hi-Res Regenerate.
 - **Defaults:** 2K target, LoRA strength 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
 - **Processing logs:** LoRA preparation, latent-upscale passes/windows and refinement windows report actual starts, completions, failures or interruption. DEAS 0.2.29 can show these phases under the owning job with node pack 0.5.51; missing telemetry does not change the result.

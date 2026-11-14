@@ -208,6 +208,12 @@ Use a fixed seed for these comparisons. More diffusion steps or higher CFG are n
 
 Defaults are **2K**, **strength 1**, **seed 0** and **spatial tiling on**. The learned-upscaler picker prefers an installed 3D checkpoint, then 2D, then `interpolation`; interpolation is not the learned reference recipe. Full-canvas refinement with tiling off needs more VRAM. Temporal windows and memory planning use the shared core defaults; this node does not expose Enhanced Upscale's full control set.
 
+### Regenerate only at input resolution
+
+Target **Original** (0.5.52) keeps the incoming packed video latent’s exact spatial dimensions and applies only the refiner LoRA’s pinned three Euler steps at CFG 1. The `upscale_model` widget remains in its original serialized position but is ignored for this target; no learned upscaler is loaded and no resize is performed. Audio still passes through unchanged, and Continuity protection and optional endpoint conditioning use that same canvas. LoRA and refinement telemetry remain active; no upscale operation is reported for this mode. Original refers to this node’s input draft, not necessarily the source reference picture. Regeneration can reinterpret details; unchanged resolution is not pixel-preserving enhancement.
+
+Existing 1080P/2K/4K targets and the 2K default remain unchanged. To use this mode in DEAS, select **Regenerate only, keep input resolution** in H3 Hi-Res Regenerate’s target selector (DEAS 0.2.30).
+
 ### Processing diagnostics
 
 From node pack 0.5.51, Hi-Res Regenerate reports `lora`, `latent-upscale` and `refine` at their actual operation boundaries. Upscale records include source/target pixel dimensions, resolution-pass index (4K via 2K) and temporal-window index/count. Refinement records include the window, three steps, CFG 1 and whether spatial splitting is actually used. Protected Continuity-only prefix windows are not reported as refined. Timings are wall time at these call boundaries, not isolated GPU benchmarks; normal ComfyUI sampling progress remains unchanged.

@@ -380,6 +380,8 @@ class DaSiWaH3TiledUpscale:
                 a, z = max(0, start - halo), min(video.shape[2], end + halo)
                 result = video[:, :, a:z]
                 for pass_index, (w, h) in enumerate(stages, 1):
+                    if backend is None and (result.shape[-1] * 16, result.shape[-2] * 16) == (w, h):
+                        continue  # Same-size interpolation is a no-op; a learned model at x1 still runs.
                     with phase(telemetry, 'latent-upscale', pass_index=pass_index, chunk=chunk, chunks=len(ranges),
                                source_width=result.shape[-1] * 16, source_height=result.shape[-2] * 16,
                                width=w, height=h):

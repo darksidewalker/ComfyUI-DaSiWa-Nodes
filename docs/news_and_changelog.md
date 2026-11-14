@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 ## News
 
+- **Hi-Res Regenerate at input resolution (0.5.52):** appended target `Original` refines the incoming latent at its exact existing canvas, without a learned-upscaler load or resize. The saved upscaler selection is ignored in this mode; the native refiner LoRA, three pinned Euler steps, CFG 1, model cloning, original audio and Continuity behavior stay intact. LoRA/refine telemetry remains active without inventing an upscale phase. Existing targets and widget ordering/defaults are unchanged.
+
 - **Hi-Res Regenerate phase diagnostics (0.5.51):** execution-scoped logs identify LoRA preparation, each latent-upscale resolution pass/window (including 4K via 2K), and each refinement window with start/completion, elapsed time, dimensions and the fixed three-step CFG-1 recipe. Failures and ComfyUI interruption are distinct and rethrow the original exception. Directed `dasiwa_h3_regenerate_stage` events let DEAS correlate phases with its job; missing context never broadcasts, and a failed telemetry transport never changes generation. Protected Continuity prefix windows are not reported as sampled. No new workflow inputs, model changes or dependencies.
 
 - **Renamed: MiniMaxH3 • Hi-Res Regenerate (0.5.50):** the former *Regenerate 2K* node is now `DaSiWaH3HiResRegenerate` / *MiniMaxH3 • Hi-Res Regenerate*, since it targets 1080P, 2K and 4K. Same inputs, defaults and behaviour; workflows saved with `DaSiWaH3Regenerate2K` must swap the node.
@@ -233,6 +235,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.52 | 11-14 | H3 Hi-Res Regenerate: appended Original target refines at input resolution without learned upscaling |
 | 0.5.51 | 11-14 | H3 Hi-Res Regenerate: LoRA/upscale/refine phase logs and directed execution telemetry for DEAS; workflow interface unchanged |
 | 0.5.50 | 11-14 | MiniMaxH3 • Regenerate 2K renamed to MiniMaxH3 • Hi-Res Regenerate (`DaSiWaH3HiResRegenerate`); behaviour unchanged |
 | 0.5.49 | 11-14 | New MiniMaxH3 • Regenerate 2K node (Open-H3-Regenerate-2K refine preset on the Enhanced Upscale core) |

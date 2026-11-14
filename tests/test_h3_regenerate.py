@@ -103,6 +103,47 @@ def latent(t=22, h=48, w=84):
     return {'samples': NestedTensor((torch.randn(1, 24, t, h, w), torch.randn(1, 32, 2, 120)))}
 
 
+def test_original_target_refines_at_input_size_without_upscale(node, monkeypatch):
+    events, calls = [], []
+    monkeypatch.setattr(r, 'make_telemetry', lambda: events.append)
+    monkeypatch.setattr(upscale, 'H3LatentUpscaler', lambda *a, **k: pytest.fail('loaded unused upscaler'))
+    monkeypatch.setattr(u, 'resize_video', lambda *a: pytest.fail('resized Original target'))
+    def sample(working, positive, negative, cfg, samples, mask, noise, sampler, sigmas, seed):
+        calls.append((working, cfg, sigmas))
+        return samples
+    monkeypatch.setattr(u, 'sample_chunk', sample)
+    source, model = latent(2, 6, 10), FakePatcher()
+    out, report = node.regenerate(model, [], source, 'regen.safetensors',
+                                  target='Original', upscale_model='missing-unused.safetensors')
+    assert out['samples'].tensors[0].shape == source['samples'].tensors[0].shape
+    assert out['samples'].tensors[1] is source['samples'].tensors[1]
+    assert model.patches == [] and calls
+    assert all(cfg == 1.0 and torch.equal(sigmas, torch.tensor(r.SIGMAS)) for _,cfg,sigmas in calls)
+    assert [e['phase'] for e in events] == ['lora','lora','refine','refine']
+    assert all(e['width'] == 160 and e['height'] == 96 for e in events if e['phase'] == 'refine')
+    assert r.regenerate_size(160,96,'Original') == (160,96)
+    assert r.regenerate_stages(160,96,'Original') == [(160,96)]
+    assert '160x96 → 160x96' in report
+
+
+def test_learned_upscaler_still_runs_at_same_size(node, monkeypatch):
+    stages, name = [], 'up.safetensors'
+    monkeypatch.setattr(upscale, 'upscale_model_names', lambda: [name])
+    class Backend:
+        temporal_halo, sharpness_tiers, dtype = 0, False, torch.float32
+        def __init__(self, *a, **k): pass
+        def upscale(self, video, h, w):
+            stages.append((h, w))
+            return video
+        def close(self): pass
+    monkeypatch.setattr(upscale, 'H3LatentUpscaler', Backend)
+    monkeypatch.setattr(u, 'sample_chunk', lambda working, positive, negative, cfg, samples, *a: samples)
+    u.DaSiWaH3TiledUpscale().upscale(FakePatcher(), [], latent(2, 6, 10), upscale_model=name, steps=3, denoise=1.0,
+                                     seed=0, cfg=1.0, sampler_name='euler', sigmas=torch.tensor(r.SIGMAS),
+                                     sizes=[(160, 96)])
+    assert stages == [(6, 10)]
+
+
 def test_pinned_sigmas_euler_cfg1_and_lora_only_on_clone(node, monkeypatch):
     calls, stages, events = [], [], []
     monkeypatch.setattr(r, 'make_telemetry', lambda: events.append, raising=False)
@@ -290,7 +331,7 @@ def test_schema_and_defaults(monkeypatch):
     assert list(schema['optional']) == ['director_guide', 'vae', 'start_image', 'noise',
                                         'continuity_context', 'spatial_tiling']
     assert schema['required']['upscale_model'][1]['default'].endswith('3d_conv_v1_bf16.safetensors')
-    assert schema['required']['target'] == (['1080P', '2K', '4K'], schema['required']['target'][1])
+    assert schema['required']['target'] == (['1080P', '2K', '4K', 'Original'], schema['required']['target'][1])
     assert schema['required']['target'][1]['default'] == '2K'
     params = inspect.signature(r.DaSiWaH3HiResRegenerate.regenerate).parameters
     assert params['target'].default == '2K' and params['strength'].default == 1.0

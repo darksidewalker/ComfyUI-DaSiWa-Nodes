@@ -16,6 +16,8 @@ TARGETS = {'1080P': (1920, 1088), '2K': (2560, 1440), '4K': (3840, 2176)}
 
 def regenerate_size(width, height, target):
     """Pixel target for a draft: upstream's 16:9 grid for near-16:9 drafts, else the short side kept."""
+    if target == 'Original':
+        return width, height
     long_side, short_side = TARGETS[target]
     portrait = height > width
     aspect = max(width, height) / min(width, height)
@@ -72,10 +74,11 @@ class DaSiWaH3HiResRegenerate:
             'strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 2.0, 'step': 0.05,
                 'tooltip': 'Refiner LoRA strength, default 1 as in the reference recipe. Zero disables the LoRA, not the three-step refinement.'}),
             'upscale_model': (['interpolation'] + names, {'default': preferred,
-                'tooltip': 'Learned latent upscaler from latent_upscale_models. Prefers 3D, then 2D when installed; interpolation uses no learned checkpoint and differs from the reference recipe.'}),
-            'target': (list(TARGETS), {'default': '2K',
+                'tooltip': 'Learned latent upscaler from latent_upscale_models. Prefers 3D, then 2D when installed; interpolation uses no learned checkpoint and differs from the reference recipe. Ignored for target Original.'}),
+            'target': (list(TARGETS) + ['Original'], {'default': '2K',
                 'tooltip': '1080P/4K are computed at 1088/2176 rows like the reference; crop after decode if needed. '
-                           'Near-16:9 drafts get the exact 16:9 grid, other aspects keep their aspect at this short side.'}),
+                           'Near-16:9 drafts get the exact 16:9 grid, other aspects keep their aspect at this short side. '
+                           'Original regenerates at the input draft resolution without resizing or loading an upscaler.'}),
             'seed': ('INT', {'default': 0, 'min': 0, 'max': 0xffffffffffffffff, 'control_after_generate': True,
                 'tooltip': 'Refinement noise seed. A connected noise input supplies the noise instead.'}),
         }, 'optional': {
@@ -105,7 +108,7 @@ class DaSiWaH3HiResRegenerate:
         import comfy.model_base
         if not isinstance(model.model, comfy.model_base.MiniMaxH3):
             raise ValueError('DaSiWa H3 Hi-Res Regenerate requires a native MiniMax H3 model.')
-        if target not in TARGETS:
+        if target not in TARGETS and target != 'Original':
             raise ValueError(f'Unknown H3 Hi-Res Regenerate target: {target}')
         samples = latent.get('samples')
         if not getattr(samples, 'is_nested', False) or len(samples.tensors) != 2:
@@ -126,7 +129,8 @@ class DaSiWaH3HiResRegenerate:
             patched = model.clone()  # the caller's model and its generation chain stay unpatched
             patched.add_patches(patches, strength)
         output, report = DaSiWaH3TiledUpscale().upscale(
-            patched, conditioning, latent, upscale_model=upscale_model, steps=len(SIGMAS) - 1, denoise=1.0,
+            patched, conditioning, latent, upscale_model='interpolation' if target == 'Original' else upscale_model,
+            steps=len(SIGMAS) - 1, denoise=1.0,
             seed=seed, director_guide=director_guide, vae=vae, start_image=start_image, cfg=1.0,
             sampler_name='euler', noise=noise, continuity_context=continuity_context,
             spatial_tiling=spatial_tiling, sigmas=SIGMAS, sizes=stages, telemetry=telemetry)
