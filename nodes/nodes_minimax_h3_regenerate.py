@@ -1,4 +1,4 @@
-"""MiniMax H3 Regenerate 2K: the Open-H3-Regenerate-2K refine recipe on the Enhanced Upscale core.
+"""MiniMax H3 Hi-Res Regenerate: the Open-H3-Regenerate-2K refine recipe on the Enhanced Upscale core.
 
 Reference: NVlabs/Sana sol-engine models/Open-H3-Regenerate-2K (open_h3/pipeline.py, sigmas.py).
 Learned latent upscale to the target grid (4K via 2K), then three Euler steps at CFG 1 on pinned
@@ -40,7 +40,7 @@ def is_diffusers_lora(state_dict):
     return any(k.startswith('transformer.') or k.startswith('transformer_blocks.') for k in state_dict)
 
 
-class DaSiWaH3Regenerate2K:
+class DaSiWaH3HiResRegenerate:
     CATEGORY = 'DaSiWa/MiniMax H3'
     FUNCTION = 'regenerate'
     RETURN_TYPES = ('LATENT', 'STRING')
@@ -103,9 +103,9 @@ class DaSiWaH3Regenerate2K:
         import comfy.lora_convert
         import comfy.model_base
         if not isinstance(model.model, comfy.model_base.MiniMaxH3):
-            raise ValueError('DaSiWa H3 Regenerate 2K requires a native MiniMax H3 model.')
+            raise ValueError('DaSiWa H3 Hi-Res Regenerate requires a native MiniMax H3 model.')
         if target not in TARGETS:
-            raise ValueError(f'Unknown H3 Regenerate target: {target}')
+            raise ValueError(f'Unknown H3 Hi-Res Regenerate target: {target}')
         samples = latent.get('samples')
         if not getattr(samples, 'is_nested', False) or len(samples.tensors) != 2:
             raise ValueError('Expected native H3 packed video+audio LATENT, not an IMAGE or video-only latent.')
@@ -127,4 +127,4 @@ class DaSiWaH3Regenerate2K:
             seed=seed, director_guide=director_guide, vae=vae, start_image=start_image, cfg=1.0,
             sampler_name='euler', noise=noise, continuity_context=continuity_context,
             spatial_tiling=spatial_tiling, sigmas=SIGMAS, sizes=stages)
-        return output, f'H3 Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); {report}'
+        return output, f'H3 Hi-Res Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); {report}'

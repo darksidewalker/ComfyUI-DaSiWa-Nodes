@@ -85,7 +85,7 @@ body:
         - "MiniMaxH3 • Transition Render"
         - "MiniMaxH3 Cache"
         - "MiniMaxH3 Enhanced Upscale"
-        - "MiniMaxH3 • Regenerate 2K"
+        - "MiniMaxH3 • Hi-Res Regenerate"
         - "MiniMaxH3 • De-rope Prepare"
         - "MiniMaxH3 • De-rope Recover"
         - "Tiled Diffusion (Image)"

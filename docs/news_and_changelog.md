@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-14**. Older history lives in the 
 
 ## News
 
+- **Renamed: MiniMaxH3 • Hi-Res Regenerate (0.5.50):** the former *Regenerate 2K* node is now `DaSiWaH3HiResRegenerate` / *MiniMaxH3 • Hi-Res Regenerate*, since it targets 1080P, 2K and 4K. Same inputs, defaults and behaviour; workflows saved with `DaSiWaH3Regenerate2K` must swap the node.
+
 - **Documentation and descriptions (0.5.49):** clarified Regenerate 2K setup, converted-LoRA paths, wiring, defaults, outputs and differences from the reference recipe; completed its input hover help and refreshed the collection description. No execution or workflow-interface changes.
 
 - **New node: MiniMaxH3 • Regenerate 2K (0.5.49):** the Open-H3-Regenerate-2K refine recipe in one node. Learned latent upscale to 1080P, 2K or 4K (4K via 2K), then three Euler steps at CFG 1 on the published sigmas `0.909375, 0.857143, 0.666667, 0`, with the refiner LoRA patched onto a clone of the connected model only. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio work unchanged. A LoRA with Diffusers keys is rejected with a conversion hint instead of silently running without the refiner. Enhanced Upscale itself has no new inputs; the plan line now names intermediate upscale stages and pinned sigmas when a preset uses them. [Details](minimax_h3_tiled_upscale.md#regenerate-2k-preset)
@@ -229,6 +231,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.50 | 11-14 | MiniMaxH3 • Regenerate 2K renamed to MiniMaxH3 • Hi-Res Regenerate (`DaSiWaH3HiResRegenerate`); behaviour unchanged |
 | 0.5.49 | 11-14 | New MiniMaxH3 • Regenerate 2K node (Open-H3-Regenerate-2K refine preset on the Enhanced Upscale core) |
 | 0.5.48 | 11-13 | Continuity Segment Decode: avoid ambiguous Core nodes import; preserve video batch handling and native audio (#98) |
 | 0.5.47 | 11-12 | H3 Enhanced Upscale: 2D latent upscaler (`2d_conv_v1`) + `upscale_sharpness` tier 1–6, 2D preferred as default model (#96) |

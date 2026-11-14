@@ -52,7 +52,7 @@ One node that upscales a completed MiniMax H3 video/audio latent and refines it 
 
 [Upscaler wiring, sockets, checkpoint selection and limits →](docs/minimax_h3_tiled_upscale.md) · [Continuity setup, source import and timing →](docs/h3_continuity.md)
 
-### 🔍 MiniMaxH3 • Regenerate 2K
+### 🔍 MiniMaxH3 • Hi-Res Regenerate
 
 The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K) refine recipe as one node: learned latent upscale to **1080P / 2K / 4K**, then three Euler steps at CFG 1 on the published sigmas with the refiner LoRA. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio behave the same.
 
@@ -60,10 +60,10 @@ The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3
 - The published LoRA has Diffusers keys and is rejected with a hint; convert it to native H3 keys first (DaSiWa Quant Station **Diffusers → H3**, exact or SVD).
 - Near-16:9 drafts get the reference grid (1344×768 → 2560×1440); other aspects keep their aspect at the target's short side. 1080P/4K are computed at 1088/2176 rows like the reference, 4K goes through 2K.
 
-- **Wiring:** completed sampler AV latent → Regenerate 2K → AV decode → video exporter; connect the plain H3 model and positive conditioning to Regenerate 2K.
+- **Wiring:** completed sampler AV latent → Hi-Res Regenerate → AV decode → video exporter; connect the plain H3 model and positive conditioning to Hi-Res Regenerate.
 - **Defaults:** 2K target, LoRA strength 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
 
-[Regenerate 2K details →](docs/minimax_h3_tiled_upscale.md#regenerate-2k-preset)
+[Hi-Res Regenerate details →](docs/minimax_h3_tiled_upscale.md#hi-res-regenerate-preset)
 
 ---
 

@@ -1,4 +1,4 @@
-"""CPU contract tests for DaSiWa H3 Regenerate 2K; fakes test wiring, not visual quality."""
+"""CPU contract tests for DaSiWa H3 Hi-Res Regenerate; fakes test wiring, not visual quality."""
 import importlib.util
 import inspect
 import sys
@@ -93,7 +93,7 @@ def node(monkeypatch):
     monkeypatch.setattr(comfy.lora, 'model_lora_keys_unet', lambda model, key_map: {LAYER: LAYER + '.weight'})
     monkeypatch.setattr(helpers, 'plan_tiles', lambda *a, **k: dict(tile_width=4096, tile_height=4096, overlap=0,
                         chunk_tokens=10, temporal_overlap_tokens=5, explanation='TEST plan'))
-    instance = r.DaSiWaH3Regenerate2K()
+    instance = r.DaSiWaH3HiResRegenerate()
     instance.lora = dict(NATIVE_LORA)
     monkeypatch.setattr(instance, 'load_lora', lambda name: instance.lora)
     return instance
@@ -170,7 +170,7 @@ def test_schema_and_defaults(monkeypatch):
     monkeypatch.setattr(folder_paths, 'get_filename_list', lambda kind: ['regen.safetensors'])
     monkeypatch.setattr(upscale, 'upscale_model_names',
                         lambda: ['x_2d_conv_v1.safetensors', 'H3/minimax_h3_latent_upscaler_3d_conv_v1_bf16.safetensors'])
-    schema = r.DaSiWaH3Regenerate2K.INPUT_TYPES()
+    schema = r.DaSiWaH3HiResRegenerate.INPUT_TYPES()
     assert list(schema['required']) == ['model', 'conditioning', 'latent', 'lora_name', 'strength',
                                         'upscale_model', 'target', 'seed']
     assert list(schema['optional']) == ['director_guide', 'vae', 'start_image', 'noise',
@@ -178,5 +178,5 @@ def test_schema_and_defaults(monkeypatch):
     assert schema['required']['upscale_model'][1]['default'].endswith('3d_conv_v1_bf16.safetensors')
     assert schema['required']['target'] == (['1080P', '2K', '4K'], schema['required']['target'][1])
     assert schema['required']['target'][1]['default'] == '2K'
-    params = inspect.signature(r.DaSiWaH3Regenerate2K.regenerate).parameters
+    params = inspect.signature(r.DaSiWaH3HiResRegenerate.regenerate).parameters
     assert params['target'].default == '2K' and params['strength'].default == 1.0

@@ -271,7 +271,7 @@ class DaSiWaH3TiledUpscale:
                 spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
                 enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1,
                 *, sigmas=None, sizes=None):
-        # Keyword-only, not node inputs: preset nodes (H3 Regenerate 2K) pin the schedule and
+        # Keyword-only, not node inputs: preset nodes (H3 Hi-Res Regenerate) pin the schedule and
         # the (width, height) upscale stages; the last stage is the target.
         import comfy.model_management as mm
         import comfy.model_base

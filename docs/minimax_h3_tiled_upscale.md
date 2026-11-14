@@ -195,9 +195,9 @@ A small exposure or color change at the join can originate in the continuation g
 
 Use a fixed seed for these comparisons. More diffusion steps or higher CFG are not an established fix. A representative output comparison is required before attributing the flicker or claiming it solved.
 
-## Regenerate 2K preset
+## Hi-Res Regenerate preset
 
-`MiniMaxH3 • Regenerate 2K` (`DaSiWaH3Regenerate2K`) reproduces the refine stage of [NVlabs Open-H3-Regenerate-2K](https://github.com/NVlabs/Sana/tree/sol-engine/models/Open-H3-Regenerate-2K) (`open_h3/pipeline.py`, `open_h3/sigmas.py`) using the Enhanced Upscale core. It is a separate optional node, not a mode on Enhanced Upscale; it outputs a packed AV latent and a text plan, not an encoded video. The shared implementation adds tiled/chunked execution and preserves source audio, so this is an adaptation of the recipe, not a claim of identical rendered output:
+`MiniMaxH3 • Hi-Res Regenerate` (`DaSiWaH3HiResRegenerate`) reproduces the refine stage of [NVlabs Open-H3-Regenerate-2K](https://github.com/NVlabs/Sana/tree/sol-engine/models/Open-H3-Regenerate-2K) (`open_h3/pipeline.py`, `open_h3/sigmas.py`) using the Enhanced Upscale core. It is a separate optional node, not a mode on Enhanced Upscale; it outputs a packed AV latent and a text plan, not an encoded video. The shared implementation adds tiled/chunked execution and preserves source audio, so this is an adaptation of the recipe, not a claim of identical rendered output:
 
 ### Setup and wiring
 
