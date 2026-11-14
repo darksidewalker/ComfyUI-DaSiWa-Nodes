@@ -170,6 +170,9 @@ def refinement_memory_budget(model, device, memory_budget_mb):
     # dynamic residency on demand. Never count unrelated CUDA allocations.
     dependencies = {id(p.model) for p in model.model_patches_models()}
     for patcher in [model, *mm.loaded_models()]:
+        # Core's loaded-model weakrefs can outlive their patchers.
+        if patcher is None:
+            continue
         identity = id(patcher.model)
         if identity not in seen and identity not in dependencies and patcher.current_loaded_device() == device:
             available += int(patcher.loaded_size())

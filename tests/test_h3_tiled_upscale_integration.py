@@ -311,6 +311,43 @@ def test_old_positional_callable_keeps_guard_parameters(setup_node,monkeypatch):
     assert bound.arguments['upscale_sharpness'] == 1
 
 
+@pytest.mark.parametrize('cap_mb',[0,1])
+def test_refinement_budget_skips_dead_core_patchers(monkeypatch,cap_mb):
+    import gc
+    device=torch.device('cuda:0')
+    mib=1024**2
+
+    class Patcher:
+        parent=None
+        load_device=device
+        def __init__(self,size,*,base=None,loaded_device=device):
+            self.model=base if base is not None else TestH3Base()
+            self.size=size
+            self.loaded_device=loaded_device
+        def current_loaded_device(self): return self.loaded_device
+        def loaded_size(self): return self.size
+        def model_patches_models(self): return [dependency]
+        def is_dynamic(self): return True
+
+    model=Patcher(2*mib)
+    other=Patcher(3*mib)
+    duplicate=Patcher(2*mib,base=model.model)
+    dependency=Patcher(7*mib)
+    offloaded=Patcher(11*mib,loaded_device=torch.device('cpu'))
+    dead=Patcher(13*mib)
+    stale=mm.LoadedModel(dead)
+    del dead
+    gc.collect()
+    assert stale.model is None
+    monkeypatch.setattr(mm,'current_loaded_models',[
+        stale,*[mm.LoadedModel(p) for p in (model,duplicate,other,dependency,offloaded)]])
+    assert mm.loaded_models()[0] is None
+    monkeypatch.setattr(mm,'get_free_memory',lambda _:5*mib)
+    monkeypatch.setattr(mm,'extra_reserved_memory',lambda:123)
+    assert u.refinement_memory_budget(model,device,cap_mb)==(
+        cap_mb*mib if cap_mb else 10*mib,True,123)
+
+
 def test_model_selector_has_only_explicit_choices(setup_node,monkeypatch):
     monkeypatch.setattr(upscale,'upscale_model_names',lambda:['h3.safetensors'])
     choices=u.DaSiWaH3TiledUpscale.INPUT_TYPES()['required']['upscale_model'][0]
