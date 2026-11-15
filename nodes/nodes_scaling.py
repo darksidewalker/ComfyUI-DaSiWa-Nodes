@@ -57,6 +57,8 @@ class DaSiWa_ResolutionScaleCalculator:
         "9:16 - Social": (9, 16),
         "9:21 - Cinema": (9, 21),
         "CUSTOM": (0, 0),
+        "7:9": (7, 9),
+        "9:7": (9, 7),
     }
 
     DESCRIPTION = """

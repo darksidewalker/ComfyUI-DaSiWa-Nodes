@@ -39,7 +39,7 @@ QUALITY_LEVELS = ["Low", "Medium", "High", "Ultra"]
 UPSCALE_MODES = ["Off", "VSR", "High Bitrate"]
 RESIZE_TYPES = ["Keep Ratio", "Manual", "Preset Ratio", "Scale", "Same Size"]
 DIVISIBLE_BY_VALUES = ["8", "16", "32", "64", "128"]
-COMMON_RATIOS = ["1:1", "4:3", "3:2", "16:9", "21:9"]
+COMMON_RATIOS = ["1:1", "4:3", "3:2", "16:9", "21:9", "7:9", "9:7"]
 RESIZE_METHODS = ["Center Crop (Fill)", "Letterbox (Fit)"]
 MAX_CHUNK_OUTPUT_PIXELS = 1024 * 1024 * 16
 # Ceiling for output kept on the GPU. Sized for a 32 GB card: a large batch can
@@ -732,7 +732,7 @@ class DaSiWa_RTX_UpscalerRefiner:
                 "width": ("INT", {"default": 1920, "min": 64, "max": 8192, "step": 8, "description": "Target width in pixels, active only for Manual with upscale enabled; divisible_by may adjust it."}),
                 "height": ("INT", {"default": 1080, "min": 64, "max": 8192, "step": 8, "description": "Target height in pixels, active only for Manual with upscale enabled; divisible_by may adjust it."}),
                 "divisible_by": (DIVISIBLE_BY_VALUES, {"default": "8", "description": "For Scale, Keep Ratio, Preset Ratio and Manual with upscale enabled, align dimensions to the selected pixel multiple. 8 matches typical RTX sizes; 16, 32, 64 and 128 select progressively coarser pixel grids and may change requested dimensions. Use larger multiples only if a downstream model requires them. Ignored for Same Size or when upscale is Off."}),
-                "ratio_preset": (COMMON_RATIOS, {"default": "16:9", "description": "Width:height shape, active only for Preset Ratio with upscale enabled: 1:1 square, 4:3 classic, 3:2 photo, 16:9 widescreen, 21:9 ultrawide. Alignment can slightly approximate the ratio."}),
+                "ratio_preset": (COMMON_RATIOS, {"default": "16:9", "description": "Width:height shape, active only for Preset Ratio with upscale enabled: 1:1 square, 4:3 classic, 3:2 photo, 16:9 widescreen, 21:9 ultrawide, 7:9 portrait, 9:7 landscape. Alignment can slightly approximate the ratio."}),
                 "resize_method": (RESIZE_METHODS, {"default": "Center Crop (Fill)", "description": "When upscale is enabled and source/target aspect differs: Center Crop (Fill) removes centered edges to fill the frame; Letterbox (Fit) retains the whole image and adds black padding. No effect for matching aspects or upscale Off."}),
                 "device_id": ("INT", {"default": 0, "min": 0, "max": 8, "step": 1, "description": "CUDA device index for NVIDIA RTX computation (0 is the first GPU). Must identify a supported NVIDIA device; output placement follows the allocator/input device, not necessarily this compute device."}),
             },

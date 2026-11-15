@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-15**. Older history lives in the 
 
 ## News
 
+- **7:9 and 9:7 presets (0.5.56):** added to the H3 Director, Resolution Scale Calculator and RTX Upscaler/Refiner without changing existing choices, defaults or sizing formulas. Each pipeline retains its own area convention, divisor and rounding; DEAS 0.2.37 offers the same ratios with its model-specific grid.
+
 - **Hi-Res Regenerate: independent refine strength and 2D sharpness (0.5.55):** appended optional `denoise` (0–1, default **1**) and `upscale_sharpness` (integer 1–6, default **1**) preserve existing workflows and the original three-step CFG-1 Euler recipe. Lower denoise uses Core `SplitSigmasDenoise` to retain the published schedule’s tail, not a new scheduler or scaled sigmas: `0`/`0.05` retain no steps, `0.2` one, `0.5` two, `1` all three. Zero-step tails skip diffusion while keeping latent upscaling and original audio; LoRA strength remains separate, so LoRA strength zero does not disable refinement. Sharpness applies only to the 2D learned upscaler (1 most faithful, 6 sharpest with slightly more color shift), not 3D, interpolation or target Original. Invalid values fail before LoRA loading; model cloning, guide/Continuity inputs and existing targets stay unchanged. The plan reports retained steps.
 
 - **H3 Director: API workflow import preserves authoring state (0.5.54):** importing an API-format graph no longer lets duration/frame-rate callbacks overwrite its prompt or reference timeline with fresh-node defaults. The Director restores its builder before ComfyUI snapshots the imported workflow and preserves explicit width/height when an API producer supplies only input scaling. Directors nested in subgraphs are restored as well. Visual workflow reloads and backend-only API execution keep the same input contract; this also covers DEAS-authored graphs. ([#100](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/100))
@@ -241,6 +243,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.56 | 11-15 | 7:9 and 9:7 presets across Director, Scale Calculator and RTX, preserving pipeline-specific math |
 | 0.5.55 | 11-15 | H3 Hi-Res Regenerate: optional native sigma-tail refine strength and 2D sharpness tiers; original defaults preserved |
 | 0.5.54 | 11-14 | H3 Director API import preserves prompt, reference timeline, builder and explicit canvas (#100) |
 | 0.5.53 | 11-14 | H3 refinement memory planning skips expired loaded-model weakrefs; fixes #99 for Regenerate and Enhanced Upscale |

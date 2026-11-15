@@ -24,7 +24,7 @@ The node uses a **Constant-Area** formula. Instead of setting raw width/height, 
 
 ### 2. Define your "Shape" (Aspect Ratio)
 * **IMAGE ASPECT:** The node "peeks" at the first frame of your connected image. It calculates the aspect ratio and applies your chosen MP budget to that shape. The aspect controls remain visible, but they are ignored.
-* **USE ASPECT BELOW:** The node uses the visible **aspect_preset_when_not_image** selector (e.g., 9:16) instead of the image shape.
+* **USE ASPECT BELOW:** The node uses the visible **aspect_preset_when_not_image** selector (e.g., 9:16) instead of the image shape. **7:9** (portrait) and **9:7** (landscape) are available directly; Swap reverses either one. At **1024p / 1 MP**, 7:9 gives **903×1161** in Standard, **896×1152** in Div32/Div64, **904×1160** with custom divisor 8, or **896×1168** with divisor 16. 9:7 swaps those dimensions. Each mode keeps its own rounding; the requested ratio can be approximated by the final grid.
 * **Manual Aspect Note:** **custom_aspect_width** and **custom_aspect_height** are only used when **USE ASPECT BELOW** is active and the aspect preset is **CUSTOM**. They define a ratio such as 21 x 9, not final pixel dimensions.
 
 ### 3. Choose your "Engine" (Mode)

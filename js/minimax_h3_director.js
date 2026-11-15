@@ -43,7 +43,7 @@ const MAX = { image: 9, video: 3, audio: 3, total: 12 };
 // H3's VAE emits 16px latent cells and the diffusion transformer patchifies
 // them in 2×2 groups, so both canvas edges must be divisible by 32.
 const MINIMAX_MULTIPLE = 32;
-const ASPECT_OPTIONS = [["auto", "Auto"], ["1:1", "1:1"], ["16:9", "16:9"], ["9:16", "9:16"], ["2:1", "2:1"], ["1:2", "1:2"], ["3:2", "3:2"], ["2:3", "2:3"], ["4:3", "4:3"], ["3:4", "3:4"], ["4:5", "4:5"], ["5:4", "5:4"], ["custom", "CUSTOM"]];
+const ASPECT_OPTIONS = [["auto", "Auto"], ["1:1", "1:1"], ["16:9", "16:9"], ["9:16", "9:16"], ["2:1", "2:1"], ["1:2", "1:2"], ["3:2", "3:2"], ["2:3", "2:3"], ["4:3", "4:3"], ["3:4", "3:4"], ["4:5", "4:5"], ["5:4", "5:4"], ["custom", "CUSTOM"], ["7:9", "7:9"], ["9:7", "9:7"]];
 const RESOLUTION_PRESETS = {
   "144p": 0.0352, "240p": 0.0977, "360p": 0.22, "480p": 0.391, "540p": 0.494, "576p": 0.5625,
   "720p": 0.879, "900p": 1.373, "1024p": 1.00, "1080p": 1.978, "1152p": 2.25, "1440p": 3.516,

@@ -61,7 +61,7 @@ For a REF2VA video tile, choose **V** (frames), **A** (embedded sound), or **V+A
 
 ### Canvas and input scaling
 
-The Resolution panel offers Auto or custom aspect ratio and resolution. Auto aspect follows the first image/video; Auto resolution uses a 768-pixel short side. Presets snap to H3's 16-pixel grid. Input scaling affects visual references, not audio:
+The Resolution panel offers Auto, presets including **7:9** (portrait) and **9:7** (landscape), or a custom aspect ratio and resolution. Auto aspect follows the first image/video; Auto resolution uses a 768-pixel short side. Presets snap to H3's **32-pixel grid**. At **1024p / 1 MP (1024² pixels)**, 7:9 gives **896×1152** and 9:7 gives **1152×896**; Auto resolution gives **768×992** and **992×768** respectively. Rounding can slightly approximate the selected ratio. Input scaling affects visual references, not audio:
 
 | Setting | Effect |
 | --- | --- |
