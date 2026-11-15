@@ -1,8 +1,8 @@
 """MiniMax H3 Hi-Res Regenerate: the Open-H3-Regenerate-2K refine recipe on the Enhanced Upscale core.
 
 Reference: NVlabs/Sana sol-engine models/Open-H3-Regenerate-2K (open_h3/pipeline.py, sigmas.py).
-Learned latent upscale to the target grid (4K via 2K), then three Euler steps at CFG 1 on pinned
-sigmas with the merged refiner LoRA. Tiling, temporal windows, Continuity, Director endpoints,
+Learned latent upscale to the target grid (4K via 2K), then up to three Euler steps at CFG 1 on
+the pinned schedule or its native denoise tail, with the merged refiner LoRA. Tiling, temporal windows, Continuity, Director endpoints,
 reference tokens and draft-audio passthrough are the unchanged DaSiWaH3TiledUpscale path.
 """
 from .nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
@@ -48,8 +48,8 @@ class DaSiWaH3HiResRegenerate:
     FUNCTION = 'regenerate'
     RETURN_TYPES = ('LATENT', 'STRING')
     RETURN_NAMES = ('latent', 'plan')
-    DESCRIPTION = ('Open-H3-Regenerate-2K refine preset: learned latent upscale to 1080P/2K/4K, then three Euler '
-                   'steps at CFG 1 on the published sigmas with the refiner LoRA patched onto a clone of the '
+    DESCRIPTION = ('Open-H3-Regenerate-2K refine preset: learned latent upscale to 1080P/2K/4K, then by default three Euler '
+                   'steps at CFG 1 on the published sigmas (lower denoise selects their tail) with the refiner LoRA patched onto a clone of the '
                    'model only. Needs the LoRA converted to native H3 keys (Quant Station "Diffusers → H3"). '
                    'Connect the plain H3 model without Turbo/Sharp LoRAs: the merged LoRA already contains them.')
 
@@ -72,7 +72,7 @@ class DaSiWaH3HiResRegenerate:
             'lora_name': (folder_paths.get_filename_list('loras'), {
                 'tooltip': 'Open-H3-Regenerate-2K LoRA converted to native H3 keys (exact or SVD).'}),
             'strength': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 2.0, 'step': 0.05,
-                'tooltip': 'Refiner LoRA strength, default 1 as in the reference recipe. Zero disables the LoRA, not the three-step refinement.'}),
+                'tooltip': 'Refiner LoRA strength, default 1 as in the reference recipe. Zero disables the LoRA, not diffusion refinement; use denoise to control refinement.'}),
             'upscale_model': (['interpolation'] + names, {'default': preferred,
                 'tooltip': 'Learned latent upscaler from latent_upscale_models. Prefers 3D, then 2D when installed; interpolation uses no learned checkpoint and differs from the reference recipe. Ignored for target Original.'}),
             'target': (list(TARGETS) + ['Original'], {'default': '2K',
@@ -89,6 +89,12 @@ class DaSiWaH3HiResRegenerate:
             'continuity_context': ('DF_H3_CONTINUITY_CONTEXT', {'tooltip': 'Matching Guide continuity context. Follow the Continuity assembly order; protects the old prefix from diffusion refinement.'}),
             'spatial_tiling': ('BOOLEAN', {'default': True,
                 'tooltip': 'Allow automatic spatial tiling. Off samples the full canvas like the reference (more VRAM).'}),
+            'denoise': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 1.0, 'step': 0.01,
+                'display_name': 'Upscale Refine Strength',
+                'tooltip': 'Refinement denoise, independent of LoRA strength. 1 keeps the published three-step schedule; lower values take its tail with native SplitSigmasDenoise rounding. 0 (or zero retained steps) skips diffusion, not latent upscaling. Original audio is unchanged.'}),
+            'upscale_sharpness': ('INT', {'default': 1, 'min': 1, 'max': 6, 'step': 1,
+                'display_name': 'Upscale Sharpness (2D tier)',
+                'tooltip': '2D learned upscaler tier: 1 = most faithful (default), 6 = sharpest with slightly more color shift. Ignored by the 3D upscaler, interpolation and target Original (no upscale).'}),
         }}
 
     def load_lora(self, lora_name):
@@ -102,7 +108,11 @@ class DaSiWaH3HiResRegenerate:
 
     def regenerate(self, model, conditioning, latent, lora_name, strength=1.0, upscale_model='interpolation',
                    target='2K', seed=0, director_guide=None, vae=None, start_image=None, noise=None,
-                   continuity_context=None, spatial_tiling=True):
+                   continuity_context=None, spatial_tiling=True, denoise=1.0, upscale_sharpness=1):
+        if isinstance(denoise, bool) or not isinstance(denoise, (int, float)) or not 0 <= denoise <= 1:
+            raise ValueError('H3 Hi-Res Regenerate denoise must be a finite number between 0 and 1.')
+        if isinstance(upscale_sharpness, bool) or not isinstance(upscale_sharpness, int) or not 1 <= upscale_sharpness <= 6:
+            raise ValueError('H3 Hi-Res Regenerate upscale_sharpness must be an integer between 1 and 6.')
         import comfy.lora
         import comfy.lora_convert
         import comfy.model_base
@@ -128,10 +138,18 @@ class DaSiWaH3HiResRegenerate:
                 raise ValueError(f'{lora_name} matches no layer of this H3 model; it is not an H3 refiner LoRA.')
             patched = model.clone()  # the caller's model and its generation chain stay unpatched
             patched.add_patches(patches, strength)
+        sigmas = SIGMAS
+        if denoise < 1.0:
+            import torch
+            from comfy_extras.nodes_custom_sampler import SplitSigmasDenoise
+            sigmas = tuple(SplitSigmasDenoise.execute(torch.tensor(SIGMAS, dtype=torch.float64), denoise)[1].tolist())
+        refine_steps = len(sigmas) - 1
         output, report = DaSiWaH3TiledUpscale().upscale(
             patched, conditioning, latent, upscale_model='interpolation' if target == 'Original' else upscale_model,
-            steps=len(SIGMAS) - 1, denoise=1.0,
+            steps=max(1, refine_steps), denoise=denoise if refine_steps else 0.0,
             seed=seed, director_guide=director_guide, vae=vae, start_image=start_image, cfg=1.0,
             sampler_name='euler', noise=noise, continuity_context=continuity_context,
-            spatial_tiling=spatial_tiling, sigmas=SIGMAS, sizes=stages, telemetry=telemetry)
-        return output, f'H3 Hi-Res Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); {report}'
+            spatial_tiling=spatial_tiling, upscale_sharpness=upscale_sharpness,
+            sigmas=sigmas, sizes=stages, telemetry=telemetry)
+        return output, (f'H3 Hi-Res Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); '
+                        f'denoise={denoise:g}; refine_steps={refine_steps}; {report}')

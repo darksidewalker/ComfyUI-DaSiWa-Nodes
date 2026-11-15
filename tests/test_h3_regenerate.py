@@ -103,7 +103,13 @@ def latent(t=22, h=48, w=84):
     return {'samples': NestedTensor((torch.randn(1, 24, t, h, w), torch.randn(1, 32, 2, 120)))}
 
 
-def test_original_target_refines_at_input_size_without_upscale(node, monkeypatch):
+@pytest.mark.parametrize('controls,expected', [
+    ({}, r.SIGMAS),
+    ({'denoise': 0.5, 'upscale_sharpness': 6}, r.SIGMAS[-3:]),
+    ({'denoise': 0.05, 'upscale_sharpness': 6}, r.SIGMAS[-1:]),
+    ({'denoise': 0.0, 'upscale_sharpness': 6}, r.SIGMAS[-1:]),
+])
+def test_original_target_refines_at_input_size_without_upscale(node, monkeypatch, controls, expected):
     events, calls = [], []
     monkeypatch.setattr(r, 'make_telemetry', lambda: events.append)
     monkeypatch.setattr(upscale, 'H3LatentUpscaler', lambda *a, **k: pytest.fail('loaded unused upscaler'))
@@ -114,16 +120,144 @@ def test_original_target_refines_at_input_size_without_upscale(node, monkeypatch
     monkeypatch.setattr(u, 'sample_chunk', sample)
     source, model = latent(2, 6, 10), FakePatcher()
     out, report = node.regenerate(model, [], source, 'regen.safetensors',
-                                  target='Original', upscale_model='missing-unused.safetensors')
-    assert out['samples'].tensors[0].shape == source['samples'].tensors[0].shape
+                                  target='Original', upscale_model='missing-unused.safetensors', **controls)
+    assert torch.equal(out['samples'].tensors[0], source['samples'].tensors[0])
     assert out['samples'].tensors[1] is source['samples'].tensors[1]
-    assert model.patches == [] and calls
-    assert all(cfg == 1.0 and torch.equal(sigmas, torch.tensor(r.SIGMAS)) for _,cfg,sigmas in calls)
-    assert [e['phase'] for e in events] == ['lora','lora','refine','refine']
+    assert model.patches == [] and bool(calls) == (len(expected) > 1)
+    assert all(cfg == 1.0 and torch.equal(sigmas, torch.tensor(expected)) for _,cfg,sigmas in calls)
+    assert [e['phase'] for e in events] == ['lora','lora'] + (['refine','refine'] if calls else [])
     assert all(e['width'] == 160 and e['height'] == 96 for e in events if e['phase'] == 'refine')
     assert r.regenerate_size(160,96,'Original') == (160,96)
     assert r.regenerate_stages(160,96,'Original') == [(160,96)]
-    assert '160x96 → 160x96' in report
+    assert '160x96 → 160x96' in report and 'sharpness=n/a' in report
+
+
+@pytest.mark.parametrize('controls,expected', [
+    ({}, r.SIGMAS),
+    ({'denoise': 0.0}, r.SIGMAS[-1:]),
+    ({'denoise': 0.05}, r.SIGMAS[-1:]),
+    ({'denoise': 0.2}, r.SIGMAS[-2:]),
+    ({'denoise': 0.5}, r.SIGMAS[-3:]),
+    ({'denoise': 1.0}, r.SIGMAS),
+])
+def test_refine_strength_uses_native_schedule_tail_and_preserves_audio(node, monkeypatch, controls, expected):
+    from comfy_extras.nodes_custom_sampler import BasicScheduler, SplitSigmasDenoise
+    split, sampled, endpoints = [], [], []
+    native_split = SplitSigmasDenoise.execute
+
+    def split_sigmas(sigmas, denoise):
+        assert sigmas.tolist() == list(r.SIGMAS)
+        split.append(denoise)
+        return native_split(sigmas, denoise)
+
+    monkeypatch.setattr(SplitSigmasDenoise, 'execute', staticmethod(split_sigmas))
+    monkeypatch.setattr(BasicScheduler, 'execute', lambda *a, **k: pytest.fail('replaced pinned schedule'))
+    monkeypatch.setattr(r, 'regenerate_stages', lambda *a: [(128, 64)])
+
+    def encode(conditioning, *args, **kwargs):
+        endpoints.append(conditioning)
+        return conditioning, 'test endpoints'
+
+    monkeypatch.setattr(u, 'encode_endpoints', encode)
+
+    def sample(working, positive, negative, cfg, samples, mask, noise, sampler, sigmas, seed):
+        sampled.append(sigmas)
+        assert cfg == 1.0 and negative is None and seed == 37
+        assert working.patches[0][1] == 0.0  # LoRA strength zero must not disable diffusion.
+        assert torch.count_nonzero(mask.tensors[1]) == 0
+        return NestedTensor((samples.tensors[0] + 1, samples.tensors[1] + 999))
+
+    monkeypatch.setattr(u, 'sample_chunk', sample)
+    source, model = latent(2, 4, 4), FakePatcher()
+    source['batch_index'] = [3]
+    out, report = node.regenerate(model, [], source, 'regen.safetensors', seed=37, strength=0.0, **controls)
+    retained = len(expected) - 1
+    assert len(sampled) == len(endpoints) == bool(retained)
+    assert all(torch.equal(sigmas, torch.tensor(expected)) for sigmas in sampled)
+    assert split == ([controls['denoise']] if controls.get('denoise', 1.0) < 1 else [])
+    assert model.patches == [] and model.clones[0].patches[0][1] == 0.0
+    assert torch.equal(out['samples'].tensors[0],
+                       u.resize_video(source['samples'].tensors[0], 4, 8) + bool(retained))
+    assert out['samples'].tensors[1] is source['samples'].tensors[1]
+    assert out['batch_index'] is source['batch_index']
+    assert f'refine_steps={retained}' in report
+    if not retained:
+        assert 'diffusion skipped (denoise=0)' in report
+
+
+@pytest.mark.parametrize('controls,tier', [({}, 1)] + [({'upscale_sharpness': tier}, tier) for tier in range(1, 7)])
+def test_sharpness_reaches_learned_upscaler_without_diffusion(node, monkeypatch, controls, tier):
+    loaded, resized, closed = [], [], []
+    name = 'minimax_h3_latent_upscaler_2d_conv_v1.safetensors'
+    monkeypatch.setattr(upscale, 'upscale_model_names', lambda: [name])
+    monkeypatch.setattr(r, 'regenerate_stages', lambda *a: [(128, 64)])
+    monkeypatch.setattr(u, 'sample_chunk', lambda *a: pytest.fail('sampled at denoise=0'))
+    monkeypatch.setattr(u, 'encode_endpoints', lambda *a, **k: pytest.fail('encoded endpoints at denoise=0'))
+
+    class Backend:
+        temporal_halo, sharpness_tiers, dtype = 0, True, torch.float32
+        def __init__(self, selected, device, precision, sharpness):
+            loaded.append((selected, device, precision, sharpness))
+        def upscale(self, video, h, w):
+            resized.append((h, w))
+            return u.resize_video(video, h, w)
+        def close(self): closed.append(True)
+
+    monkeypatch.setattr(upscale, 'H3LatentUpscaler', Backend)
+    source = latent(2, 4, 4)
+    out, report = node.regenerate(FakePatcher(), [], source, 'regen.safetensors',
+                                  upscale_model=name, denoise=0.0, **controls)
+    assert loaded == [(name, torch.device('cpu'), 'auto', tier)]
+    assert resized == [(4, 8)] and closed == [True]
+    assert torch.equal(out['samples'].tensors[0], u.resize_video(source['samples'].tensors[0], 4, 8))
+    assert out['samples'].tensors[1] is source['samples'].tensors[1]
+    assert f'sharpness=t{tier}' in report and 'diffusion skipped (denoise=0)' in report
+
+
+@pytest.mark.parametrize('requested,expected', [(0.0, r.SIGMAS[-1:]), (0.05, r.SIGMAS[-1:]),
+                                                 (0.5, r.SIGMAS[-3:]), (1.0, r.SIGMAS)])
+def test_wrapper_preserves_positional_inputs_and_passes_controls_to_core(node, monkeypatch, requested, expected):
+    model, positive, source = FakePatcher(), [[torch.zeros(1), {'reference': object()}]], latent(2, 4, 4)
+    guide, video_vae, first, external_noise, context = {}, object(), torch.zeros(1), object(), {}
+    emit = lambda payload: None
+    monkeypatch.setattr(r, 'make_telemetry', lambda: emit)
+    called = []
+
+    def capture(self, patched, conditioning, latent, *, upscale_model, steps, denoise, seed,
+                director_guide, vae, start_image, cfg, sampler_name, noise, continuity_context,
+                spatial_tiling, upscale_sharpness, sigmas, sizes, telemetry):
+        called.append(True)
+        assert patched is model.clones[0] and patched.patches[0][1] == 0.65 and model.patches == []
+        assert conditioning is positive and latent is source
+        assert upscale_model == 'up.safetensors' and upscale_sharpness == 6
+        assert steps == max(1, len(expected) - 1) and denoise == (requested if len(expected) > 1 else 0.0)
+        assert seed == 43 and cfg == 1.0 and sampler_name == 'euler' and not spatial_tiling
+        assert director_guide is guide and vae is video_vae and start_image is first
+        assert noise is external_noise and continuity_context is context and telemetry is emit
+        assert sigmas == expected and sizes == r.regenerate_stages(64, 64, '4K')
+        if requested == 1.0:
+            assert sigmas is r.SIGMAS
+        return latent, 'core report'
+
+    monkeypatch.setattr(r.DaSiWaH3TiledUpscale, 'upscale', capture)
+    out, report = node.regenerate(model, positive, source, 'regen.safetensors', 0.65, 'up.safetensors',
+                                  '4K', 43, guide, video_vae, first, external_noise, context, False, requested, 6)
+    assert called == [True] and out is source and report.endswith('core report')
+
+
+@pytest.mark.parametrize('field,value', [
+    ('denoise', value) for value in (-0.01, 1.01, float('nan'), float('inf'), -float('inf'),
+                                    True, False, '0.5', None, [], {}, 0.5j)
+] + [
+    ('upscale_sharpness', value) for value in (0, 7, 1.0, 1.5, True, False, '2', None,
+                                              float('nan'), float('inf'), [], {})
+])
+@pytest.mark.parametrize('target', ['2K', 'Original'])
+def test_invalid_controls_fail_before_loading_lora(node, monkeypatch, field, value, target):
+    monkeypatch.setattr(node, 'load_lora', lambda *a: pytest.fail('loaded refiner before validating controls'))
+    with pytest.raises(ValueError, match=field):
+        node.regenerate(FakePatcher(), [], latent(2, 4, 4), 'regen.safetensors',
+                        target=target, **{field: value})
 
 
 def test_learned_upscaler_still_runs_at_same_size(node, monkeypatch):
@@ -329,9 +463,21 @@ def test_schema_and_defaults(monkeypatch):
     assert list(schema['required']) == ['model', 'conditioning', 'latent', 'lora_name', 'strength',
                                         'upscale_model', 'target', 'seed']
     assert list(schema['optional']) == ['director_guide', 'vae', 'start_image', 'noise',
-                                        'continuity_context', 'spatial_tiling']
+                                        'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness']
+    assert schema['optional']['denoise'][:1] == ('FLOAT',)
+    assert schema['optional']['denoise'][1]['default'] == 1.0
+    assert (schema['optional']['denoise'][1]['min'], schema['optional']['denoise'][1]['max']) == (0.0, 1.0)
+    assert schema['optional']['upscale_sharpness'][:1] == ('INT',)
+    assert schema['optional']['upscale_sharpness'][1]['default'] == 1
+    assert (schema['optional']['upscale_sharpness'][1]['min'], schema['optional']['upscale_sharpness'][1]['max']) == (1, 6)
+    for ignored in ('3D', 'interpolation', 'Original'):
+        assert ignored in schema['optional']['upscale_sharpness'][1]['tooltip']
     assert schema['required']['upscale_model'][1]['default'].endswith('3d_conv_v1_bf16.safetensors')
     assert schema['required']['target'] == (['1080P', '2K', '4K', 'Original'], schema['required']['target'][1])
     assert schema['required']['target'][1]['default'] == '2K'
     params = inspect.signature(r.DaSiWaH3HiResRegenerate.regenerate).parameters
     assert params['target'].default == '2K' and params['strength'].default == 1.0
+    assert list(params) == ['self', 'model', 'conditioning', 'latent', 'lora_name', 'strength', 'upscale_model',
+                            'target', 'seed', 'director_guide', 'vae', 'start_image', 'noise',
+                            'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness']
+    assert params['denoise'].default == 1.0 and params['upscale_sharpness'].default == 1

@@ -54,15 +54,17 @@ One node that upscales a completed MiniMax H3 video/audio latent and refines it 
 
 ### 🔍 MiniMaxH3 • Hi-Res Regenerate
 
-The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K) refine recipe as one node: learned latent upscale to **1080P / 2K / 4K**, then three Euler steps at CFG 1 on the published sigmas with the refiner LoRA. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio behave the same.
+The [Open-H3-Regenerate-2K](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K) refine recipe as one node: learned latent upscale to **1080P / 2K / 4K**, then by default three Euler steps at CFG 1 on the published sigmas with the refiner LoRA. It runs on the Enhanced Upscale core, so tiling, temporal windows, Continuity, Director endpoints and the original audio behave the same.
 
 - The LoRA is patched onto a clone of the connected model only; the generation chain stays untouched. Connect the plain H3 model: the merged LoRA already contains LightX2V Turbo and LMS Sharp.
 - The published LoRA has Diffusers keys and is rejected with a hint; convert it to native H3 keys first (DaSiWa Quant Station **Diffusers → H3**, exact or SVD).
 - Near-16:9 drafts get the reference grid (1344×768 → 2560×1440); other aspects keep their aspect at the target's short side. 1080P/4K are computed at 1088/2176 rows like the reference, 4K goes through 2K.
 
-- **Original target:** regenerate at the incoming draft’s exact resolution, without a learned upscaler or resize; the Regenerate LoRA and three CFG-1 steps still apply. Details can change even though the canvas does not.
+- **Original target:** regenerate at the incoming draft’s exact resolution, without a learned upscaler or resize; the selected CFG-1 refinement still applies. Details can change even though the canvas does not.
+- **Refine strength (`denoise`):** 0–1, default **1** keeps all three published steps. Lower values use the native schedule tail with rounded step counts (`0`/`0.05`: none, `0.2`: one, `0.5`: two). Zero-step tails skip diffusion, not upscaling; LoRA strength is independent and setting it to zero does not disable refinement.
+- **2D sharpness:** tiers **1–6**, default **1** = most faithful, **6** = sharpest with slightly more color shift. Ignored by the 3D upscaler, interpolation and **Original** target.
 - **Wiring:** completed sampler AV latent → Hi-Res Regenerate → AV decode → video exporter; connect the plain H3 model and positive conditioning to Hi-Res Regenerate.
-- **Defaults:** 2K target, LoRA strength 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
+- **Defaults:** 2K target, LoRA strength 1, denoise 1, sharpness tier 1, three Euler steps at CFG 1; spatial tiling on. Outputs the refined AV latent and a text plan, not an encoded video.
 - **Processing logs:** LoRA preparation, latent-upscale passes/windows and refinement windows report actual starts, completions, failures or interruption. DEAS 0.2.29 can show these phases under the owning job with node pack 0.5.51; missing telemetry does not change the result.
 
 [Hi-Res Regenerate details →](docs/minimax_h3_tiled_upscale.md#hi-res-regenerate-preset)
