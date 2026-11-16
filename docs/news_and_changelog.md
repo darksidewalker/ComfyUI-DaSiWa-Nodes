@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-15**. Older history lives in the 
 
 ## News
 
+- **Seed Control: Fixed highlight after typing (0.5.58):** manually entering a seed now immediately highlights Fixed and enables Use Last, matching the already-updated stored mode. Reuses the existing in-place switch refresh without rebuilding the panel; seed values, queue behavior and saved-workflow inputs are unchanged. ([#101](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/101))
+
 - **H3 Join: optional audio-seam smoothing and transition RAM reclaim (0.5.57):** Join clips accepts the new `audio_policy` value `smooth-seams`, which applies a 5 ms fade-out/fade-in at each internal clip boundary only. Duration, sample count, timeline, outer edges and video (including packet copy) are unchanged; `preserve` stays the default and is byte-identical to before. Unknown or non-string policies fail clearly. When a Transition Guide is refused for host RAM, it first releases this executor's cached RAM through Core's own pressure hooks (inactive cache, pinned memory, then active cache) and rechecks; models are never unloaded, the safety reserve is unchanged and no prompt is resubmitted.
 
 - **7:9 and 9:7 presets (0.5.56):** added to the H3 Director, Resolution Scale Calculator and RTX Upscaler/Refiner without changing existing choices, defaults or sizing formulas. Each pipeline retains its own area convention, divisor and rounding; DEAS 0.2.37 offers the same ratios with its model-specific grid.
@@ -245,6 +247,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.58 | 11-16 | Seed Control: synchronize Random/Fixed highlight after manual seed entry (#101) |
 | 0.5.57 | 11-16 | H3 Join: opt-in `smooth-seams` audio policy; Transition Guide reclaims cached RAM before refusing |
 | 0.5.56 | 11-15 | 7:9 and 9:7 presets across Director, Scale Calculator and RTX, preserving pipeline-specific math |
 | 0.5.55 | 11-15 | H3 Hi-Res Regenerate: optional native sigma-tail refine strength and 2D sharpness tiers; original defaults preserved |
