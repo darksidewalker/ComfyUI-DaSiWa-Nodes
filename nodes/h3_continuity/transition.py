@@ -89,7 +89,9 @@ def clip_edges(data, input_root=None, output_root=None):
         retained = sum(p.numel() * p.element_size() + a["waveform"].numel() * a["waveform"].element_size()
                        for p, a in edges)
         if not helper_batch_output.can_allocate_in_ram(required - retained):
-            raise ValueError("Transition context exceeds available host RAM (including safety reserve). Reduce context frames or free RAM.")
+            _release_cached_ram(required - retained + helper_batch_output.ram_safety_reserve_bytes())
+            if not helper_batch_output.can_allocate_in_ram(required - retained):
+                raise ValueError("Transition context exceeds available host RAM (including safety reserve). Reduce context frames or free RAM.")
         with closing(assembly._video_frames(row, check)) as frames:
             images = deque((_guide_frame(f, width, height) for f in frames), maxlen=count) if tail else [
                 _guide_frame(f, width, height) for _, f in zip(range(count), frames)]
@@ -101,6 +103,29 @@ def clip_edges(data, input_root=None, output_root=None):
         del images, audio
     (tail, tail_audio), (head, head_audio) = edges
     return dict(tail=tail, tail_audio=tail_audio, head=head, head_audio=head_audio, canvas=size, colors=plan[0]["colors"])
+
+
+def _release_cached_ram(target):
+    """Free this executor's cached RAM via Core's pressure hooks, cheapest first; never unloads models."""
+    import gc
+    import inspect
+    try:
+        from comfy import memory_management, model_management
+    except ImportError:
+        return
+    release = getattr(memory_management, "extra_ram_release", None)
+    free_pins = getattr(model_management, "free_pins", None)
+    for stage in ("inactive", "pins", "active"):
+        available = helper_batch_output.available_ram_bytes()
+        if available >= target:
+            return
+        if stage == "pins":
+            if free_pins is not None:
+                options = {"loaded": True} if "loaded" in inspect.signature(free_pins).parameters else {}
+                free_pins(target - available, **options)
+        elif release is not None:
+            release(target, free_active=stage == "active")
+        gc.collect()
 
 
 def generation_canvas(size):

@@ -1,4 +1,5 @@
 """H3 transition contracts with real PyAV media; native H3 calls are recorded, not run."""
+import itertools
 import json
 from fractions import Fraction
 from types import SimpleNamespace
@@ -112,7 +113,7 @@ def test_edges_low_ram_rejects_before_decode_or_batch_allocation(monkeypatch, av
 
 def test_edges_rechecks_ram_before_second_clip(tmp_path, monkeypatch):
     clips(tmp_path)
-    available = iter([16 * 1024**3, 8 * 1024**3 + 1])
+    available = itertools.chain([16 * 1024**3], itertools.repeat(8 * 1024**3 + 1))
     monkeypatch.setattr(transition.helper_batch_output, 'available_ram_bytes', lambda: next(available))
     calls = []
     video_frames = transition.assembly._video_frames

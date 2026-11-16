@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-15**. Older history lives in the 
 
 ## News
 
+- **H3 Join: optional audio-seam smoothing and transition RAM reclaim (0.5.57):** Join clips accepts the new `audio_policy` value `smooth-seams`, which applies a 5 ms fade-out/fade-in at each internal clip boundary only. Duration, sample count, timeline, outer edges and video (including packet copy) are unchanged; `preserve` stays the default and is byte-identical to before. Unknown or non-string policies fail clearly. When a Transition Guide is refused for host RAM, it first releases this executor's cached RAM through Core's own pressure hooks (inactive cache, pinned memory, then active cache) and rechecks; models are never unloaded, the safety reserve is unchanged and no prompt is resubmitted.
+
 - **7:9 and 9:7 presets (0.5.56):** added to the H3 Director, Resolution Scale Calculator and RTX Upscaler/Refiner without changing existing choices, defaults or sizing formulas. Each pipeline retains its own area convention, divisor and rounding; DEAS 0.2.37 offers the same ratios with its model-specific grid.
 
 - **Hi-Res Regenerate: independent refine strength and 2D sharpness (0.5.55):** appended optional `denoise` (0–1, default **1**) and `upscale_sharpness` (integer 1–6, default **1**) preserve existing workflows and the original three-step CFG-1 Euler recipe. Lower denoise uses Core `SplitSigmasDenoise` to retain the published schedule’s tail, not a new scheduler or scaled sigmas: `0`/`0.05` retain no steps, `0.2` one, `0.5` two, `1` all three. Zero-step tails skip diffusion while keeping latent upscaling and original audio; LoRA strength remains separate, so LoRA strength zero does not disable refinement. Sharpness applies only to the 2D learned upscaler (1 most faithful, 6 sharpest with slightly more color shift), not 3D, interpolation or target Original. Invalid values fail before LoRA loading; model cloning, guide/Continuity inputs and existing targets stay unchanged. The plan reports retained steps.
@@ -243,6 +245,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.57 | 11-16 | H3 Join: opt-in `smooth-seams` audio policy; Transition Guide reclaims cached RAM before refusing |
 | 0.5.56 | 11-15 | 7:9 and 9:7 presets across Director, Scale Calculator and RTX, preserving pipeline-specific math |
 | 0.5.55 | 11-15 | H3 Hi-Res Regenerate: optional native sigma-tail refine strength and 2D sharpness tiers; original defaults preserved |
 | 0.5.54 | 11-14 | H3 Director API import preserves prompt, reference timeline, builder and explicit canvas (#100) |

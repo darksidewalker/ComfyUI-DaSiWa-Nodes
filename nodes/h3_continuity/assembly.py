@@ -91,8 +91,9 @@ def _request(data):
         raise ValueError("Join Clips does not render transitions; use the Transition Guide/Render nodes (Join clips dialog → H3 transitions).")
     if type(data.get("copy_video", False)) is not bool:
         raise ValueError("copy_video must be boolean.")
-    if data.get("audio_policy", "preserve") != "preserve":
-        raise ValueError("Only the preserve audio policy is supported.")
+    policy = data.get("audio_policy", "preserve")
+    if not isinstance(policy, str) or policy not in ("preserve", "smooth-seams"):
+        raise ValueError("audio_policy must be preserve or smooth-seams.")
     prefix = data.get("filename_prefix", "H3_Joined")
     if not isinstance(prefix, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", prefix):
         raise ValueError("Output prefix must use 1–80 letters, numbers, underscores or hyphens.")
@@ -285,6 +286,9 @@ def _plan(data, store=None, input_root=None, output_root=None, check=None, temp_
             # Scan only imported roots: reject stale normalization before any output exists.
             for _ in _video_frames(plan[-1], check):
                 pass
+    if data.get("audio_policy", "preserve") == "smooth-seams":
+        for index, row in enumerate(plan):
+            row.update(fade_in=index > 0, fade_out=index < len(plan) - 1)
     return plan, dimensions, total
 
 
@@ -511,6 +515,25 @@ def _audio_frames(row, check):
     _unchanged(row)
 
 
+def _assembly_audio_frames(row, check):
+    """Fade only the internal edges of each row; keep the existing bounded decoder."""
+    from contextlib import closing
+    import numpy as np
+    last = row["end"] - row["start"] - 1
+    with closing(_audio_frames(row, check)) as audio:
+        for index, block in enumerate(audio):
+            fade_in = index == 0 and row.get("fade_in", False)
+            fade_out = index == last and row.get("fade_out", False)
+            if fade_in or fade_out:
+                block = block.copy()
+                ramp = np.linspace(0, 1, 240, dtype=np.float32)  # 5 ms at 48 kHz, inside one 2000-sample block.
+                if fade_in:
+                    block[:, :240] *= ramp
+                if fade_out:
+                    block[:, -240:] *= ramp[::-1]
+            yield block
+
+
 def _verify(path, count, check):
     from fractions import Fraction
     from .pyav_media import open_media, decoded, video_stream
@@ -607,7 +630,7 @@ def _write_copy(temporary, plan, check, output_root):
         for number, row in enumerate(plan, 1):
             _unchanged(row)
             frames = row["end"] - row["start"]
-            with open_media(row["path"]) as source, closing(_audio_frames(row, check)) as audio:
+            with open_media(row["path"]) as source, closing(_assembly_audio_frames(row, check)) as audio:
                 stream = video_stream(source)
                 if video is None:
                     video = output.add_stream_from_template(stream, opaque=True)  # remux: no encoder needed (AV1 decodes via libdav1d)
@@ -673,7 +696,7 @@ def _write_reencode(temporary, plan, size, count, check, output_root):
         sound, _ = _configure_audio_stream(output, "aac", 48000, 2, "192k")
         index, sample_offset = 0, 0
         for row in plan:
-            with closing(_video_frames(row, check)) as pictures, closing(_audio_frames(row, check)) as audio:
+            with closing(_video_frames(row, check)) as pictures, closing(_assembly_audio_frames(row, check)) as audio:
                 for frame in pictures:
                     check()
                     if shutil.disk_usage(output_root).free < 64 * 1024**2:
