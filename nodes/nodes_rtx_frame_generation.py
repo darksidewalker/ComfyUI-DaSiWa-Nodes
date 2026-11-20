@@ -9,7 +9,8 @@ import torch
 try:
     from .nodes_rtx_upscaler_refiner import (
         _allocate_output_tensor as _dasiwa_fg_allocate_output,
-        _close_vfx_effect as _dasiwa_fg_close_effect,
+        _dasiwa_rtx_persistent_effect as _dasiwa_fg_persistent_effect,
+        _dasiwa_rtx_resident_effects as _dasiwa_fg_resident_effects,
         _dasiwa_rtx_pack_rgb10a2 as _dasiwa_fg_pack,
         _dasiwa_rtx_unpack_rgb10a2 as _dasiwa_fg_unpack,
         _model_management as _dasiwa_fg_model_management,
@@ -18,7 +19,8 @@ try:
 except ImportError:
     from nodes_rtx_upscaler_refiner import (
         _allocate_output_tensor as _dasiwa_fg_allocate_output,
-        _close_vfx_effect as _dasiwa_fg_close_effect,
+        _dasiwa_rtx_persistent_effect as _dasiwa_fg_persistent_effect,
+        _dasiwa_rtx_resident_effects as _dasiwa_fg_resident_effects,
         _dasiwa_rtx_pack_rgb10a2 as _dasiwa_fg_pack,
         _dasiwa_rtx_unpack_rgb10a2 as _dasiwa_fg_unpack,
         _model_management as _dasiwa_fg_model_management,
@@ -62,6 +64,35 @@ def _dasiwa_fg_stream(device):
             yield
         finally:
             torch.cuda.synchronize(device)
+
+
+def _dasiwa_fg_effect(effect_class, modes, encodings, mode, automatic_shot_change_detection,
+                      device_id, width, height, multiplier, packed):
+    """Borrow the device's persistent VideoFrameGeneration effect (shared with Seamless Loop).
+
+    Mode, shot detection and encoding select the creation config. Size and
+    multiplier are applied by load(), so the same effect is reloaded only when
+    they change (or the SDK flags it) instead of being destroyed and recreated.
+    """
+    encoding_kwargs = ({"image_encoding": encodings.RGB10A2 if packed else encodings.RGB8}
+                       if "image_encoding" in inspect.signature(effect_class).parameters else {})
+
+    def create():
+        return None, effect_class(mode=getattr(modes, mode),
+            automatic_shot_change_detection_enabled=automatic_shot_change_detection,
+            device=device_id, **encoding_kwargs)
+
+    def configure(effect, fresh):
+        changed = fresh or (getattr(effect, "input_width", None), getattr(effect, "input_height", None),
+                            getattr(effect, "frame_multiplier", None)) != (width, height, multiplier)
+        if changed:
+            effect.input_width, effect.input_height = width, height
+            effect.frame_multiplier = multiplier
+        if changed or getattr(effect, "needs_reload", False):
+            effect.load()
+
+    return _dasiwa_fg_persistent_effect(("FrameGeneration", device_id),
+        (effect_class, mode, bool(automatic_shot_change_detection), bool(packed)), create, configure)
 
 
 def _dasiwa_fg_prepare(image, device, packed):
@@ -150,8 +181,10 @@ class DaSiWa_RTX_FrameGeneration:
             _dasiwa_fg_log("RTX Frame Generation", "Warning: specific timestep produces nonuniform temporal spacing; IMAGE has no timestamps.")
         # Two staged input frames, conversions and SDK output, plus openly
         # heuristic opaque FG workspace headroom. This is not an OOM guarantee.
-        reserve = 1024 ** 3 + height * width * (96 if packed else 72)
-        out = previous = current = row = result = effect = None
+        # A loaded persistent effect already holds its base workspace.
+        resident = _dasiwa_fg_resident_effects(["FrameGeneration"], device_id)
+        reserve = (0 if resident else 1024 ** 3) + height * width * (96 if packed else 72)
+        out = previous = current = row = result = None
         mmap_path = None
         try:
             out, mmap_path = _dasiwa_fg_allocate_output(shape, torch.float32 if packed else images.dtype,
@@ -161,43 +194,37 @@ class DaSiWa_RTX_FrameGeneration:
                 # Inputs/output may be on a different CUDA device from compute.
                 if images.device.type == "cuda" and images.device != device:
                     torch.cuda.synchronize(images.device)
-                effect = effect_class(mode=getattr(modes, mode),
-                    automatic_shot_change_detection_enabled=automatic_shot_change_detection,
-                    device=device_id, **({"image_encoding": encodings.RGB10A2 if packed else encodings.RGB8}
-                        if "image_encoding" in inspect.signature(effect_class).parameters else {}))
-                try:
-                    effect.input_width, effect.input_height = width, height
-                    effect.frame_multiplier = step
-                    effect.load()
-                    out[0].copy_(images[0, ..., :3])
-                    previous = _dasiwa_fg_prepare(images[0], device, packed)
-                    output_index = 1
-                    for pair in range(1, count):
-                        _dasiwa_fg_interrupt()
-                        current = _dasiwa_fg_prepare(images[pair], device, packed)
-                        torch.cuda.synchronize(device)
-                        for frame_index in range(1, step):
+                with _dasiwa_fg_effect(effect_class, modes, encodings, mode, automatic_shot_change_detection,
+                                       device_id, width, height, step, packed) as effect:
+                    try:
+                        out[0].copy_(images[0, ..., :3])
+                        previous = _dasiwa_fg_prepare(images[0], device, packed)
+                        output_index = 1
+                        for pair in range(1, count):
                             _dasiwa_fg_interrupt()
-                            if generation_type == "frame rate multiplier":
-                                result = effect.run(previous, current, frame_index=frame_index,
-                                                    shot_change=shot_change, non_blocking=False, stream_ptr=0)
-                            else:
-                                result = effect.run_at_timestep(previous, current, timestep,
-                                                    shot_change=shot_change, non_blocking=False, stream_ptr=0)
-                            row = out[output_index]
-                            _dasiwa_fg_copy_pair_output(result, row, device, packed)
-                            row = result = None
+                            current = _dasiwa_fg_prepare(images[pair], device, packed)
+                            torch.cuda.synchronize(device)
+                            for frame_index in range(1, step):
+                                _dasiwa_fg_interrupt()
+                                if generation_type == "frame rate multiplier":
+                                    result = effect.run(previous, current, frame_index=frame_index,
+                                                        shot_change=shot_change, non_blocking=False, stream_ptr=0)
+                                else:
+                                    result = effect.run_at_timestep(previous, current, timestep,
+                                                        shot_change=shot_change, non_blocking=False, stream_ptr=0)
+                                row = out[output_index]
+                                _dasiwa_fg_copy_pair_output(result, row, device, packed)
+                                row = result = None
+                                output_index += 1
+                            out[output_index].copy_(images[pair, ..., :3])
                             output_index += 1
-                        out[output_index].copy_(images[pair, ..., :3])
-                        output_index += 1
-                        previous, current = current, None
-                    if out.device.type == "cuda" and out.device != device:
-                        torch.cuda.synchronize(out.device)
-                finally:
-                    torch.cuda.synchronize(device)
-                    if effect is not None:
-                        _dasiwa_fg_close_effect(effect)
-                        effect = None
+                            previous, current = current, None
+                        if out.device.type == "cuda" and out.device != device:
+                            torch.cuda.synchronize(out.device)
+                    finally:
+                        # SDK work must finish before the effect is parked or destroyed.
+                        torch.cuda.synchronize(device)
+                        previous = current = row = result = None
             return (out,)
         except BaseException:
             # Tracebacks must not retain the full failed mmap batch or pair views.

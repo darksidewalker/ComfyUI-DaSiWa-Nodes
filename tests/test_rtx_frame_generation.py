@@ -13,6 +13,17 @@ sys.path[:0] = [str(Path(__file__).resolve().parents[2] / "ComfyUI"),
 import nodes_rtx_frame_generation as fg
 
 
+@pytest.fixture(autouse=True)
+def _isolated_rtx_effect_cache():
+    """Persistent SDK effects are process-wide; isolate each test's stubs."""
+    import nodes_rtx_upscaler_refiner as _cache
+    with torch.inference_mode():  # stub close() zeroes inference-mode buffers
+        _cache.dasiwa_rtx_release_effects()
+    yield
+    with torch.inference_mode():
+        _cache.dasiwa_rtx_release_effects()
+
+
 class Encoding(IntEnum):
     RGB8 = 0
     RGB10A2 = 1
@@ -91,6 +102,11 @@ def test_preserves_sources_count_owned_buffer_and_dtype(cpu_sdk, packed, multipl
     assert out.dtype == (torch.float32 if packed else torch.float16)
     assert out[1].mean() < out[multiplier+1].mean()
     effect = PairEffect.instances[-1]
+    # Kept loaded for the next run (SDK destroy can leak VRAM); released on unload.
+    assert not effect.closed
+    import nodes_rtx_upscaler_refiner as cache
+    with torch.inference_mode():
+        cache.dasiwa_rtx_release_effects()
     assert effect.closed
     assert effect.settings[:3] == (Mode.HIGH, False, 1)
     assert len(effect.calls) == 2*(multiplier-1)
@@ -173,3 +189,19 @@ def test_registration_abi_and_names():
     entry=(Path(__file__).resolve().parents[1]/'__init__.py').read_text()
     assert '"DaSiWa_RTX_FrameGeneration": DaSiWa_RTX_FrameGeneration' in entry
     assert '"DaSiWa_RTX_FrameGeneration": "RTX Frame Generation"' in entry
+
+
+def test_effect_reused_and_reloaded_only_on_size_change(cpu_sdk, monkeypatch):
+    loads = []
+    def load(self):
+        loads.append((self.input_width, self.input_height, self.frame_multiplier))
+        self.buffer = None  # stub output buffer follows the loaded size
+    monkeypatch.setattr(PairEffect, 'load', load)
+    run = lambda images, **kw: fg.DaSiWa_RTX_FrameGeneration().dasiwa_rtx_generate_frames(images, **kw)
+    run(torch.zeros(2, 8, 8, 3))
+    run(torch.zeros(3, 8, 8, 3))
+    assert len(PairEffect.instances) == 1 and loads == [(8, 8, 2)]
+    run(torch.zeros(2, 16, 8, 3), multiplier=3)
+    assert len(PairEffect.instances) == 1 and loads[-1] == (8, 16, 3)
+    run(torch.zeros(2, 16, 8, 3), multiplier=3, mode='LOW')
+    assert len(PairEffect.instances) == 2 and PairEffect.instances[0].closed

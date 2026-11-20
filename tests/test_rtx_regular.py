@@ -9,6 +9,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "nodes"))
 import nodes_rtx_upscaler_refiner as rtx
 
 
+@pytest.fixture(autouse=True)
+def _isolated_rtx_effect_cache():
+    """Persistent SDK effects are process-wide; isolate each test's stubs."""
+    import nodes_rtx_upscaler_refiner as _cache
+    with torch.inference_mode():  # stub close() zeroes inference-mode buffers
+        _cache.dasiwa_rtx_release_effects()
+    yield
+    with torch.inference_mode():
+        _cache.dasiwa_rtx_release_effects()
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="RTX effect requires CUDA")
 def test_regular_node_keeps_single_image_batch_with_default_chunking(monkeypatch):
     class FakeEffect:
@@ -617,3 +628,62 @@ def test_known_native_stream_compatibility_handoff(monkeypatch, native_version):
             {"version": "0.2.0.0" if native_version else "future"}, torch.device("cuda:0")):
         assert events == (["caller-sync"] if native_version else [])
     assert events == (["caller-sync", "default-sync"] if native_version else [])
+
+
+def test_effects_persist_across_runs_and_release_on_unload(cpu_execution, monkeypatch):
+    """Destroying SDK effects per run can leak VRAM; stages keep one loaded effect."""
+    created = []
+    monkeypatch.setattr(ModernVSR, "load", lambda self: None if self in created else created.append(self))
+    images = torch.full((1, 8, 8, 3), .5)
+    def run(**extra):
+        return rtx.DaSiWa_RTX_UpscalerRefiner().execute(**options(images, denoise=True, upscale="VSR", **extra))[0]
+
+    run(denoise_strength=.3)
+    assert len(created) == 2 and not any(effect.closed for effect in created)
+    result = run(denoise_strength=.7, resize_type="Manual", width=16, height=16)
+    assert len(created) == 2, "resolution and strength update the loaded effects in place"
+    assert created[0].strength == .7
+    assert (created[1].output_width, created[1].output_height) == (16, 16)
+    assert result.shape == (1, 16, 16, 3)
+    run(denoise_quality="Ultra")
+    assert len(created) == 3 and created[0].closed and not created[1].closed, "only the changed slot is rebuilt"
+    assert rtx._dasiwa_rtx_resident_effects(["Denoise", "Upscale", "Deblur"], 0) == 2
+
+    core = SimpleNamespace(unload_all_models=lambda: None)
+    monkeypatch.setattr(rtx, "_model_management", core)
+    rtx._dasiwa_rtx_install_unload_hook()
+    hooked = core.unload_all_models
+    rtx._dasiwa_rtx_install_unload_hook()
+    assert core.unload_all_models is hooked, "hook installs once"
+    core.unload_all_models()
+    assert all(effect.closed for effect in created)
+    assert rtx._dasiwa_rtx_resident_effects(["Denoise", "Upscale"], 0) == 0
+
+
+def test_persistent_effect_failure_destroys_interrupt_keeps(monkeypatch):
+    class Interrupt(Exception):
+        pass
+    class Effect:
+        closed = False
+        def close(self):
+            self.closed = True
+    monkeypatch.setattr(rtx, "_model_management", SimpleNamespace(InterruptProcessingException=Interrupt))
+    created = []
+    def create():
+        created.append(Effect())
+        return None, created[-1]
+    slot, config = ("Denoise", 0), ("cfg",)
+    with pytest.raises(Interrupt):
+        with rtx._dasiwa_rtx_persistent_effect(slot, config, create, lambda e, fresh: None):
+            raise Interrupt()
+    assert not created[0].closed and rtx._dasiwa_rtx_resident_effects(["Denoise"], 0) == 1
+    with pytest.raises(RuntimeError):
+        with rtx._dasiwa_rtx_persistent_effect(slot, config, create, lambda e, fresh: None) as effect:
+            assert effect is created[0], "interrupted effect is reused"
+            raise RuntimeError("SDK failure")
+    assert created[0].closed and rtx._dasiwa_rtx_resident_effects(["Denoise"], 0) == 0
+    # Release while borrowed: the effect finishes its run, then is destroyed.
+    with rtx._dasiwa_rtx_persistent_effect(slot, config, create, lambda e, fresh: None) as effect:
+        rtx.dasiwa_rtx_release_effects()
+        assert not effect.closed
+    assert effect.closed and rtx._dasiwa_rtx_resident_effects(["Denoise"], 0) == 0

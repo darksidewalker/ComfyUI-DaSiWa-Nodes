@@ -11,6 +11,17 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'nodes'))
 
 
+@pytest.fixture(autouse=True)
+def _isolated_rtx_effect_cache():
+    """Persistent SDK effects are process-wide; isolate each test's stubs."""
+    import nodes_rtx_upscaler_refiner as _cache
+    with torch.inference_mode():  # stub close() zeroes inference-mode buffers
+        _cache.dasiwa_rtx_release_effects()
+    yield
+    with torch.inference_mode():
+        _cache.dasiwa_rtx_release_effects()
+
+
 def load_loop():
     spec = importlib.util.spec_from_file_location('nodes_seamless_loop', ROOT / 'nodes/nodes_seamless_loop.py')
     module = importlib.util.module_from_spec(spec)
@@ -103,7 +114,9 @@ def test_rtx_adapter_owns_borrowed_output_and_closes(monkeypatch, fail):
         with loop._load_rtx_interpolator((12, 8, 8, 3), 'HIGH', 0) as interpolate:
             result = interpolate(torch.zeros(8, 8, 3), torch.ones(8, 8, 3), .25)
         assert torch.equal(result, torch.full_like(result, .25))
-        assert calls[:-1] == [.25, .75]
+        assert calls == [.25, .75], 'successful runs keep the effect loaded'
+        import nodes_rtx_upscaler_refiner as cache
+        cache.dasiwa_rtx_release_effects()
     assert calls[-1] == 'closed'
 
 

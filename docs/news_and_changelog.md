@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-20**. Older history lives in the 
 
 ## News
 
+- **RTX nodes keep their NVIDIA effects loaded (0.5.61):** RTX Upscaler & Refiner, RTX Frame Generation and Seamless Loop (RTX backend) created and destroyed their NVIDIA VFX effects (Denoise, Deblur, VSR/High Bitrate/Streaming, TrueHDR, Frame Generation) on every run. A user report showed that on their system destroying an effect did not give its CUDA memory back to the driver: about 0.6–1.6 GB stayed allocated per finished generation until the card filled up and ComfyUI had to offload model weights, slowing generation. Each stage now keeps one loaded effect per GPU and reuses it: resolution, strength and TrueHDR tunables update in place (Frame Generation reloads the same effect when size or multiplier changes). A new effect is created only when mode/quality, shot detection, encoding or device changes, or after a failed run. ComfyUI's *Unload models* / free-memory action releases them. The RTX memory estimate no longer reserves effect workspace again for effects that are already loaded. Inputs, outputs and saved workflows are unchanged; DEAS receives the fix via a node-pack update.
+
 - **Local GGUF: "illegal instruction" now says what it is (0.5.60):** if the installed llama-cpp-python was built for processor instructions this CPU lacks, Prompt Forge reported *Could not reach local at : [WinError -1073741795] Windows Error 0xc000001d*, which reads like a connection problem. The usual cause is AVX-512: upstream builds each release on whatever CI machine is available, so some releases (for example 0.3.37) need AVX-512, which most desktop CPUs lack. Prompt Forge (local) and the LLM nodes now name the processor problem and the fix: in DEAS, Backend → Upgrade → ComfyUI and node packs (DEAS 0.3.7 installs a build without AVX-512); in plain ComfyUI, a llama-cpp-python build without AVX-512 such as 0.3.36. Other errors are unchanged.
 
 - **DOM-widget UIs keep full node width with the properties panel open (0.5.59):** with ComfyUI's right-side properties panel open, selecting the H3 Director, Enhanced Video Combine, LoRA Loader, Seed Control, Wildcard Preset Prompt Builder or Label listed its custom UI in the panel, which left the widget at the panel width (~277 px): the inner UI shrank and left-aligned while the node frame stayed wide, until reload. These canvas-only UIs now use the frontend's `hideInPanel` option, like Core's own video preview, so they stay full width in Classic and Nodes 2.0. Node inputs, saved workflows and the regular widgets shown in the panel are unchanged. ([#97](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/97))
@@ -251,6 +253,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.61 | 11-20 | RTX Upscaler/Refiner, Frame Generation and Seamless Loop reuse loaded NVIDIA effects instead of destroying them each run (VRAM growth/slowdown report) |
 | 0.5.60 | 11-20 | Local GGUF illegal-instruction (0xc000001d, AVX-512 llama-cpp build) reported as a CPU problem instead of "Could not reach" |
 | 0.5.59 | 11-16 | DOM-widget UIs hidden from the properties panel so they keep full node width when it is open (#97) |
 | 0.5.58 | 11-16 | Seed Control: synchronize Random/Fixed highlight after manual seed entry (#101) |

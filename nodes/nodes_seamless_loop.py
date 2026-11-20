@@ -194,15 +194,8 @@ def _load_rtx_interpolator(shape, mode, device_id):
     device = torch.device(f'cuda:{device_id}')
     h, w = shape[1:3]
     with torch.cuda.device(device), fg._dasiwa_fg_stream(device):
-        effect = effect_class(mode=getattr(modes, mode),
-            automatic_shot_change_detection_enabled=False, device=device_id,
-            **({'image_encoding': encodings.RGB8}
-               if 'image_encoding' in inspect.signature(effect_class).parameters else {}))
-        try:
-            effect.input_width, effect.input_height = w, h
-            effect.frame_multiplier = 2
-            effect.load()
-
+        with fg._dasiwa_fg_effect(effect_class, modes, encodings, mode, False,
+                                  device_id, w, h, 2, False) as effect:
             def interpolate(a, b, t):
                 _check_interrupt()
                 if a.device.type == 'cuda' and a.device != device:
@@ -226,10 +219,11 @@ def _load_rtx_interpolator(shape, mode, device_id):
                     raise RuntimeError("RTX loop interpolation produced non-finite pixels.")
                 return frame.clamp(0, 1)
 
-            yield interpolate
-        finally:
-            torch.cuda.synchronize(device)
-            fg._dasiwa_fg_close_effect(effect)
+            try:
+                yield interpolate
+            finally:
+                # SDK work must finish before the effect is parked or destroyed.
+                torch.cuda.synchronize(device)
 
 
 class DaSiWa_SeamlessLoop:

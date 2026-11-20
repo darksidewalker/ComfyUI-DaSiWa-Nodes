@@ -20,9 +20,11 @@ The input is an ordered batch of decoded frames, **not a native VIDEO object**. 
 - **image_encoding:** default RGB8, or capability-gated packed RGB10A2. 10-bit is SDR precision, not HDR. RGB10A2 output is always float32; RGB8 retains the source floating dtype. Original source frames are copied directly rather than quantized through the SDK.
 - **device_id:** CUDA device index (default 0, matching the existing RTX node). Requires supported NVIDIA hardware/driver at execution.
 - **auto_unload_models:** targeted GPU reclamation under pressure. Before RAM output allocation, the shared allocator requests native inactive-cache eviction, releasable model pins and, if necessary, native active-cache eviction, rechecking capacity after each step. Cache eviction requires ComfyUI's RAM-pressure cache callback; older versions/other cache modes retain GC and supported pin cleanup. No running-executor reset or global GPU offload into RAM; referenced input/model storage can remain resident.
-- **use_mmap:** off by default. Opt-in disk-backed last tier if budgeted VRAM and RAM cannot hold the full output; temp disk must have space. Failed/cancelled execution closes the effect and drops/unlinks failed mmap output.
+- **use_mmap:** off by default. Opt-in disk-backed last tier if budgeted VRAM and RAM cannot hold the full output; temp disk must have space. Failed execution destroys the effect and drops/unlinks failed mmap output; a ComfyUI cancel keeps the loaded effect.
 
 ## RGB, memory and compatibility
+
+The loaded VideoFrameGeneration effect persists per GPU between runs (shared with Seamless Loop's RTX backend), because destroying it did not reliably return CUDA memory to the driver. Size or multiplier changes reload the same effect; mode, shot-detection, encoding or device changes create a new one. ComfyUI's *Unload models* / free-memory action releases it, and the 1 GiB workspace reserve is skipped while the effect is already loaded.
 
 RGB only: RGBA alpha is discarded, matching the official frame-generation node. There is no resizing, alpha interpolation, HDR conversion, or audio output. Complete input and output batches remain in memory and may be cached by ComfyUI. Only previous/current input frames and one SDK output are staged; this is not a constant-memory video streaming interface.
 

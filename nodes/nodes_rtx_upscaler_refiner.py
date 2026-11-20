@@ -4,7 +4,9 @@ import os
 import torch
 import torch.nn.functional as F
 import contextlib
+import functools
 import inspect
+import threading
 from importlib import metadata
 from typing import Any, Optional, Tuple
 
@@ -172,13 +174,19 @@ def _dasiwa_rtx_hdr_effect(capabilities, enabled, device_index, contrast, satura
     if not enabled:
         yield None
         return
-    effect = capabilities["true_hdr"](contrast=contrast, saturation=saturation,
-        middle_gray=middle_gray, luminance=luminance, debanding_off=int(not debanding), device=device_index)
-    try:
-        # TrueHDR pins dimensions on run and loads lazily. No VSR resize fields.
+    true_hdr = capabilities["true_hdr"]
+    tunables = dict(contrast=contrast, saturation=saturation, middle_gray=middle_gray,
+                    luminance=luminance, debanding_off=int(not debanding))
+
+    def configure(effect, fresh):
+        # TrueHDR tunables are live SDK parameters; dimensions pin on run.
+        if not fresh:
+            for name, value in tunables.items():
+                setattr(effect, name, value)
+
+    with _dasiwa_rtx_persistent_effect(("TrueHDR", device_index), (true_hdr,),
+            lambda: (None, true_hdr(device=device_index, **tunables)), configure) as effect:
         yield effect
-    finally:
-        _close_vfx_effect(effect)
 
 
 def round_up(value: float, alignment: int) -> int:
@@ -217,8 +225,12 @@ def _can_fit_in_vram(required_bytes: int, device: torch.device) -> bool:
 
 
 def _dasiwa_rtx_working_reserve(source_width, source_height, target_width, target_height,
-                               resize_method, effect_count, packed=False, hdr=False):
-    """Conservative heuristic, not measured/guaranteed opaque SDK workspace."""
+                               resize_method, effect_count, packed=False, hdr=False, resident_effects=0):
+    """Conservative heuristic, not measured/guaranteed opaque SDK workspace.
+
+    Already-loaded persistent effects hold their base allocation outside free
+    VRAM, so only their per-pixel growth is budgeted again.
+    """
     sw, sh = source_width, source_height
     if resize_method == "Letterbox (Fit)":
         rw, rh = _aspect_ratio_parts(target_width, target_height)
@@ -227,7 +239,7 @@ def _dasiwa_rtx_working_reserve(source_width, source_height, target_width, targe
     largest = max(sw * sh, target_width * target_height)
     staging = source_width * source_height * 3 * 4
     intermediates = largest * (64 if packed or hdr else 48)
-    sdk_estimate = effect_count * (512 * 1024 ** 2 + largest * 16)
+    sdk_estimate = max(0, effect_count - resident_effects) * 512 * 1024 ** 2 + effect_count * largest * 16
     return staging + intermediates + sdk_estimate
 
 
@@ -638,6 +650,126 @@ def _close_vfx_effect(effect):
             method()
             return
 
+
+# --- Persistent SDK effects ---
+# Destroying an NVIDIA VFX effect does not reliably return its CUDA memory to
+# the driver on every platform (reported on Windows: ~0.6-1.6 GB per finished
+# run, held until ComfyUI exits). Each node stage therefore keeps one loaded
+# effect per device and reuses it; resolution/strength/tunables update in
+# place. A slot is rebuilt only when its creation config (mode/quality,
+# encoding, device) changes, after a failed run, or when ComfyUI unloads
+# models ("Unload models" / /free), which releases every idle effect.
+_DASIWA_RTX_EFFECTS = {}        # (role, device) -> (config, entry); entry = (context_manager | None, effect)
+_DASIWA_RTX_EFFECTS_BUSY = set()
+_DASIWA_RTX_EFFECTS_STALE = set()
+_DASIWA_RTX_EFFECTS_LOCK = threading.RLock()
+
+
+def _dasiwa_rtx_destroy_entry(entry):
+    context, effect = entry
+    try:
+        if context is not None:
+            context.__exit__(None, None, None)
+        else:
+            _close_vfx_effect(effect)
+    except Exception as exc:
+        log_dasiwa("RTX Upscaler & Refiner", f"Warning: releasing an RTX SDK effect failed: {exc}")
+
+
+def dasiwa_rtx_release_effects(device_index=None):
+    """Destroy idle persistent effects; busy ones are dropped when their run ends."""
+    with _DASIWA_RTX_EFFECTS_LOCK:
+        for slot in _DASIWA_RTX_EFFECTS_BUSY:
+            if device_index is None or slot[1] == device_index:
+                _DASIWA_RTX_EFFECTS_STALE.add(slot)
+        for slot in list(_DASIWA_RTX_EFFECTS):
+            if device_index is None or slot[1] == device_index:
+                _dasiwa_rtx_destroy_entry(_DASIWA_RTX_EFFECTS.pop(slot)[1])
+
+
+def _dasiwa_rtx_resident_effects(roles, device_index):
+    """Count stages whose SDK effect is already loaded (already outside free VRAM)."""
+    with _DASIWA_RTX_EFFECTS_LOCK:
+        return sum((role, device_index) in _DASIWA_RTX_EFFECTS for role in roles)
+
+
+def _dasiwa_rtx_install_unload_hook():
+    """Release persistent effects when ComfyUI unloads all models.
+
+    Idempotent, feature-detected wrapper around model_management.unload_all_models
+    (used by "Unload models" and the /free route); Core behavior runs first, unchanged.
+    """
+    original = getattr(_model_management, "unload_all_models", None)
+    if not callable(original) or getattr(original, "_dasiwa_rtx_release", False):
+        return
+
+    @functools.wraps(original)
+    def unload_all_models(*args, **kwargs):
+        try:
+            return original(*args, **kwargs)
+        finally:
+            dasiwa_rtx_release_effects()
+
+    unload_all_models._dasiwa_rtx_release = True
+    _model_management.unload_all_models = unload_all_models
+
+
+def _dasiwa_rtx_is_interrupt(exc):
+    interrupt = getattr(_model_management, "InterruptProcessingException", None)
+    return isinstance(interrupt, type) and isinstance(exc, interrupt)
+
+
+@contextlib.contextmanager
+def _dasiwa_rtx_persistent_effect(slot, config, create, configure):
+    """Borrow the slot's loaded effect, or create one.
+
+    create() -> (context_manager | None, effect); configure(effect, fresh) applies
+    per-run settings. Interrupts between frames keep the effect; any other error
+    destroys it, since SDK state after a failed call is unknown.
+    """
+    with _DASIWA_RTX_EFFECTS_LOCK:
+        reuse = slot not in _DASIWA_RTX_EFFECTS_BUSY
+        entry = None
+        if reuse:
+            cached = _DASIWA_RTX_EFFECTS.pop(slot, None)
+            if cached is not None:
+                if cached[0] == config:
+                    entry = cached[1]
+                else:
+                    _dasiwa_rtx_destroy_entry(cached[1])
+            _DASIWA_RTX_EFFECTS_BUSY.add(slot)
+            _DASIWA_RTX_EFFECTS_STALE.discard(slot)
+    keep = False
+    try:
+        fresh = entry is None
+        try:
+            if fresh:
+                entry = create()
+            configure(entry[1], fresh)
+        except BaseException:
+            if entry is not None:
+                _dasiwa_rtx_destroy_entry(entry)
+                entry = None
+            raise
+        keep = True
+        try:
+            yield entry[1]
+        except BaseException as exc:
+            keep = _dasiwa_rtx_is_interrupt(exc)
+            raise
+    finally:
+        with _DASIWA_RTX_EFFECTS_LOCK:
+            if reuse:
+                _DASIWA_RTX_EFFECTS_BUSY.discard(slot)
+                if keep and slot not in _DASIWA_RTX_EFFECTS_STALE:
+                    _DASIWA_RTX_EFFECTS[slot] = (config, entry)
+                    entry = None
+                _DASIWA_RTX_EFFECTS_STALE.discard(slot)
+            if entry is not None:
+                _dasiwa_rtx_destroy_entry(entry)
+        if keep:
+            _dasiwa_rtx_install_unload_hook()
+
 def _dasiwa_rtx_borrow_output(effect, frame, cuda_device):
     frame = frame.contiguous()
     stream = torch.cuda.current_stream(cuda_device)
@@ -669,7 +801,8 @@ def _run_vfx_effect_into(effect, frame, row, cuda_device):
 
 
 @contextlib.contextmanager
-def _maybe_vfx_effect(vfx_api, enabled, mode, quality, device_index, out_width, out_height, strength=1.0, image_encoding="8-bit RGB"):
+def _maybe_vfx_effect(vfx_api, enabled, mode, quality, device_index, out_width, out_height, strength=1.0,
+                      image_encoding="8-bit RGB", role=None):
     if not enabled:
         yield None
         return
@@ -679,32 +812,36 @@ def _maybe_vfx_effect(vfx_api, enabled, mode, quality, device_index, out_width, 
         q_level, attr_name = _resolve_quality_level(QualityLevel, mode, quality)
     except AttributeError:
         raise ValueError(f"Invalid quality level mapping: {_quality_attr(mode, quality)}")
+    dims = (int(out_width), int(out_height))
 
-    effect_cm = None
-    effect = None
-    try:
+    def create():
         effect = _create_vfx_effect(VideoSuperRes, q_level, device_index, strength, image_encoding)
         if hasattr(effect, "__enter__") and hasattr(effect, "__exit__"):
-            effect_cm = effect
-            effect = effect_cm.__enter__()
-        effect.output_width = int(out_width)
-        effect.output_height = int(out_height)
-        if hasattr(effect, "load"):
-            effect.load()
-    except Exception as exc:
-        if effect_cm is not None:
-            effect_cm.__exit__(None, None, None)
-        elif effect is not None:
-            _close_vfx_effect(effect)
-        raise RuntimeError(f"Failed to create NVIDIA RTX VFX effect ({mode} {attr_name}): {exc}")
+            return effect, effect.__enter__()
+        return None, effect
 
+    def configure(effect, fresh):
+        resized = fresh or (getattr(effect, "output_width", None), getattr(effect, "output_height", None)) != dims
+        if not fresh and hasattr(effect, "strength"):
+            effect.strength = strength
+        if resized:
+            effect.output_width, effect.output_height = dims
+        # SDK 0.2 applies size/strength in place and flags real reload needs;
+        # SDKs without that flag reload after a size change, conservatively.
+        if hasattr(effect, "load") and (fresh or getattr(effect, "needs_reload", False)
+                                        or (resized and not hasattr(effect, "needs_reload"))):
+            effect.load()
+
+    slot = (role or mode, device_index)
+    config = (VideoSuperRes, attr_name, image_encoding != "8-bit RGB")
     try:
+        context = _dasiwa_rtx_persistent_effect(slot, config, create, configure)
+        effect = context.__enter__()
+    except Exception as exc:
+        raise RuntimeError(f"Failed to create NVIDIA RTX VFX effect ({mode} {attr_name}): {exc}")
+    with contextlib.ExitStack() as stack:
+        stack.push(context)
         yield effect
-    finally:
-        if effect_cm is not None:
-            effect_cm.__exit__(None, None, None)
-        elif effect is not None:
-            _close_vfx_effect(effect)
 
 class DaSiWa_RTX_UpscalerRefiner:
     DESCRIPTION = (
@@ -906,7 +1043,9 @@ class DaSiWa_RTX_UpscalerRefiner:
             compute_device=cuda_device,
             working_reserve_bytes=_dasiwa_rtx_working_reserve(
                 source_width, source_height, target_width, target_height, resize_method,
-                sum(map(bool, (denoise, deblur, upscale_enabled, hdr_enabled))), packed, hdr_enabled),
+                sum(map(bool, (denoise, deblur, upscale_enabled, hdr_enabled))), packed, hdr_enabled,
+                _dasiwa_rtx_resident_effects([role for role, on in (("Denoise", denoise), ("Deblur", deblur),
+                    ("Upscale", upscale_enabled), ("TrueHDR", hdr_enabled)) if on], device_id)),
         )
         if mmap_path:
             log_dasiwa("RTX Upscaler & Refiner", f"Disk-backed output: {mmap_path}")
@@ -932,7 +1071,8 @@ class DaSiWa_RTX_UpscalerRefiner:
                     # Pass 3: Upscale
                     with _maybe_vfx_effect(
                         vfx_api, upscale_enabled, upscale, upscale_quality,
-                        device_id, target_width, target_height, upscale_strength, image_encoding
+                        device_id, target_width, target_height, upscale_strength, image_encoding,
+                        role="Upscale",
                     ) as upscale_effect:
 
                         step = chunk_frames if chunking else (batch_size or 1)
