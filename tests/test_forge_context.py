@@ -228,3 +228,35 @@ def test_transformers_memory_names_no_context():
     assert "context" not in err.message and "16,384" not in err.message
     # llama.cpp wording means nothing to a transformers model.
     assert backends.local_context_error(RuntimeError("llama_decode returned 1"), 16384, 3, gguf=False) is None
+
+
+def _illegal_instruction():
+    # What ctypes raises on Windows for STATUS_ILLEGAL_INSTRUCTION inside llama.dll/ggml-cpu.dll.
+    exc = OSError(22, "Windows Error 0xc000001d")
+    exc.winerror = -1073741795
+    return exc
+
+
+def test_llama_illegal_instruction_is_a_cpu_problem_not_unreachable(monkeypatch):
+    from types import SimpleNamespace
+    assert backends.llama_cpu_unsupported(_illegal_instruction()) == backends.LLAMA_CPU_UNSUPPORTED
+    assert backends.llama_cpu_unsupported(OSError("exception: illegal instruction")) is not None
+    assert backends.llama_cpu_unsupported(OSError(2, "No such file")) is None
+    assert backends.llama_cpu_unsupported(RuntimeError("illegal instruction")) is None
+
+    def fail(*args, **kwargs):
+        raise _illegal_instruction()
+
+    runtime = SimpleNamespace(
+        _resolve_model_path=lambda *args, **kwargs: "model.gguf",
+        _messages_for_llama_cpp=lambda *args, **kwargs: [],
+        _load_llama_cpp_model=fail,
+        _release_all_model_memory=lambda: None)
+    backend = backends.Local()
+    monkeypatch.setattr(backend, "_llm", lambda: runtime)
+    monkeypatch.setattr(backends, "_half_dtype", lambda: "float16")
+    with pytest.raises(backends.ForgeError) as error:
+        backend.chat("model.gguf", "system", "user", [], {}, 16384, 600)
+    assert error.value.code == "backend"
+    assert "0xc000001d" in error.value.message and "Upgrade" in error.value.message
+    assert "reach" not in error.value.message

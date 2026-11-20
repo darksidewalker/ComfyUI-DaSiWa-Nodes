@@ -5,7 +5,7 @@ That makes the unload-after-run mode much more reliable because the graph cache
 does not hold a live reference to a very large model.
 """
 
-from .llm_backends import run_workflow_server, pil_images_b64, parse_server_choice, server_model_choices
+from .llm_backends import run_workflow_server, pil_images_b64, parse_server_choice, server_model_choices, llama_cpu_unsupported
 
 from .llm_prompt_presets import (
     _BASE_OUTPUT_RULES,
@@ -233,11 +233,17 @@ class DaSiWa_LLMAnalyze:
                     if not projector:
                         raise ValueError("GGUF vision requires a matching mmproj file beside the model.")
                     load_config = dict(llm_config, llama_mmproj_path=projector)
-                loaded = _load_llama_cpp_model(load_config, need_vision=len(pil_images) > 0)
-                response, image_count = _run_llama_cpp_generation(
-                    loaded, final_system, user_text, max_new_tokens, temperature, top_p,
-                    repetition_penalty, seed, images_b64=pil_images_b64(pil_images),
-                )
+                try:
+                    loaded = _load_llama_cpp_model(load_config, need_vision=len(pil_images) > 0)
+                    response, image_count = _run_llama_cpp_generation(
+                        loaded, final_system, user_text, max_new_tokens, temperature, top_p,
+                        repetition_penalty, seed, images_b64=pil_images_b64(pil_images),
+                    )
+                except OSError as exc:
+                    unsupported = llama_cpu_unsupported(exc)
+                    if unsupported:
+                        raise RuntimeError(unsupported) from None
+                    raise
             elif backend in ("openai", "ollama_server"):
                 response, image_count, remote_status = run_workflow_server(
                     llm_config, final_system, user_text, pil_images, max_new_tokens,

@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-15**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-20**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Local GGUF: "illegal instruction" now says what it is (0.5.60):** if the installed llama-cpp-python was built for processor instructions this CPU lacks, Prompt Forge reported *Could not reach local at : [WinError -1073741795] Windows Error 0xc000001d*, which reads like a connection problem. The usual cause is AVX-512: upstream builds each release on whatever CI machine is available, so some releases (for example 0.3.37) need AVX-512, which most desktop CPUs lack. Prompt Forge (local) and the LLM nodes now name the processor problem and the fix: in DEAS, Backend → Upgrade → ComfyUI and node packs (DEAS 0.3.7 installs a build without AVX-512); in plain ComfyUI, a llama-cpp-python build without AVX-512 such as 0.3.36. Other errors are unchanged.
 
 - **DOM-widget UIs keep full node width with the properties panel open (0.5.59):** with ComfyUI's right-side properties panel open, selecting the H3 Director, Enhanced Video Combine, LoRA Loader, Seed Control, Wildcard Preset Prompt Builder or Label listed its custom UI in the panel, which left the widget at the panel width (~277 px): the inner UI shrank and left-aligned while the node frame stayed wide, until reload. These canvas-only UIs now use the frontend's `hideInPanel` option, like Core's own video preview, so they stay full width in Classic and Nodes 2.0. Node inputs, saved workflows and the regular widgets shown in the panel are unchanged. ([#97](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/97))
 
@@ -249,6 +251,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.60 | 11-20 | Local GGUF illegal-instruction (0xc000001d, AVX-512 llama-cpp build) reported as a CPU problem instead of "Could not reach" |
 | 0.5.59 | 11-16 | DOM-widget UIs hidden from the properties panel so they keep full node width when it is open (#97) |
 | 0.5.58 | 11-16 | Seed Control: synchronize Random/Fixed highlight after manual seed entry (#101) |
 | 0.5.57 | 11-16 | H3 Join: opt-in `smooth-seams` audio policy; Transition Guide reclaims cached RAM before refusing |

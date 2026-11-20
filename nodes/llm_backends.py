@@ -18,6 +18,26 @@ IMAGE_MAX_EDGE = 1024
 NUM_PREDICT = 3500
 
 
+# ctypes turns a native "illegal instruction" (Windows STATUS_ILLEGAL_INSTRUCTION 0xc000001d)
+# into OSError. llama-cpp-python wheels are built with their CI runner's CPU flags, so some
+# releases need AVX-512 and fail like this on most desktop CPUs; it is not a connection problem.
+LLAMA_CPU_UNSUPPORTED = (
+    "The installed llama-cpp-python uses processor instructions this CPU does not have "
+    "(Windows Error 0xc000001d / illegal instruction, usually AVX-512). In DEAS run Backend → "
+    "Upgrade → ComfyUI and node packs; in plain ComfyUI install a llama-cpp-python build "
+    "without AVX-512 (for example 0.3.36)."
+)
+
+
+def llama_cpu_unsupported(exc):
+    """The user-facing message when `exc` is a native illegal-instruction fault, else None."""
+    if not isinstance(exc, OSError):
+        return None
+    if getattr(exc, "winerror", None) in (-1073741795, 0xC000001D) or "illegal instruction" in str(exc).lower():
+        return LLAMA_CPU_UNSUPPORTED
+    return None
+
+
 class ForgeError(Exception):
     def __init__(self, code, message, raw=None):
         super().__init__(message)
@@ -710,6 +730,9 @@ class Local:
         except ForgeError:
             raise
         except Exception as exc:
+            unsupported = llama_cpu_unsupported(exc) if gguf else None
+            if unsupported:
+                raise ForgeError("backend", unsupported) from None
             mapped = local_context_error(exc, num_ctx, len(images_b64 or ()), gguf)
             if mapped:
                 raise mapped from None
