@@ -495,7 +495,7 @@ function mountLoraSurface(node, calcHeight, getTooltipAt) {
     if (!frame && !removedFromGraph) frame = requestAnimationFrame(paint);
   };
   const widget = node.addDOMWidget("lora_stack_ui", "custom", root, {
-    serialize: false, hideOnZoom: false, margin: 0,
+    serialize: false, hideOnZoom: false, margin: 0, hideInPanel: true, // #97
     getMinHeight: height, getMaxHeight: height, getHeight: height,
   });
   widget.serialize = false;

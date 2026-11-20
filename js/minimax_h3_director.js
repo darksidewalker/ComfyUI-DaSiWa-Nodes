@@ -2013,6 +2013,9 @@ function install(node) {
     domWidget = node.addDOMWidget("minimax_h3_director_ui", "custom", timelineHost, {
       serialize: false,
       hideOnZoom: false,
+      // Canvas-only UI: listing it in the right-side properties panel re-parents
+      // it there and leaves widget.width at the panel width (#97).
+      hideInPanel: true,
       margin: widgetMargin,
       getMinHeight: widgetHeight,
       getMaxHeight: widgetHeight,

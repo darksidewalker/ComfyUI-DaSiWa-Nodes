@@ -149,7 +149,7 @@ class SimpleLabel extends LGraphNode {
             else app.canvas.processContextMenu(this, event);
         });
         this.addDOMWidget("label", "dasiwa-label", this.root, {
-            serialize: false, hideOnZoom: false, margin: 0,
+            serialize: false, hideOnZoom: false, margin: 0, hideInPanel: true, // #97
             getMinHeight: () => 40,
         });
         this.render();

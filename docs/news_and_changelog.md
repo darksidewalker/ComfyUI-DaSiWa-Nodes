@@ -6,6 +6,8 @@ This changelog covers **2026-07-05 → 2026-11-15**. Older history lives in the 
 
 ## News
 
+- **DOM-widget UIs keep full node width with the properties panel open (0.5.59):** with ComfyUI's right-side properties panel open, selecting the H3 Director, Enhanced Video Combine, LoRA Loader, Seed Control, Wildcard Preset Prompt Builder or Label listed its custom UI in the panel, which left the widget at the panel width (~277 px): the inner UI shrank and left-aligned while the node frame stayed wide, until reload. These canvas-only UIs now use the frontend's `hideInPanel` option, like Core's own video preview, so they stay full width in Classic and Nodes 2.0. Node inputs, saved workflows and the regular widgets shown in the panel are unchanged. ([#97](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/97))
+
 - **Seed Control: Fixed highlight after typing (0.5.58):** manually entering a seed now immediately highlights Fixed and enables Use Last, matching the already-updated stored mode. Reuses the existing in-place switch refresh without rebuilding the panel; seed values, queue behavior and saved-workflow inputs are unchanged. ([#101](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/101))
 
 - **H3 Join: optional audio-seam smoothing and transition RAM reclaim (0.5.57):** Join clips accepts the new `audio_policy` value `smooth-seams`, which applies a 5 ms fade-out/fade-in at each internal clip boundary only. Duration, sample count, timeline, outer edges and video (including packet copy) are unchanged; `preserve` stays the default and is byte-identical to before. Unknown or non-string policies fail clearly. When a Transition Guide is refused for host RAM, it first releases this executor's cached RAM through Core's own pressure hooks (inactive cache, pinned memory, then active cache) and rechecks; models are never unloaded, the safety reserve is unchanged and no prompt is resubmitted.
@@ -247,6 +249,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.59 | 11-16 | DOM-widget UIs hidden from the properties panel so they keep full node width when it is open (#97) |
 | 0.5.58 | 11-16 | Seed Control: synchronize Random/Fixed highlight after manual seed entry (#101) |
 | 0.5.57 | 11-16 | H3 Join: opt-in `smooth-seams` audio policy; Transition Guide reclaims cached RAM before refusing |
 | 0.5.56 | 11-15 | 7:9 and 9:7 presets across Director, Scale Calculator and RTX, preserving pipeline-specific math |

@@ -334,6 +334,7 @@ app.registerExtension({
             previewWidget = this.addDOMWidget("video_preview", "preview", root, {
                 serialize: false,
                 hideOnZoom: false,
+                hideInPanel: true, // like core's video preview; panel sizing shrinks it (#97)
                 getHeight: () => previewHeight(),
             });
             previewWidget.aspectRatio = 16 / 9;

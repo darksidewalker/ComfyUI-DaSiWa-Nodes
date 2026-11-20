@@ -224,6 +224,7 @@ app.registerExtension({
             this.addDOMWidget("wildcard_subjects", "custom", container, {
                 serialize: false,
                 hideOnZoom: false,
+                hideInPanel: true, // #97
                 // Do not derive this from node.size: ComfyUI uses getHeight()
                 // to calculate node.size, so that feedback loop grows the node
                 // on every layout pass.

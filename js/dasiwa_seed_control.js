@@ -256,7 +256,7 @@ function dasiwaSeedControlInstall(node) {
     return 140;
   };
   if (node.addDOMWidget) {
-    const domWidget = node.addDOMWidget("dasiwa_seed_control_ui", "custom", root, { serialize: false, hideOnZoom: false, getHeight: dasiwaSeedControlUiHeight, destroy: () => clearInterval(node.__dasiwaSeedExtPoll) });
+    const domWidget = node.addDOMWidget("dasiwa_seed_control_ui", "custom", root, { serialize: false, hideOnZoom: false, hideInPanel: true, getHeight: dasiwaSeedControlUiHeight, destroy: () => clearInterval(node.__dasiwaSeedExtPoll) });
     // This is a minimum size only. The root follows node resizing so the
     // container query can move rows 2/3 beside the seed field when space exists.
     domWidget.computeSize = () => [DASIWASEED_COMPUTE_SIZE_WIDTH, dasiwaSeedControlUiHeight()];
