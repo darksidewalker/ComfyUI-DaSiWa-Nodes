@@ -1,4 +1,5 @@
 """Schema-2 immutable AV deltas. Only requested safetensors slices are loaded."""
+import math
 import os
 import shutil
 import time
@@ -144,7 +145,10 @@ def verify_segment_export(path, metadata):
         declared = float(stream.duration*stream.time_base)*rate if stream.duration is not None else None
         # WebM/MKV report no audio stream duration, and AAC/Opus always pad the
         # final codec frame; one frame of padding the container cannot signal is not a boundary error.
-        padded = (samples > wanted and samples-wanted < max_frame and (declared is None or abs(declared-wanted) <= 1))
+        # An MP4 whose movie timescale is 1000 ticks/s (FFmpeg 7.1 and most GUI encoders) also
+        # declares the track duration rounded to milliseconds, so allow that rounding - never a frame.
+        slack = max(1,math.ceil(rate/1000))  # one millisecond in samples: 32 at 32 kHz, far below one AAC frame
+        padded = (samples > wanted and samples-wanted < max_frame and (declared is None or abs(declared-wanted) <= slack))
         if samples != wanted and not padded:
             raise ValueError(f'Segment audio ends at {samples} samples; expected {wanted} at {rate} Hz.')
         audio_info = dict(codec=stream.codec_context.name,sample_rate=rate,channels=2,samples=wanted)

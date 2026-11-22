@@ -240,6 +240,23 @@ def test_render_writes_only_unguided_middle_into_input(tmp_path, monkeypatch):
         assert abs(sound.duration * sound.time_base - Fraction(29, 24)) < Fraction(1, 40)
 
 
+@pytest.mark.parametrize('gap', [12, 29, 46, 63])
+def test_bridge_audio_presentation_duration_is_sample_exact(tmp_path, monkeypatch, gap):
+    """The MP4 movie timescale must not quantize the bridge's audio edit list to milliseconds.
+
+    FFmpeg 7.1 (PyAV 18) writes the edit list duration in the movie timescale; at 1000 ticks/s
+    a 29 or 46 frame bridge reads back 16 samples short and fails assembly's readback.
+    """
+    monkeypatch.setattr(transition, '_roots', lambda: (tmp_path, tmp_path))
+    latent, vae, audio_vae = window(frames=2 * 22 + gap)
+    context = {**transition.transition_spec(spec(transition_frames=gap)), 'canvas': (64, 64),
+               'colors': dict(color_primaries=1, color_trc=1, colorspace=1, color_range=1)}
+    item = transition.DaSiWaH3TransitionRender().render(latent, vae, audio_vae, context)['ui']['h3_transition'][0]
+    with av.open(str(tmp_path / item['filename'])) as container:
+        sound = container.streams.audio[0]
+        assert abs(sound.duration * sound.time_base - Fraction(gap, 24)) <= Fraction(1, 48000)
+
+
 def test_render_restores_source_canvas_by_cover_scaling(tmp_path, monkeypatch):
     item = render(tmp_path, monkeypatch, canvas=(96, 64), generated=(64, 64))
     with av.open(str(tmp_path / item['filename'])) as container:

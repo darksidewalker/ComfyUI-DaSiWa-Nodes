@@ -7,6 +7,13 @@ from fractions import Fraction
 
 log = logging.getLogger(__name__)
 
+# FFmpeg 7.1 (PyAV 18) writes MP4 edit-list durations in the *movie* timescale. At the
+# default 1000 ticks/s an audio track whose length is not a whole millisecond reads back
+# milliseconds short (29 frames = 1.208 s instead of 1.208333 s), which fails the
+# one-sample presentation-duration readback in _verify. A 48 kHz movie timescale keeps
+# both the edit list and the track duration sample-exact; FFmpeg 8 derives this itself.
+MP4_OPTIONS = {"movflags": "+faststart", "movie_timescale": "48000"}
+
 
 def _id(value):
     if not isinstance(value, str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,80}", value):
@@ -624,7 +631,7 @@ def _write_copy(temporary, plan, check, output_root):
     import av
     from ..helper_pyav_video import _configure_audio_stream
     from .pyav_media import open_media, video_stream
-    with av.open(str(temporary), "w", format="mp4", options={"movflags": "+faststart", "movie_timescale": "48000"}) as output:
+    with av.open(str(temporary), "w", format="mp4", options={**MP4_OPTIONS}) as output:
         video = sound = None
         offset, last_dts, sample_offset = 0, None, 0
         for number, row in enumerate(plan, 1):
@@ -687,7 +694,7 @@ def _write_reencode(temporary, plan, size, count, check, output_root):
     from contextlib import closing
     import av
     from ..helper_pyav_video import _configure_video_stream, _configure_audio_stream
-    with av.open(str(temporary), "w", format="mp4", options={"movflags": "+faststart", "movie_timescale": "48000"}) as output:
+    with av.open(str(temporary), "w", format="mp4", options={**MP4_OPTIONS}) as output:
         # Reuse the exporter configuration, but never its whole-waveform audio API.
         video = _configure_video_stream(output, "libx264", *size, 24, 8, 18)
         video.codec_context.thread_count = 2

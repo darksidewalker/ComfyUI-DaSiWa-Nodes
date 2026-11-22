@@ -220,7 +220,11 @@ def encode_attempt(output_path, container_name, encoder, width, height, frame_ra
     attempt = f"{output_path}.attempt-{uuid.uuid4().hex}"
     container = None
     try:
-        options = {"MP4": {"movflags": "+faststart+use_metadata_tags"}, "Animated WebP": {"loop": "0"}}.get(container_name, {})
+        # FFmpeg 7.1 (PyAV 18) writes MP4 edit-list durations in the movie timescale, so the
+        # default 1000 ticks/s rounds a track length to milliseconds for readers and for the
+        # H3 continuity readback. A 48 kHz movie timescale keeps the sample grid exact.
+        options = {"MP4": {"movflags": "+faststart+use_metadata_tags", "movie_timescale": "48000"},
+                   "Animated WebP": {"loop": "0"}}.get(container_name, {})
         container = av.open(attempt, "w", format=FORMAT_NAMES[container_name], options=options)
         _metadata(container, metadata)
         video = _configure_video_stream(container, encoder, width, height, frame_rate, bit_depth, quality, alpha)
@@ -288,7 +292,7 @@ def transcode_preview(source, destination=None):
         with av.open(source, "r") as input_container:
             input_video = input_container.streams.video[0]
             input_audio = input_container.streams.audio[0] if input_container.streams.audio else None
-            output = av.open(path, "w", format="mp4", options={"movflags": "+faststart"})
+            output = av.open(path, "w", format="mp4", options={"movflags": "+faststart", "movie_timescale": "48000"})
             rate = input_video.average_rate or Fraction(24, 1)
             video = output.add_stream("libx264", rate=rate, options={"preset": "ultrafast", "crf": "24"})
             video.width = input_video.width

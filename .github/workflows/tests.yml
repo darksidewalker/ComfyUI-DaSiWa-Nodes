@@ -1,0 +1,66 @@
+name: Tests
+
+# Regression suite for the pack, run the way .github/scripts expects: a sibling ComfyUI
+# checkout (test_h3_segment_backend.py resolves ../ComfyUI, or H3_COMFY if it lives elsewhere).
+# PyAV is matrixed on purpose: FFmpeg 7.1 (PyAV 18, the pack's minimum) and FFmpeg 8 write
+# and read MP4 edit lists differently, which is exactly where the H3 AV-boundary bugs hide.
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python / ${{ matrix.av }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        av: ["av", "av==18.*"]  # latest, plus the minimum the pack requires (av>=18.0)
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: ComfyUI-DaSiWa-Nodes
+
+      - uses: actions/checkout@v5
+        with:
+          repository: Comfy-Org/ComfyUI
+          path: ComfyUI
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install CPU torch, ComfyUI's own requirements and the test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install -r ComfyUI/requirements.txt
+          python -m pip install pytest "${{ matrix.av }}"
+
+      - name: Nodepack regression suite
+        working-directory: ComfyUI-DaSiWa-Nodes
+        run: python -m pytest -q .github/scripts
+
+  canvas:
+    name: canvas logic (node --test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: node --test .github/scripts/*.mjs

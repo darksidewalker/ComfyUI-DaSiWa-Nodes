@@ -242,7 +242,7 @@ class DaSiWaH3TransitionRender:
         colors = transition["colors"]
         check = guard(interrupt=True)
         try:
-            with av.open(str(temporary), "w", format="mp4", options={"movflags": "+faststart"}) as output:
+            with av.open(str(temporary), "w", format="mp4", options={**assembly.MP4_OPTIONS}) as output:
                 stream = _configure_video_stream(output, "libx264", width, height, 24, 8, 18)
                 for key, value in colors.items():
                     setattr(stream.codec_context, key, value)

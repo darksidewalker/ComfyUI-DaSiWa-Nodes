@@ -1,15 +1,18 @@
 """REF2VA Forge explicit same-subject reference groups."""
-import importlib.util
+import importlib
 import sys
+import types
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / "nodes"))
-spec = importlib.util.spec_from_file_location("h3_forge_test", ROOT / "nodes" / "h3_forge.py")
-forge = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(forge)
+# Forge and its siblings use relative imports, so load it through the pack's "nodes" package
+# instead of a bare file spec; a spec-less module has no package and breaks "from .x import".
+package = sys.modules.get("nodes") or types.ModuleType("nodes")
+package.__path__ = [str(ROOT / "nodes")]
+sys.modules["nodes"] = package
+forge = importlib.import_module("nodes.h3_forge")
 
 
 def image(role="subject", group=None, **extra):

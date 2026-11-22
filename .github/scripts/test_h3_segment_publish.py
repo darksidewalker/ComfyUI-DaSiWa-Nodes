@@ -7,8 +7,11 @@ import av
 import numpy as np
 
 
-def media_file(path, frames=119, fps=24, audio_samples=None, video=True):
-    with av.open(str(path),'w') as out:
+def media_file(path, frames=119, fps=24, audio_samples=None, video=True, timescale=None):
+    # A 1000 tick/s movie timescale is what FFmpeg 7.1 and most GUI encoders write, and it
+    # rounds the declared audio duration to milliseconds on any FFmpeg version.
+    options = {"movie_timescale": str(timescale)} if timescale and path.suffix == '.mp4' else None
+    with av.open(str(path),'w',options=options) as out:
         a = out.add_stream('aac' if path.suffix == '.mp4' else 'pcm_s16le',rate=32000)
         a.layout = 'stereo'
         if video:
@@ -82,6 +85,17 @@ def test_publish_accepts_actual_h264_aac_priming_and_padding(tmp_path,monkeypatc
     data = store.inspect('s',ticket['clip_id'])
     assert data['export']['audio']['samples'] == 158667
     assert data['export']['audio']['codec'] == 'aac'
+
+
+def test_publish_accepts_millisecond_quantized_mp4_duration(tmp_path,monkeypatch):
+    # Same export, but muxed with the 1000 tick/s movie timescale that FFmpeg 7.1 used by
+    # default: the container then declares 4.959 s for a 158667 sample interval, which is
+    # container rounding, not a moved sample boundary.
+    nodes,store,ticket = setup(tmp_path,monkeypatch)
+    path = tmp_path/'segment.mp4'
+    media_file(path,timescale=1000)
+    nodes.DaSiWaH3ContinuityPublish().publish(str(path),ticket)
+    assert store.inspect('s',ticket['clip_id'])['export']['audio']['samples'] == 158667
 
 
 def test_publish_accepts_audio_tail_padding_without_declared_duration(tmp_path,monkeypatch):
