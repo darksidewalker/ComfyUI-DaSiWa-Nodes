@@ -486,3 +486,248 @@ def test_partial_audio_mask_retains_native_x0_not_carried_input():
     _, result = h3.comfy.utils.unpack_latents(output, args["c"]["latent_shapes"])
     assert torch.equal(result[mask == 0], frozen[mask == 0])
     torch.testing.assert_close(result[mask == 1], audio[mask == 1] + (len(calls) + 1) / 2)
+
+
+# --- references cropped per tile, image stream, tile memory estimate (0.5.62) ---
+
+def test_crop_reference_maps_the_tile_box_proportionally():
+    ref = dict(kind="video", latent=torch.arange(6 * 8, dtype=torch.float32).reshape(1, 1, 1, 6, 8),
+               latent_h=6, latent_w=8, latent_t=1, audio_latent=None)
+    out = h3.crop_reference(ref, 0, 6, 8, 16, 12, 16)  # top-right quarter of a 12x16 target
+    # 3 reference rows snap outward to the 2x2 patch grid: rows 0..4.
+    assert (out["latent_h"], out["latent_w"]) == (4, 4) and out["latent"].shape[-2:] == (4, 4)
+    torch.testing.assert_close(out["latent"], ref["latent"][..., 0:4, 4:8])
+    mid = h3.crop_reference(ref, 2, 8, 4, 10, 12, 16)  # rows 1..4, cols 2..5 -> patch grid 0..4, 2..6
+    assert mid["latent"].shape[-2:] == (4, 4)
+    torch.testing.assert_close(mid["latent"], ref["latent"][..., 0:4, 2:6])
+    assert ref["latent_h"] == 6 and ref["latent"].shape[-2:] == (6, 8)  # input untouched
+    tiny = h3.crop_reference(ref, 11, 12, 0, 1, 12, 16)  # never below one 2x2 DiT patch
+    assert (tiny["latent_h"], tiny["latent_w"]) == (2, 2)
+    audio_only = dict(kind="audio", audio_latent=torch.ones(1, 32, 2, 4))
+    assert h3.crop_reference(audio_only, 0, 1, 0, 1, 2, 2) is audio_only
+
+
+@pytest.mark.parametrize("mode,kinds", [("full", set()), ("crop_video", {"video", "video_audio"}),
+                                        ("crop_all", {"video", "video_audio", "image"})])
+def test_crops_reference_modes(mode, kinds):
+    for kind in ("video", "video_audio", "image"):
+        assert h3.crops_reference(dict(kind=kind, latent=torch.ones(1)), mode) is (kind in kinds)
+    assert h3.crops_reference(dict(kind="audio"), mode) is False
+
+
+def test_cropped_references_reach_each_tile_with_native_layout():
+    video, audio, args = packed_case(h=6, w=8)
+    payload = args["c"]["minimax_payload"]
+    plate = dict(kind="video", latent=torch.randn(1, 1, 2, 6, 8), latent_h=6, latent_w=8, latent_t=2,
+                 ref_audio_t=0, audio_latent=None)
+    character = payload["refs"][0]
+    payload["refs"] = [plate, character]
+    seen = []
+
+    def forward(x, t, **ct):
+        v, a = h3.comfy.utils.unpack_latents(x, ct["latent_shapes"])
+        p = ct["minimax_payload"]
+        cropped, kept = p["refs"]
+        assert kept is character  # images stay whole with crop_video
+        assert cropped["latent"].shape[-2:] == v.shape[-2:] == (cropped["latent_h"], cropped["latent_w"])
+        assert p["cond_video_latents"][-2] is cropped["latent"] and p["cond_video_latents"][-1] is character["latent"]
+        assert "layout" not in p
+        # The native layout accepts the cropped block (signature built from the tile and its refs).
+        h3.PackedLayout(2, 2, h3._ceil2(v.shape[-2]), h3._ceil2(v.shape[-1]), a.shape[-1],
+                        keyframes=p["keyframes"], refs=p["refs"])
+        seen.append(cropped["latent"].shape[-2:])
+        return x
+
+    out = h3.H3TiledDiffusion(64, 64, 32, coordinates="local", references="crop_video")(forward, args)
+    torch.testing.assert_close(out, args["input"])
+    assert len(seen) > 1 and payload["refs"][0] is plate and plate["latent"].shape[-2:] == (6, 8)
+
+
+def test_cropped_references_require_local_coordinates_and_known_mode():
+    with pytest.raises(ValueError, match="local tile coordinates"):
+        h3.H3TiledDiffusion(64, 64, 32, coordinates="global", references="crop_video")
+    with pytest.raises(ValueError, match="Tile references"):
+        h3.H3TiledDiffusion(64, 64, 32, coordinates="local", references="crop")
+
+
+def test_image_stream_tiles_blend_to_the_full_prediction():
+    # MiniMax-H3-Image samples one 5-D stream: no latent_shapes, no audio.
+    image = torch.linspace(-1, 1, 24 * 7 * 9).reshape(1, 24, 1, 7, 9)
+    ref = dict(kind="image", latent=torch.ones(1, 24, 1, 7, 9), latent_h=7, latent_w=9)
+    payload = {"refs": [ref], "layout": object()}
+    c = dict(minimax_payload=payload, c_crossattn=torch.ones(1, 2, 3), transformer_options={})
+    shapes = []
+
+    def forward(x, t, **ct):
+        assert "latent_shapes" not in ct and "layout" not in ct["minimax_payload"]
+        assert ct["minimax_payload"]["refs"][0]["latent"].shape[-2:] == x.shape[-2:]
+        shapes.append(tuple(x.shape))
+        return x * 2
+
+    wrapper = h3.H3TiledDiffusion(64, 64, 32, coordinates="local", references="crop_all")
+    out = wrapper(forward, dict(input=image, timestep=torch.ones(1), c=c))
+    torch.testing.assert_close(out, image * 2)
+    assert len(shapes) > 1 and all(s[-2] <= 4 and s[-1] <= 4 for s in shapes)
+    # Global coordinates fall back to local for the image stream (it has no packed AV layout).
+    out = h3.H3TiledDiffusion(64, 64, 32)(lambda x, t, **ct: x * 2, dict(input=image, timestep=torch.ones(1), c=c))
+    torch.testing.assert_close(out, image * 2)
+
+
+def test_tile_memory_estimate_packed_uses_recorded_stream_shapes():
+    est = h3.TileMemoryEstimate(34, 60)  # 544x960 px tile
+    video, audio = (1, 24, 30, 136, 240), (1, 32, 2, 300)
+    full = 24 * 30 * 136 * 240 + 32 * 2 * 300
+    est.latent_shapes = [video, audio]
+    shape = est.estimate_shape((1, 1, full))
+    tile = 24 * 30 * 34 * 60 + 32 * 2 * 300
+    assert shape == [1, 1, tile + -(-24 * 30 * 136 * 240 // 64)]
+    assert shape[-1] < full / 10
+    est.latent_shapes = None  # unknown packing keeps Core's full estimate
+    assert est.estimate_shape((1, 1, full)) == [1, 1, full]
+    est.latent_shapes = [(1, 24, 2, 4, 4), audio]  # a canvas smaller than the tile never grows
+    small = 24 * 2 * 4 * 4 + 32 * 2 * 300
+    assert est.estimate_shape((1, 1, small)) == [1, 1, small]
+
+
+@pytest.mark.parametrize("shape,expected", [((2, 4, 256, 256), [2, 4, 80, 64]), ((1, 16, 1, 256, 256), [1, 16, 1, 80, 64]),
+                                            ((1, 4, 32, 32), [1, 4, 32, 32])])
+def test_tile_memory_estimate_unpacked_clamps_spatial_dims(shape, expected):
+    # Rows grow by the 1/64 full-canvas buffer share: 256x256 -> 64x64 tile + 1024 area = 80 rows.
+    est = h3.TileMemoryEstimate(64, 64)
+    out = est.estimate_shape(shape)
+    h, w = shape[-2:]
+    target = min(h, 64) * min(w, 64) + -(-h * w // 64)
+    assert out[-1] == min(w, 64) and out[-2] == min(h, -(-target // min(w, 64)))
+    assert out[:-2] == list(shape[:-2]) and out == expected
+
+
+def test_tile_memory_estimate_reaches_core_prepare_sampling(monkeypatch):
+    import comfy.patcher_extension as pe
+    import comfy.sampler_helpers as sh
+
+    class Patcher:
+        def __init__(self):
+            self.wrappers = {}
+        def add_wrapper_with_key(self, kind, key, fn):
+            self.wrappers.setdefault(kind, {}).setdefault(key, []).append(fn)
+        def remove_wrappers_with_key(self, kind, key):
+            self.wrappers.get(kind, {}).pop(key, None)
+
+    patcher = Patcher()
+    est = h3.install_tile_memory_estimate(patcher, 4, 4)
+    model_options = {"transformer_options": {"wrappers": patcher.wrappers}}
+    seen = []
+    monkeypatch.setattr(sh, "_prepare_sampling", lambda model, noise_shape, conds, **kw: seen.append(list(noise_shape)) or (None, conds, []))
+    video, audio = (1, 24, 5, 32, 32), (1, 32, 2, 10)
+    full = 24 * 5 * 32 * 32 + 32 * 2 * 10
+
+    def outer(noise, latent_image, sampler, sigmas, denoise_mask, callback, disable_pbar, seed, latent_shapes=None):
+        sh.prepare_sampling(None, (1, 1, full), {}, model_options)
+        return "sampled"
+
+    executor = pe.WrapperExecutor.new_executor(outer, pe.get_all_wrappers(pe.WrappersMP.OUTER_SAMPLE, model_options, is_model_options=True))
+    assert executor.execute(None, None, None, None, None, None, False, 0, latent_shapes=[video, audio]) == "sampled"
+    assert seen == [[1, 1, 24 * 5 * 4 * 4 + 32 * 2 * 10 + -(-24 * 5 * 32 * 32 // 64)]]
+    assert est.latent_shapes is None  # nothing retained after the sampling run
+    h3.remove_tile_memory_estimate(patcher)
+    assert not any(patcher.wrappers.get(k) for k in (pe.WrappersMP.OUTER_SAMPLE, pe.WrappersMP.PREPARE_SAMPLING))
+
+
+# --- weight residency (0.5.62) ---
+
+GB = 2**30
+
+
+class _Patcher:
+    def __init__(self, size_gb, loaded_gb=0.0, dynamic=False, device='cuda'):
+        self.model = object()
+        self.load_device = torch.device(device)
+        self._size, self._loaded, self._dynamic = int(size_gb * GB), int(loaded_gb * GB), dynamic
+    def model_size(self): return self._size
+    def loaded_size(self): return self._loaded
+    def is_dynamic(self): return self._dynamic
+    def current_loaded_device(self): return self.load_device
+
+
+def _core(monkeypatch, free_gb, others=(), reserved_gb=0.5, per_unit=1000, base=0):
+    """Fake Core: affine minimum estimate (base + per_unit * size) and a device with free_gb free."""
+    import comfy.model_management as mm
+    import comfy.sampler_helpers as sh
+    monkeypatch.setattr(mm, 'get_free_memory', lambda dev=None, *a, **k: int(free_gb * GB))
+    monkeypatch.setattr(mm, 'extra_reserved_memory', lambda: int(reserved_gb * GB))
+    monkeypatch.setattr(mm, 'loaded_models', lambda *a, **k: list(others))
+    monkeypatch.setattr(mm, 'is_device_cpu', lambda d: torch.device(d).type == 'cpu')
+
+    def estimate(model, shape, conds):
+        size = shape[-1] if len(shape) == 3 else math.prod(shape[2:])
+        minimum = base + per_unit * size
+        return 2 * minimum, minimum
+    monkeypatch.setattr(sh, 'estimate_memory', estimate)
+    return estimate
+
+
+import math  # noqa: E402
+
+
+def _loaded_by_core(est, model, shape, free_gb, others_gb, reserved_gb):
+    """Bytes Core's load_models_gpu would keep resident for this estimate (non-dynamic NVIDIA path)."""
+    _, minimum = est(model, shape, {})
+    room = (free_gb + others_gb) * GB + model.loaded_size()
+    return max(0, room - (minimum + reserved_gb * GB))
+
+
+@pytest.mark.parametrize('mode,cap,model_gb,free_gb,expect', [
+    ('auto', 0, 4, 16, 'tile'),        # fits beside one tile: keep it all (tile estimate)
+    ('auto', 0, 19.5, 16, 0),          # cannot fit: stream
+    ('stream', 0, 4, 16, 0),           # always stream
+    ('keep', 0, 19.5, 16, 'tile'),     # load as much as fits
+    ('keep', 3, 19.5, 16, 3),          # capped
+    ('auto', 2, 4, 16, 2),             # fits, but capped
+])
+def test_weight_residency_targets_what_core_loads(monkeypatch, mode, cap, model_gb, free_gb, expect):
+    per_unit = 64  # bytes of minimum estimate per packed latent element
+    est = _core(monkeypatch, free_gb, per_unit=per_unit)
+    model = _Patcher(model_gb)
+    tile = [1, 1, 30_000_000]  # tile minimum ~1.8 GB
+    out = h3.TileMemoryEstimate(34, 60, mode, cap).residency_shape(model, list(tile), {})
+    if expect == 'tile':
+        assert out == tile
+    else:
+        assert out[-1] >= tile[-1]
+        loaded = _loaded_by_core(est, model, out, free_gb, 0, 0.5)
+        assert abs(loaded - expect * GB) <= per_unit  # within one latent element
+        assert loaded <= expect * GB
+
+
+def test_weight_residency_counts_other_loaded_models_and_skips_dynamic_and_cpu(monkeypatch):
+    other = _Patcher(3, loaded_gb=3)
+    est = _core(monkeypatch, 10, others=[other])
+    model = _Patcher(19.5, loaded_gb=1)
+    out = h3.TileMemoryEstimate(34, 60, 'stream').residency_shape(model, [1, 1, 1000], {})
+    # Room = 10 free + 1 own + 3 of another model Core will evict for the larger estimate.
+    assert _loaded_by_core(est, model, out, 10, 3, 0.5) <= 1000
+    rec = h3.TileMemoryEstimate(34, 60, 'stream')
+    assert rec.residency_shape(_Patcher(19.5, dynamic=True), [1, 1, 1000], {}) == [1, 1, 1000]
+    assert rec.residency_shape(_Patcher(19.5, device='cpu'), [1, 1, 1000], {}) == [1, 1, 1000]
+    assert all('tile estimate only' in d['applied'] for d in rec.decisions)
+
+
+def test_weight_residency_unpacked_image_latent_scales_rows(monkeypatch):
+    est = _core(monkeypatch, 16, per_unit=4096)
+    model = _Patcher(19.5)
+    tile = [1, 16, 1, 128, 128]
+    out = h3.TileMemoryEstimate(128, 128, 'stream').residency_shape(model, list(tile), {})
+    assert out[:3] == tile[:3] and out[-1] == 128 and out[-2] > 128
+    assert _loaded_by_core(est, model, out, 16, 0, 0.5) <= 4096 * 128
+
+
+def test_weight_residency_records_plain_decisions_and_validates(monkeypatch):
+    _core(monkeypatch, 16)
+    est = h3.TileMemoryEstimate(34, 60, 'auto', 0)
+    est.residency_shape(_Patcher(19.5), [1, 1, 1000], {})
+    (decision,) = est.decisions
+    assert decision['applied'] == 'residency target' and decision['resident_target_gb'] == 0
+    assert all(isinstance(v, (int, float, str)) for v in decision.values())
+    for bad in [dict(residency='half'), dict(max_resident_gb=-1), dict(max_resident_gb=float('nan')), dict(max_resident_gb=True)]:
+        with pytest.raises(ValueError):
+            h3.TileMemoryEstimate(34, 60, **bad)

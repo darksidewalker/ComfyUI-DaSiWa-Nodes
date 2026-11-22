@@ -7,7 +7,8 @@ import pytest
 @pytest.mark.parametrize('automatic_plan',[False,True])
 @pytest.mark.parametrize('with_continuity',[False,True])
 @pytest.mark.parametrize('spatial,temporal',[(True,True),(False,True),(True,False),(False,False)])
-def test_complete_native_sampler_tiled_temporal_upscale(cfg,automatic_plan,with_continuity,spatial,temporal,tmp_path,monkeypatch):
+@pytest.mark.parametrize('join',['crossfade','prefix'])
+def test_complete_native_sampler_tiled_temporal_upscale(cfg,automatic_plan,with_continuity,spatial,temporal,tmp_path,monkeypatch,join):
     """Complete native CPU sampler + tiny random H3 model; no pretrained render."""
     import importlib.util
     import sys
@@ -44,6 +45,13 @@ def test_complete_native_sampler_tiled_temporal_upscale(cfg,automatic_plan,with_
         patches.append((args['layout'].signature,args['transformer_options'].get('cond_or_uncond')))
         return extra['original_block'](args)
     model.set_model_patch_replace(block_patch,'dit','double_block',0)
+    import comfy.sampler_helpers
+    estimates=[]
+    real_estimate=comfy.sampler_helpers.estimate_memory
+    def recording_estimate(model,noise_shape,conds):
+        estimates.append(list(noise_shape))
+        return real_estimate(model,noise_shape,conds)
+    monkeypatch.setattr(comfy.sampler_helpers,'estimate_memory',recording_estimate)
     import comfy.samplers
     from comfy_extras.nodes_custom_sampler import Noise_RandomNoise
     native_sampler = comfy.samplers.sampler_object('euler')
@@ -105,8 +113,13 @@ def test_complete_native_sampler_tiled_temporal_upscale(cfg,automatic_plan,with_
         continuity_soft_refine=with_continuity,continuity_mask_strength=1.0,
         cfg=cfg,negative=[[torch.zeros(1,3,32),{}]] if cfg>1 else None,
         sampler=CustomSampler(),noise=CustomNoise(),
-        spatial_tiling=spatial,temporal_chunking=temporal)
+        spatial_tiling=spatial,temporal_chunking=temporal,temporal_join=join)
     assert output['samples'].tensors[0].shape==(1,24,12,8,8)
+    assert estimates and len(estimates)==len(sampler_calls)
+    if spatial and not automatic_plan:
+        # Core's real prepare_sampling saw the tile-sized estimate, not the 8x8 full canvas.
+        assert all(e[-1] < 24*10*8*8 for e in estimates)
+    assert f"temporal_join={join}" in report or 'one window' in report
     assert torch.isfinite(output['samples'].tensors[0]).all()
     assert output['samples'].tensors[1] is audio
     assert noise_calls == [True]  # one full-canvas field, not per-window noise
@@ -147,7 +160,7 @@ m=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
 assert '_h3_native_integration.h3_upscale_continuity' not in sys.modules
 with pytest.MonkeyPatch.context() as mp:
-    m.test_complete_native_sampler_tiled_temporal_upscale(2.0,False,True,True,True,Path(sys.argv[2]),mp)
+    m.test_complete_native_sampler_tiled_temporal_upscale(2.0,False,True,True,True,Path(sys.argv[2]),mp,'crossfade')
 assert '_h3_native_integration.h3_upscale_continuity' in sys.modules
 print('FRESH CONTINUITY PASS')
 """

@@ -116,6 +116,12 @@ def test_node_patches_clone_with_model_latent_scale():
         def set_model_unet_function_wrapper(self, w):
             self.wrapper = w
 
+        def add_wrapper_with_key(self, kind, key, fn):
+            self.__dict__.setdefault("wrappers", {}).setdefault(kind, {}).setdefault(key, []).append(fn)
+
+        def remove_wrappers_with_key(self, kind, key):
+            self.__dict__.setdefault("wrappers", {}).get(kind, {}).pop(key, None)
+
     node = td.DaSiWaTiledDiffusion()
     src = Patcher()
     (patched,) = node.patch(src, 1024, 768, 128)
@@ -123,3 +129,69 @@ def test_node_patches_clone_with_model_latent_scale():
     assert (patched.wrapper.tile_w, patched.wrapper.tile_h, patched.wrapper.overlap) == (64, 48, 8)
     with pytest.raises(ValueError):
         node.patch(src, 1032, 768, 128)
+
+
+class _WrapPatcher:
+    def __init__(self, model):
+        self.model, self.wrapper, self.wrappers = model, None, {}
+
+    def clone(self):
+        return _WrapPatcher(self.model)
+
+    def set_model_unet_function_wrapper(self, w):
+        self.wrapper = w
+
+    def add_wrapper_with_key(self, kind, key, fn):
+        self.wrappers.setdefault(kind, {}).setdefault(key, []).append(fn)
+
+    def remove_wrappers_with_key(self, kind, key):
+        self.wrappers.get(kind, {}).pop(key, None)
+
+
+def _estimate(patched):
+    import comfy.patcher_extension as pe
+    fns = patched.wrappers.get(pe.WrappersMP.PREPARE_SAMPLING, {}).get(td._h3_tiling().TILE_MEMORY_KEY, [])
+    return fns[0].__self__ if fns else None
+
+
+@pytest.mark.parametrize("estimate", [True, False])
+def test_image_patch_sizes_core_memory_estimate_for_one_tile(estimate):
+    model = type("M", (), {"latent_format": type("F", (), {"spacial_downscale_ratio": 8})()})()
+    (patched,) = td.DaSiWaTiledDiffusion().patch(_WrapPatcher(model), 1024, 768, 128, tile_memory_estimate=estimate)
+    assert isinstance(patched.wrapper, td.TiledDiffusion)
+    est = _estimate(patched)
+    assert (est is not None) is estimate
+    if estimate:
+        assert (est.tile_h, est.tile_w) == (96, 128)
+
+
+@pytest.mark.parametrize("references", ["full", "crop_video", "crop_all"])
+def test_minimax_h3_models_use_the_h3_tiler(monkeypatch, references):
+    import comfy.model_base
+
+    class FakeH3:
+        latent_format = type("F", (), {"spacial_downscale_ratio": 16})()
+
+    monkeypatch.setattr(comfy.model_base, "MiniMaxH3", FakeH3)
+    (patched,) = td.DaSiWaTiledDiffusion().patch(_WrapPatcher(FakeH3()), 960, 544 + 32, 128, tile_references=references)
+    h3 = td._h3_tiling()
+    assert isinstance(patched.wrapper, h3.H3TiledDiffusion)
+    assert (patched.wrapper.coordinates, patched.wrapper.references) == ("local", references)
+    assert (patched.wrapper.tile_w, patched.wrapper.tile_h, patched.wrapper.overlap) == (60, 36, 8)
+    assert (_estimate(patched).tile_h, _estimate(patched).tile_w) == (36, 60)
+    with pytest.raises(ValueError, match="multiples of 32"):
+        td.DaSiWaTiledDiffusion().patch(_WrapPatcher(FakeH3()), 1000, 544, 128)
+    with pytest.raises(ValueError, match="tile_references"):
+        td.DaSiWaTiledDiffusion().patch(_WrapPatcher(FakeH3()), 960, 544, 128, tile_references="crop")
+
+
+def test_schema_appends_optional_inputs_only():
+    schema = td.DaSiWaTiledDiffusion.INPUT_TYPES()
+    assert list(schema["required"]) == ["model", "tile_width", "tile_height", "overlap"]
+    assert list(schema["optional"]) == ["tile_memory_estimate", "tile_references", "weight_residency", "max_resident_gb"]
+    assert schema["optional"]["weight_residency"][0] == ["auto", "keep", "stream"]
+    assert schema["optional"]["weight_residency"][1]["default"] == "auto"
+    assert schema["optional"]["max_resident_gb"][1]["default"] == 0.0
+    assert schema["optional"]["tile_memory_estimate"][1]["default"] is True
+    assert schema["optional"]["tile_references"] == (["full", "crop_video", "crop_all"], schema["optional"]["tile_references"][1])
+    assert schema["optional"]["tile_references"][1]["default"] == "full"

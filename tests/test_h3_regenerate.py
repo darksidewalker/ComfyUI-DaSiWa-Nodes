@@ -49,6 +49,10 @@ class FakePatcher:
     def loaded_size(self): return 0
     def current_loaded_device(self): return torch.device('cpu')
     def set_model_unet_function_wrapper(self, wrapper): self.model_options['model_function_wrapper'] = wrapper
+    def add_wrapper_with_key(self, kind, key, fn):
+        self.__dict__.setdefault('wrappers',{}).setdefault(kind,{}).setdefault(key,[]).append(fn)
+    def remove_wrappers_with_key(self, kind, key):
+        self.__dict__.setdefault('wrappers',{}).get(kind,{}).pop(key,None)
 
     def clone(self):
         cloned = FakePatcher()
@@ -225,11 +229,14 @@ def test_wrapper_preserves_positional_inputs_and_passes_controls_to_core(node, m
 
     def capture(self, patched, conditioning, latent, *, upscale_model, steps, denoise, seed,
                 director_guide, vae, start_image, cfg, sampler_name, noise, continuity_context,
-                spatial_tiling, upscale_sharpness, sigmas, sizes, telemetry):
+                spatial_tiling, upscale_sharpness, temporal_join, tile_references, tile_memory_estimate,
+                weight_residency, max_resident_gb, sigmas, sizes, telemetry):
         called.append(True)
         assert patched is model.clones[0] and patched.patches[0][1] == 0.65 and model.patches == []
         assert conditioning is positive and latent is source
         assert upscale_model == 'up.safetensors' and upscale_sharpness == 6
+        assert (temporal_join, tile_references, tile_memory_estimate) == ('crossfade', 'full', True)
+        assert (weight_residency, max_resident_gb) == ('auto', 0.0)
         assert steps == max(1, len(expected) - 1) and denoise == (requested if len(expected) > 1 else 0.0)
         assert seed == 43 and cfg == 1.0 and sampler_name == 'euler' and not spatial_tiling
         assert director_guide is guide and vae is video_vae and start_image is first
@@ -463,7 +470,9 @@ def test_schema_and_defaults(monkeypatch):
     assert list(schema['required']) == ['model', 'conditioning', 'latent', 'lora_name', 'strength',
                                         'upscale_model', 'target', 'seed']
     assert list(schema['optional']) == ['director_guide', 'vae', 'start_image', 'noise',
-                                        'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness']
+                                        'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness',
+                                        'temporal_join', 'tile_references', 'tile_memory_estimate',
+                                        'weight_residency', 'max_resident_gb']
     assert schema['optional']['denoise'][:1] == ('FLOAT',)
     assert schema['optional']['denoise'][1]['default'] == 1.0
     assert (schema['optional']['denoise'][1]['min'], schema['optional']['denoise'][1]['max']) == (0.0, 1.0)
@@ -479,5 +488,7 @@ def test_schema_and_defaults(monkeypatch):
     assert params['target'].default == '2K' and params['strength'].default == 1.0
     assert list(params) == ['self', 'model', 'conditioning', 'latent', 'lora_name', 'strength', 'upscale_model',
                             'target', 'seed', 'director_guide', 'vae', 'start_image', 'noise',
-                            'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness']
+                            'continuity_context', 'spatial_tiling', 'denoise', 'upscale_sharpness',
+                                        'temporal_join', 'tile_references', 'tile_memory_estimate',
+                                        'weight_residency', 'max_resident_gb']
     assert params['denoise'].default == 1.0 and params['upscale_sharpness'].default == 1

@@ -1,10 +1,12 @@
 # News & Changelog
-
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-20**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-21**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+
+- **Tiled H3 refines keep the model loaded; Tiled Diffusion works with H3 (0.5.62):** before sampling, ComfyUI sizes its memory reservation from the whole latent, although a tiled step only runs one tile. For a 4K H3 window that is an estimate of about 105 GB, so ComfyUI offloaded the entire model. Measured on a 16 GB RTX 4070 Ti SUPER (int8 H3, 544×960 → 2176×3840, 124 frames): the estimate fell from 104.7/41.9 GB to 22.4/8.9 GB per window and the resident weights rose from 0/0 GB to 1.9/8.4 GB, with no out-of-memory and the same refine time (384 vs 387 s; that card is compute-bound at 4K). Because a partly loaded model was only bigger, not faster, `weight_residency` (`auto` default, `keep`, `stream`) and `max_resident_gb` decide residency separately: `auto` keeps the whole model loaded when it fits beside one tile and otherwise streams it, so a model that cannot fit uses as little VRAM as before while the estimate stays correct (measured: 0 GB loaded, peak 9.0 GB, 381 s). Enhanced Upscale, Hi-Res Regenerate and Tiled Diffusion (Image) now size it for one tile plus a share for the full-frame buffers (`tile_memory_estimate`, default on); this only changes how much of the model stays loaded, never the result. Enhanced Upscale and Hi-Res Regenerate add `temporal_join`: `prefix` freezes the previous window's finished overlap tokens at the start of the next window (exact hand-off, no crossfade, no anchor-keyframe tokens); the default `crossfade` keeps saved workflows unchanged. `tile_references` (`full` default, `crop_video`, `crop_all`) can crop Reference to Video blocks to each tile for video edits, on the 2×2 patch grid. Tiled Diffusion (Image) now accepts MiniMax H3 video models and MiniMax-H3-Image through the H3 tiler (tile sizes in multiples of 32 px) instead of refusing 5-D latents. Inputs are appended, so saved workflows keep their values. Ideas from [mo-akkakk's H3 Temporal Window & Spatial Tiles](https://github.com/mo-akkakk/ComfyUI-MiniMaxH3-TemporalWindow-SpatialTiles) (MIT). DEAS receives it through a node-pack update. [Details →](minimax_h3_tiled_upscale.md#low-vram-tiling-memory-estimate-temporal-join-tile-references)
 
 - **RTX nodes keep their NVIDIA effects loaded (0.5.61):** RTX Upscaler & Refiner, RTX Frame Generation and Seamless Loop (RTX backend) created and destroyed their NVIDIA VFX effects (Denoise, Deblur, VSR/High Bitrate/Streaming, TrueHDR, Frame Generation) on every run. A user report showed that on their system destroying an effect did not give its CUDA memory back to the driver: about 0.6–1.6 GB stayed allocated per finished generation until the card filled up and ComfyUI had to offload model weights, slowing generation. Each stage now keeps one loaded effect per GPU and reuses it: resolution, strength and TrueHDR tunables update in place (Frame Generation reloads the same effect when size or multiplier changes). A new effect is created only when mode/quality, shot detection, encoding or device changes, or after a failed run. ComfyUI's *Unload models* / free-memory action releases them. The RTX memory estimate no longer reserves effect workspace again for effects that are already loaded. Inputs, outputs and saved workflows are unchanged; DEAS receives the fix via a node-pack update.
 
@@ -253,6 +255,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.62 | 11-21 | H3 tiling sizes ComfyUI's memory reservation for one tile; prefix temporal join and per-tile reference cropping; Tiled Diffusion (Image) supports MiniMax H3 |
 | 0.5.61 | 11-20 | RTX Upscaler/Refiner, Frame Generation and Seamless Loop reuse loaded NVIDIA effects instead of destroying them each run (VRAM growth/slowdown report) |
 | 0.5.60 | 11-20 | Local GGUF illegal-instruction (0xc000001d, AVX-512 llama-cpp build) reported as a CPU problem instead of "Could not reach" |
 | 0.5.59 | 11-16 | DOM-widget UIs hidden from the properties panel so they keep full node width when it is open (#97) |

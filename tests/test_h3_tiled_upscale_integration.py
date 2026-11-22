@@ -49,6 +49,10 @@ class FakePatcher:
         return cloned
     def set_model_unet_function_wrapper(self,wrapper):
         self.model_options['model_function_wrapper']=wrapper
+    def add_wrapper_with_key(self,kind,key,fn):
+        self.__dict__.setdefault('wrappers',{}).setdefault(kind,{}).setdefault(key,[]).append(fn)
+    def remove_wrappers_with_key(self,kind,key):
+        self.__dict__.setdefault('wrappers',{}).get(kind,{}).pop(key,None)
 
 
 @pytest.fixture
@@ -122,7 +126,8 @@ def test_switches_control_learned_upscale_and_diffusion(setup_node,monkeypatch,s
     assert f"enforce_memory_budget={'on' if enforce else 'off'}" in report
     assert f"spatial_split={'on' if spatial and denoise else 'off'}" in report
     assert f"temporal_split={'on' if temporal else 'off'}" in report
-    assert list(schema)[-3:]==['enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
+    assert list(schema)[-8:]==['enforce_memory_budget','memory_reserve_pct','upscale_sharpness',
+        'temporal_join','tile_references','tile_memory_estimate','weight_residency','max_resident_gb']
     assert schema['spike_guard'][1]['default'] is False
     assert schema['guard_mode'][0] == ['burn_direction','both']
     assert schema['spatial_tiling'][1]['default'] is True
@@ -256,7 +261,8 @@ def test_refine_schema_and_callable_defaults_without_external_sigmas():
     assert list(schema['optional']) == ['director_guide','vae','start_image','negative','cfg','sampler_name',
         'scheduler','memory_budget_mb','sampler','noise','continuity_context','upscale_precision',
         'continuity_soft_refine','continuity_mask_strength','spatial_tiling','temporal_chunking',
-        'spike_guard','guard_sensitivity','guard_strength','guard_mode','enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
+        'spike_guard','guard_sensitivity','guard_strength','guard_mode','enforce_memory_budget','memory_reserve_pct','upscale_sharpness',
+        'temporal_join','tile_references','tile_memory_estimate','weight_residency','max_resident_gb']
     assert u.DaSiWaH3TiledUpscale.RETURN_TYPES == ('LATENT','STRING')
     assert 'sigmas' not in schema['required']
     assert 'sigmas' not in schema['optional']
@@ -289,7 +295,8 @@ def test_legacy_widget_values_keep_their_slots(setup_node,guard_enabled,mode):
         if isinstance(spec[0],list) or spec[0] in ('INT','FLOAT','BOOLEAN','STRING')]
     restored=dict(zip(widget_names,legacy_values))
     assert restored == dict(zip(legacy_names,legacy_values))
-    assert widget_names[-3:] == ['enforce_memory_budget','memory_reserve_pct','upscale_sharpness']
+    assert widget_names[-8:] == ['enforce_memory_budget','memory_reserve_pct','upscale_sharpness',
+        'temporal_join','tile_references','tile_memory_estimate','weight_residency','max_resident_gb']
     assert schema['optional']['memory_reserve_pct'][1]['default'] == 5.0
     assert schema['optional']['enforce_memory_budget'][1]['default'] is True
 
@@ -651,3 +658,93 @@ def test_node_reserve_reaches_actual_planner(setup_node,monkeypatch,reserve,enfo
         assert output['samples'].tensors[1] is audio
         assert f'memory_reserve_pct={reserve}' in report
         assert f'{reserve}% headroom' in report
+
+
+# --- prefix temporal joins, tile memory estimate, tile references (0.5.62) ---
+
+def test_prefix_join_freezes_carried_tokens_and_appends_exactly(setup_node,monkeypatch):
+    model=setup_node
+    planned=[]
+    def plan(shape,*args,**kw):
+        planned.append((kw['anchor_keyframe'],kw['croppable_ref_tokens']))
+        return dict(tile_width=32,tile_height=64,overlap=0,chunk_tokens=10,temporal_overlap_tokens=5,explanation='TEST prefix plan')
+    monkeypatch.setattr(helpers,'plan_tiles',plan)
+    video=torch.randn(1,24,22,2,2)
+    audio=torch.randn(1,32,2,120)
+    calls=[]
+    def sample_test_double(model,positive,negative,cfg,samples,mask,noise_tensor,sampler,sigmas,seed):
+        v,a=samples.tensors
+        m=mask.tensors[0]
+        assert 'minimax_keyframes' not in positive[0][1]  # no anchor keyframe tokens
+        assert torch.count_nonzero(mask.tensors[1])==0
+        calls.append((v.clone(),m.clone()))
+        # Native sampling keeps mask-0 tokens exactly and refines the rest.
+        return NestedTensor((torch.where(m==0,v,v+0.125*len(calls)),a+999))
+    monkeypatch.setattr(u,'sample_chunk',sample_test_double)
+    result,report=u.DaSiWaH3TiledUpscale().upscale(model,[[torch.zeros(1,3,4),{}]],
+        {'samples':NestedTensor((video,audio))},upscale_model='interpolation',sampler=object(),temporal_join='prefix')
+    out=result['samples'].tensors[0]
+    upscaled=u.resize_video(video,4,4)
+    assert [v.shape[2] for v,_ in calls]==[10,10,10,7]
+    assert planned==[(False,0)]
+    assert torch.all(calls[0][1]==1)
+    for (v,m),start in zip(calls[1:],[5,10,15]):
+        assert torch.all(m[:,:,:5]==0) and torch.all(m[:,:,5:]==1)
+        torch.testing.assert_close(v[:,:,:5],out[:,:,start:start+5],rtol=0,atol=0)  # carried = finished tokens
+    # Every token comes from exactly one window: no crossfade.
+    for (start,end),k in zip([(0,10),(10,15),(15,20),(20,22)],[1,2,3,4]):
+        torch.testing.assert_close(out[:,:,start:end],upscaled[:,:,start:end]+0.125*k)
+    assert result['samples'].tensors[1] is audio
+    assert 'temporal_join=prefix' in report
+
+
+def test_crossfade_join_stays_the_default(setup_node,monkeypatch):
+    planned=[]
+    def plan(shape,*args,**kw):
+        planned.append(kw['anchor_keyframe'])
+        return dict(tile_width=32,tile_height=64,overlap=0,chunk_tokens=10,temporal_overlap_tokens=5,explanation='TEST')
+    monkeypatch.setattr(helpers,'plan_tiles',plan)
+    anchors=[]
+    def sample_test_double(model,positive,negative,cfg,samples,mask,*args):
+        anchors.append('minimax_keyframes' in positive[0][1])
+        assert torch.all(mask.tensors[0]==1)
+        return samples
+    monkeypatch.setattr(u,'sample_chunk',sample_test_double)
+    _,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[[torch.zeros(1,3,4),{}]],
+        {'samples':NestedTensor((torch.randn(1,24,22,2,2),torch.randn(1,32,2,120)))},upscale_model='interpolation',sampler=object())
+    assert planned==[True] and anchors==[False,True,True,True]
+    assert 'temporal_join=crossfade' in report
+
+
+@pytest.mark.parametrize('estimate',[True,False])
+@pytest.mark.parametrize('references',['full','crop_video','crop_all'])
+def test_tile_memory_estimate_and_references_only_during_spatial_refine(setup_node,monkeypatch,estimate,references):
+    import comfy.patcher_extension as pe
+    seen=[]
+    def sample_test_double(model,positive,negative,cfg,samples,*args):
+        wrapper=model.model_options['model_function_wrapper']
+        assert wrapper.references==references
+        wrappers=getattr(model,'wrappers',{})
+        outer=wrappers.get(pe.WrappersMP.OUTER_SAMPLE,{}).get(helpers.TILE_MEMORY_KEY,[])
+        prep=wrappers.get(pe.WrappersMP.PREPARE_SAMPLING,{}).get(helpers.TILE_MEMORY_KEY,[])
+        assert (len(outer),len(prep))==((1,1) if estimate else (0,0))
+        if estimate:
+            est=prep[0].__self__
+            assert outer[0].__self__ is est and (est.tile_h,est.tile_w)==(4,2)  # 64x32 px plan tile
+        seen.append(True)
+        return samples
+    monkeypatch.setattr(u,'sample_chunk',sample_test_double)
+    _,report=u.DaSiWaH3TiledUpscale().upscale(setup_node,[[torch.zeros(1,3,4),{}]],
+        {'samples':NestedTensor((torch.randn(1,24,22,2,2),torch.randn(1,32,2,120)))},upscale_model='interpolation',
+        sampler=object(),tile_memory_estimate=estimate,tile_references=references)
+    assert seen
+    assert f"tile_memory_estimate={'on' if estimate else 'off'}" in report and f'tile_references={references}' in report
+    for clone in setup_node.clones:
+        assert not any(getattr(clone,'wrappers',{}).get(k) for k in (pe.WrappersMP.OUTER_SAMPLE,pe.WrappersMP.PREPARE_SAMPLING))
+
+
+@pytest.mark.parametrize('field,value',[('temporal_join','fade'),('tile_references','crop'),('tile_memory_estimate',1)])
+def test_low_vram_inputs_are_validated(setup_node,field,value):
+    with pytest.raises(ValueError,match=field):
+        u.DaSiWaH3TiledUpscale().upscale(setup_node,[[torch.zeros(1,3,4),{}]],
+            {'samples':NestedTensor((torch.randn(1,24,2,2,2),torch.randn(1,32,2,8)))},upscale_model='interpolation',**{field:value})

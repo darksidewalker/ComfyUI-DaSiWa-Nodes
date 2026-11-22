@@ -49,6 +49,7 @@ One node that upscales a completed MiniMax H3 video/audio latent and refines it 
 - Optional Director guide + H3 video VAE re-encode endpoint images at the enlarged resolution; works without a Director.
 - Director **Image Inpaint** is supported as its complete five-frame I2V pass, with interpolation or learned upscale and optional refinement. Decode and extract the still afterward; arbitrary source denoise masks remain unsupported.
 - Continuity: keep Append & Stage before the upscaler and feed it the cumulative latent.
+- Low-VRAM tiling: ComfyUI's memory reservation is sized for one tile (on by default), an optional **prefix** temporal join freezes the previous window's finished tokens instead of crossfading, and optional per-tile reference cropping for video edits.
 
 [Upscaler wiring, sockets, checkpoint selection and limits →](docs/minimax_h3_tiled_upscale.md) · [Continuity setup, source import and timing →](docs/h3_continuity.md)
 
@@ -79,7 +80,7 @@ Adds the `beta57` scheduler (core beta with alpha 0.5 / beta 0.7) to every KSamp
 
 ### 🧩 Tiled Diffusion (Image)
 
-MODEL patch for SD/SDXL/Flux-family image checkpoints: every sampling step denoises overlapping tiles (default 1024 px, 128 px overlap) and blends them with positive pyramid weights, so a model samples canvases far larger than its native size without seams. Wire it between the loader and the sampler; ControlNet is not supported. [Details →](docs/tiled_diffusion.md)
+MODEL patch for SD/SDXL/Flux-family image checkpoints and MiniMax H3: every sampling step denoises overlapping tiles (default 1024 px, 128 px overlap) and blends them with positive pyramid weights, so a model samples canvases far larger than its native size without seams. ComfyUI's memory reservation is sized for one tile. Wire it between the loader and the sampler; ControlNet is not supported. [Details →](docs/tiled_diffusion.md)
 
 ---
 

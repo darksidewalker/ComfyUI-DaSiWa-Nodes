@@ -125,18 +125,68 @@ def encode_endpoints(conditioning, vae, first, last, width, height, last_frame_i
     return result, f'{count} endpoint keyframes VAE-encoded at {width}x{height}'
 
 
-def conditioning_token_counts(conditioning, *, continuity=None):
-    """Fixed native reference/audio rows and tile-cropped keyframe frames."""
-    text, refs, keyframes = 0, 0, 0
+TEMPORAL_JOINS = ('crossfade', 'prefix')
+
+# Appended optional inputs shared with H3 Hi-Res Regenerate; their defaults keep saved workflows unchanged.
+LOW_VRAM_INPUTS = {
+    'temporal_join': (list(TEMPORAL_JOINS), {'default': 'crossfade',
+        'display_name': 'Temporal Join',
+        'tooltip': 'How refinement windows after the first continue from the previous one (only with more than one temporal window). '
+                   'crossfade (default, previous behaviour): the next window gets the previous window\'s overlap token as an anchor keyframe '
+                   'and the overlap is crossfaded. prefix: the previous window\'s finished overlap tokens start the next window frozen '
+                   '(denoise mask 0), so the hand-off is exact, nothing is crossfaded and no anchor-keyframe tokens are added (less memory).'}),
+    'tile_references': (['full', 'crop_video', 'crop_all'], {'default': 'full',
+        'display_name': 'Tile References',
+        'tooltip': 'With spatial tiles: what each tile sees of Reference to Video blocks. full (default): every reference, uncropped '
+                   '(character, product or style references). crop_video: reference videos are cropped to the tile, so each tile follows '
+                   'its own part of the plate and attends to a tile-sized share of its tokens (video edits). crop_all: reference images '
+                   'are cropped too (only when the picture is a frame of this shot). Audio references are never cropped.'}),
+    'tile_memory_estimate': ('BOOLEAN', {'default': True,
+        'display_name': 'Tile Memory Estimate',
+        'tooltip': 'With spatial tiles: size ComfyUI\'s pre-sampling memory reservation for one tile instead of the whole frame, '
+                   'so the model is not offloaded for memory a tiled step never uses (a 4K window is otherwise estimated at ~100 GB). '
+                   'Changes model residency only, never the result. Turn off only to compare or diagnose out-of-memory errors.'}),
+    'weight_residency': (['auto', 'keep', 'stream'], {'default': 'auto',
+        'display_name': 'Weight Residency',
+        'tooltip': 'With the tile memory estimate: how much of the model stays on the GPU while tiles are refined. auto (default): '
+                   'keep the whole model loaded when it fits beside one tile\'s working memory, otherwise stream it from RAM with '
+                   'almost nothing resident (a partly loaded model was not faster on a compute-bound card, and streaming uses less '
+                   'VRAM). keep: load as much as fits. stream: always keep as little as possible loaded. Never changes the result.'}),
+    'max_resident_gb': ('FLOAT', {'default': 0.0, 'min': 0.0, 'max': 1024.0, 'step': 0.5,
+        'display_name': 'Max Resident Weights (GB)',
+        'tooltip': 'With the tile memory estimate, auto/keep: cap the model weights kept on the GPU, for example to leave room '
+                   'for other programs. 0 (default) = no cap. Ignored by stream.'}),
+}
+
+
+def prefix_carry_tokens(previous, start, end):
+    """Finished tokens of the previous windows inside [start, end), leaving at least one token to generate."""
+    if previous is None or previous.shape[2] <= start:
+        return 0
+    return max(0, min(previous.shape[2] - start, end - start - 1))
+
+
+def conditioning_token_counts(conditioning, *, continuity=None, crop='full'):
+    """Fixed native reference/audio rows, tile-cropped keyframe frames and tile-cropped reference rows.
+
+    Returns (text, refs, keyframes, cropped_refs): with crop='crop_video'/'crop_all' the reference
+    blocks the tiler crops are counted in cropped_refs (full-frame rows) instead of refs.
+    """
+    text, refs, keyframes, cropped_refs = 0, 0, 0, 0
     for tokens, md in conditioning:
         if isinstance(tokens, torch.Tensor) and tokens.ndim >= 2:
             text = max(text, tokens.shape[1])
-        current = 0
+        current, current_cropped = 0, 0
         for ref in md.get('minimax_refs', []):
             value = ref.get('latent')
             if isinstance(value, torch.Tensor):
                 t = value.shape[2] if value.ndim == 5 else 1
-                current += t * math.ceil(value.shape[-2] / 2) * math.ceil(value.shape[-1] / 2)
+                rows = t * math.ceil(value.shape[-2] / 2) * math.ceil(value.shape[-1] / 2)
+                # Same rule as h3_tiled_sampling.crops_reference (this module is also loaded standalone).
+                if crop == 'crop_all' or (crop == 'crop_video' and ref.get('kind') in ('video', 'video_audio')):
+                    current_cropped += rows
+                else:
+                    current += rows
             audio = ref.get('audio_latent')
             if isinstance(audio, torch.Tensor):
                 current += audio.shape[-1] * audio.shape[-2]
@@ -154,9 +204,10 @@ def conditioning_token_counts(conditioning, *, continuity=None):
             # replaced; never allocate guide tensors or reduce incoming guides.
             current_keyframes += continuity['source_tokens'] - continuity['refine_start_token']
             current += 2 * (continuity['source_audio_tokens'] - continuity['audio_start'])
-        refs = max(refs, current)
+        if current + current_cropped > refs + cropped_refs:
+            refs, cropped_refs = current, current_cropped
         keyframes = max(keyframes, current_keyframes)
-    return text, refs, keyframes
+    return text, refs, keyframes, cropped_refs
 
 
 def refinement_memory_budget(model, device, memory_budget_mb):
@@ -261,6 +312,7 @@ class DaSiWaH3TiledUpscale:
             'upscale_sharpness': ('INT', {'default': 1, 'min': 1, 'max': 6, 'step': 1,
                 'display_name': 'Upscale Sharpness (2D tier)',
                 'tooltip': 'Sharpness tier of the 2D learned upscaler (2d_conv_v1): 1 = most faithful (default, lowest error), 6 = sharpest with slightly more color shift. Ignored by the 3D upscaler and interpolation, which have no tiers.'}),
+            **LOW_VRAM_INPUTS,
         }}
 
     @torch.inference_mode()
@@ -273,6 +325,8 @@ class DaSiWaH3TiledUpscale:
                 spatial_tiling=True, temporal_chunking=True,
                 spike_guard=False, guard_sensitivity=4.3, guard_strength=1.0, guard_mode='burn_direction',
                 enforce_memory_budget=True, memory_reserve_pct=5.0, upscale_sharpness=1,
+                temporal_join='crossfade', tile_references='full', tile_memory_estimate=True,
+                weight_residency='auto', max_resident_gb=0.0,
                 *, sigmas=None, sizes=None, telemetry=None):
         # Keyword-only, not node inputs: preset nodes (H3 Hi-Res Regenerate) pin the schedule and
         # the (width, height) upscale stages; the last stage is the target.
@@ -284,7 +338,8 @@ class DaSiWaH3TiledUpscale:
         from comfy_extras.nodes_custom_sampler import Noise_RandomNoise, BasicScheduler
         from .h3_latent_upscale import H3LatentUpscaler, upscale_model_names
         from .h3_tiled_sampling import (plan_tiles, temporal_ranges, prepare_conditioning,
-                                        append_video, H3TiledDiffusion, _frames)
+                                        append_video, H3TiledDiffusion, _frames, REFERENCE_MODES,
+                                        install_tile_memory_estimate, remove_tile_memory_estimate, RESIDENCY_MODES)
         if not isinstance(model.model, comfy.model_base.MiniMaxH3):
             raise ValueError('DaSiWa H3 Tiled Upscale requires a native MiniMax H3 model.')
         if model.model_options.get('model_function_wrapper') is not None:
@@ -306,6 +361,18 @@ class DaSiWaH3TiledUpscale:
                 raise ValueError('ControlNet/Fun Control conditioning is not supported in H3 Tiled Upscale.')
         if upscale_precision not in ('auto', 'bf16', 'fp16', 'fp32'):
             raise ValueError(f'Unknown H3 upscale precision: {upscale_precision}')
+        if temporal_join not in TEMPORAL_JOINS:
+            raise ValueError(f"temporal_join must be one of {', '.join(TEMPORAL_JOINS)}.")
+        if tile_references not in REFERENCE_MODES:
+            raise ValueError(f"tile_references must be one of {', '.join(REFERENCE_MODES)}.")
+        if not isinstance(tile_memory_estimate, bool):
+            raise ValueError('tile_memory_estimate must be a boolean.')
+        if weight_residency not in RESIDENCY_MODES:
+            raise ValueError(f"weight_residency must be one of {', '.join(RESIDENCY_MODES)}.")
+        if isinstance(max_resident_gb, bool) or not isinstance(max_resident_gb, (int, float)) \
+                or not math.isfinite(max_resident_gb) or max_resident_gb < 0:
+            raise ValueError('max_resident_gb must be a finite number of GB (0 = no cap).')
+        prefix_join = temporal_join == 'prefix'
         continuity = None
         if continuity_context is not None:
             from .h3_upscale_continuity import continuity_plan
@@ -319,11 +386,13 @@ class DaSiWaH3TiledUpscale:
         device = mm.get_torch_device()
         budget, streaming_weights, reserved = refinement_memory_budget(model, device, memory_budget_mb)
         model_bytes = int(model.model_size()) if device.type != 'cpu' else 0
-        text_tokens, ref_tokens, keyframe_tokens = conditioning_token_counts(
-            conditioning, continuity=continuity if denoise > 0 else None)
+        text_tokens, ref_tokens, keyframe_tokens, cropped_refs = conditioning_token_counts(
+            conditioning, continuity=continuity if denoise > 0 else None, crop=tile_references)
         if negative is not None:
-            nt, nr, nk = conditioning_token_counts(negative)
-            text_tokens, ref_tokens = max(text_tokens, nt), max(ref_tokens, nr)
+            nt, nr, nk, nc_refs = conditioning_token_counts(negative, crop=tile_references)
+            text_tokens = max(text_tokens, nt)
+            if nr + nc_refs > ref_tokens + cropped_refs:
+                ref_tokens, cropped_refs = nr, nc_refs
             keyframe_tokens = max(keyframe_tokens, nk)
         plan = plan_tiles(video.shape, width, height, budget, model_bytes=model_bytes,
                           text_tokens=text_tokens, ref_tokens=ref_tokens, keyframe_tokens=keyframe_tokens,
@@ -332,7 +401,8 @@ class DaSiWaH3TiledUpscale:
                           audio_tokens=audio.shape[-2] * audio.shape[-1],
                           latent_element_size=video.element_size(), enforce_budget=enforce_memory_budget and denoise > 0,
                           spatial_tiling=spatial_tiling, temporal_chunking=temporal_chunking,
-                          workspace_reserve_pct=memory_reserve_pct)
+                          workspace_reserve_pct=memory_reserve_pct,
+                          anchor_keyframe=not prefix_join, croppable_ref_tokens=cropped_refs)
         ranges = temporal_ranges(video.shape[2], plan['chunk_tokens'], plan['temporal_overlap_tokens'])
         spatial_split = spatial_tiling and (plan['tile_width'] < width or plan['tile_height'] < height)
         # CPU staging is bounded by the complete output+noise, not constant-memory
@@ -415,6 +485,10 @@ class DaSiWaH3TiledUpscale:
                   f"temporal_chunking={'on' if temporal_chunking else 'off'}; "
                   f"enforce_memory_budget={'on' if enforce_memory_budget else 'off'}; "
                   f"memory_reserve_pct={memory_reserve_pct:g}; "
+                  f"temporal_join={temporal_join if len(ranges) > 1 else 'n/a (one window)'}; "
+                  f"tile_references={tile_references}; "
+                  f"tile_memory_estimate={'on' if tile_memory_estimate and spatial_split else 'off'}; "
+                  f"weight_residency={weight_residency}{f' (max {max_resident_gb:g} GB)' if max_resident_gb else ''}; "
                   f"spatial_split={'on' if spatial_split and denoise > 0 else 'off'}; "
                   f"temporal_split={'on' if len(ranges) > 1 else 'off'}; "
                   f"audio=original; {endpoint_info}; {guard_note}; {plan['explanation']}")
@@ -445,8 +519,13 @@ class DaSiWaH3TiledUpscale:
         if not getattr(full_noise, 'is_nested', False) or len(full_noise.tensors) != 2:
             raise ValueError('The supplied NOISE must generate native video+audio nested tensors.')
         working = model.clone()
+        memory_estimate = spatial_split and tile_memory_estimate
         if spatial_split:
-            working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap'], coordinates='local'))
+            working.set_model_unet_function_wrapper(H3TiledDiffusion(plan['tile_width'], plan['tile_height'], plan['overlap'],
+                                                                     coordinates='local', references=tile_references))
+            if memory_estimate:
+                estimate = install_tile_memory_estimate(working, plan['tile_height'] // 16, plan['tile_width'] // 16,
+                                                        weight_residency, max_resident_gb)
         completed = None
         try:
             for chunk, (start, end) in enumerate(ranges, 1):
@@ -463,18 +542,35 @@ class DaSiWaH3TiledUpscale:
                     chunk_samples = NestedTensor((part, ac))
                     video_mask = continuity_refine_mask(part, start, continuity,
                         soft=continuity_soft_refine, strength=continuity_mask_strength)
-                    mask = NestedTensor((video_mask, torch.zeros_like(ac)))
                     previous = completed
-                    pc = prepare_conditioning(positive, start, end, (height // 16, width // 16), previous_video=previous)
+                    carried = prefix_carry_tokens(previous, start, end) if prefix_join else 0
+                    if carried:
+                        # Prefix join: the previous window's finished overlap tokens start this window frozen
+                        # (denoise mask 0), so the hand-off is exact and adds no anchor-keyframe tokens.
+                        part = part.clone()
+                        part[:, :, :carried] = previous[:, :, start:start + carried].to(part.dtype)
+                        video_mask = video_mask.clone()
+                        video_mask[:, :, :carried] = 0
+                        chunk_samples = NestedTensor((part, ac))
+                    mask = NestedTensor((video_mask, torch.zeros_like(ac)))
+                    pc = prepare_conditioning(positive, start, end, (height // 16, width // 16),
+                                              previous_video=None if prefix_join else previous)
                     nc = (prepare_conditioning(negative, start, end, (height // 16, width // 16)) if negative is not None else None)
                     chunk_noise = NestedTensor((full_noise.tensors[0][:, :, start:end], full_noise.tensors[1][..., a:z]))
                     result = sample_chunk(working, pc, nc, cfg, chunk_samples, mask, chunk_noise,
                                           sampler, sigmas, getattr(noise, 'seed', seed))
-                    completed = append_video(completed, result.tensors[0].to('cpu'), start)
+                    sampled = result.tensors[0].to('cpu')
+                    # A prefix is kept exactly: append only the newly generated tokens (no crossfade).
+                    completed = append_video(completed, sampled[:, :, carried:], start + carried)
         finally:
             # No wrapper escapes into the upstream model; drop execution-local
             # conditioning/layout/tensor references after success or cancellation.
             working.model_options.pop('model_function_wrapper', None)
+            if memory_estimate:
+                remove_tile_memory_estimate(working)
+                for k, decision in enumerate(estimate.decisions, 1):
+                    log_dasiwa('MiniMaxH3 Enhanced Upscale', f'window {k} weight residency: ' + '; '.join(
+                        f'{key}={value:.2f}' if isinstance(value, float) else f'{key}={value}' for key, value in decision.items()))
         result = dict(latent)
         if completed is None:
             raise RuntimeError('H3 temporal sampling produced no video chunks.')

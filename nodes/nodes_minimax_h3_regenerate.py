@@ -5,7 +5,7 @@ Learned latent upscale to the target grid (4K via 2K), then up to three Euler st
 the pinned schedule or its native denoise tail, with the merged refiner LoRA. Tiling, temporal windows, Continuity, Director endpoints,
 reference tokens and draft-audio passthrough are the unchanged DaSiWaH3TiledUpscale path.
 """
-from .nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale
+from .nodes_minimax_h3_tiled_upscale import DaSiWaH3TiledUpscale, LOW_VRAM_INPUTS
 from .h3_regenerate_telemetry import make_telemetry, phase
 
 # open_h3/sigmas.py SCHEDULES[3]; unshifted, so the model's shift setting does not apply.
@@ -95,6 +95,7 @@ class DaSiWaH3HiResRegenerate:
             'upscale_sharpness': ('INT', {'default': 1, 'min': 1, 'max': 6, 'step': 1,
                 'display_name': 'Upscale Sharpness (2D tier)',
                 'tooltip': '2D learned upscaler tier: 1 = most faithful (default), 6 = sharpest with slightly more color shift. Ignored by the 3D upscaler, interpolation and target Original (no upscale).'}),
+            **LOW_VRAM_INPUTS,
         }}
 
     def load_lora(self, lora_name):
@@ -108,11 +109,22 @@ class DaSiWaH3HiResRegenerate:
 
     def regenerate(self, model, conditioning, latent, lora_name, strength=1.0, upscale_model='interpolation',
                    target='2K', seed=0, director_guide=None, vae=None, start_image=None, noise=None,
-                   continuity_context=None, spatial_tiling=True, denoise=1.0, upscale_sharpness=1):
+                   continuity_context=None, spatial_tiling=True, denoise=1.0, upscale_sharpness=1,
+                   temporal_join='crossfade', tile_references='full', tile_memory_estimate=True,
+                   weight_residency='auto', max_resident_gb=0.0):
         if isinstance(denoise, bool) or not isinstance(denoise, (int, float)) or not 0 <= denoise <= 1:
             raise ValueError('H3 Hi-Res Regenerate denoise must be a finite number between 0 and 1.')
         if isinstance(upscale_sharpness, bool) or not isinstance(upscale_sharpness, int) or not 1 <= upscale_sharpness <= 6:
             raise ValueError('H3 Hi-Res Regenerate upscale_sharpness must be an integer between 1 and 6.')
+        # Fail before the LoRA load, like the other options; upscale() repeats the same checks.
+        for name, value in (('temporal_join', temporal_join), ('tile_references', tile_references),
+                            ('weight_residency', weight_residency)):
+            if value not in LOW_VRAM_INPUTS[name][0]:
+                raise ValueError(f"H3 Hi-Res Regenerate {name} must be one of {', '.join(LOW_VRAM_INPUTS[name][0])}.")
+        if not isinstance(tile_memory_estimate, bool):
+            raise ValueError('H3 Hi-Res Regenerate tile_memory_estimate must be a boolean.')
+        if isinstance(max_resident_gb, bool) or not isinstance(max_resident_gb, (int, float)) or not 0 <= max_resident_gb < float('inf'):
+            raise ValueError('H3 Hi-Res Regenerate max_resident_gb must be a finite number of GB (0 = no cap).')
         import comfy.lora
         import comfy.lora_convert
         import comfy.model_base
@@ -150,6 +162,8 @@ class DaSiWaH3HiResRegenerate:
             seed=seed, director_guide=director_guide, vae=vae, start_image=start_image, cfg=1.0,
             sampler_name='euler', noise=noise, continuity_context=continuity_context,
             spatial_tiling=spatial_tiling, upscale_sharpness=upscale_sharpness,
+            temporal_join=temporal_join, tile_references=tile_references, tile_memory_estimate=tile_memory_estimate,
+            weight_residency=weight_residency, max_resident_gb=max_resident_gb,
             sigmas=sigmas, sizes=stages, telemetry=telemetry)
         return output, (f'H3 Hi-Res Regenerate {target}; lora={lora_name} ({len(patches)} layers, strength {strength:g}); '
                         f'denoise={denoise:g}; refine_steps={refine_steps}; {report}')

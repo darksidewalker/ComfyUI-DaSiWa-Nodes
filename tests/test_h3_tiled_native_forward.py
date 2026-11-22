@@ -72,3 +72,104 @@ def test_real_native_h3_tiled_forward(coordinates,hw,monkeypatch):
             apply_model,{'input':packed,'timestep':torch.tensor([500.]),'c':ct})
     torch.testing.assert_close(one,direct,atol=2e-6,rtol=2e-5)
     print('PASS native MiniMaxH3Model:',coordinates,hw,len(calls),'forwards; AV guides/references, soft mask, one-tile equivalence')
+
+
+def _tiny(cls, **extra):
+    import torch
+    import comfy.ops
+    torch.manual_seed(1)
+    model=cls(hidden_size=32,num_layers=1,token_refiner_num_layers=0,
+        num_attention_heads=4,attention_head_dim=8,ffn_hidden_size=64,text_dim=32,
+        timestep_input_dim=8,time_embed_hidden_size=32,time_embed_dim=16,
+        rope_inv_freq_len=1,dtype=torch.float32,device=torch.device('cpu'),operations=comfy.ops.manual_cast,**extra)
+    model.eval().requires_grad_(False)
+    with torch.no_grad():
+        for n,p in model.named_parameters():
+            p.normal_(0,0.02)
+        model.rope.inv_freq.fill_(1)
+    return model
+
+
+def _load(monkeypatch):
+    import sys
+    from pathlib import Path
+    import importlib.util
+    import torch
+    root=Path(__file__).resolve().parents[1]
+    sys.path.insert(0,str(root.parent/'ComfyUI'))
+    import comfy.cli_args
+    comfy.cli_args.args.cpu=True
+    import comfy.model_management as mm
+    monkeypatch.setattr(mm,'get_torch_device',lambda:torch.device('cpu'))
+    spec=importlib.util.spec_from_file_location('h3_tiled',root/'nodes/h3_tiled_sampling.py')
+    h3=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(h3)
+    return h3
+
+
+@pytest.mark.parametrize('references',['crop_video','crop_all'])
+@pytest.mark.parametrize('hw',[(6,8),(7,9)])
+def test_real_native_h3_forward_with_cropped_references(references,hw,monkeypatch):
+    import torch
+    import comfy.utils
+    from comfy.ldm.minimax.model import MiniMaxH3Model
+    h3=_load(monkeypatch)
+    model=_tiny(MiniMaxH3Model)
+    video=torch.randn(1,24,2,*hw)
+    audio=torch.randn(1,32,2,8)
+    packed,shapes=comfy.utils.pack_latents([video,audio])
+    # A plate at another (odd) resolution than the target, a reference image and reference audio.
+    refs=[dict(kind='video_audio',latent=torch.randn(1,24,2,6,10),latent_t=2,latent_h=6,latent_w=10,
+               ref_audio_t=2,audio_latent=torch.randn(1,32,2,2)),
+          dict(kind='image',latent=torch.randn(1,24,1,4,6),latent_h=4,latent_w=6),
+          dict(kind='audio',ref_audio_t=3,audio_latent=torch.randn(1,32,2,3))]
+    ct={'latent_shapes':shapes,'minimax_payload':{'keyframes':[],'refs':refs,
+        'cond_video_latents':[r['latent'] for r in refs if 'latent' in r],
+        'cond_audio_latents':[r['audio_latent'] for r in refs if 'audio_latent' in r],'audio_scale':1.0,'seed':3},
+        'c_crossattn':torch.randn(1,3,32),'transformer_options':{},'audio_denoise_mask':torch.zeros_like(audio)}
+    seen=[]
+    def apply_model(x,t,**c):
+        streams=comfy.utils.unpack_latents(x,c['latent_shapes'])
+        out=model(streams,t,context=c['c_crossattn'],transformer_options=c['transformer_options'],
+                  minimax_payload=c['minimax_payload'],audio_denoise_mask=c['audio_denoise_mask'])
+        seen.append([tuple(r['latent'].shape[-2:]) for r in c['minimax_payload']['refs'] if 'latent' in r])
+        return comfy.utils.pack_latents([streams[0]-0.5*out[0],streams[1]-0.5*out[1]])[0]
+    with torch.inference_mode():
+        output=h3.H3TiledDiffusion(64,64,32,coordinates='local',references=references)(
+            apply_model,{'input':packed,'timestep':torch.tensor([500.]),'c':ct})
+    result=comfy.utils.unpack_latents(output,shapes)
+    assert result[0].shape==video.shape and torch.isfinite(result[0]).all()
+    assert torch.equal(result[1],audio)
+    assert len(seen)>1
+    assert all(s[0]!=(6,10) and s[0][0]%2==0 and s[0][1]%2==0 for s in seen)  # cropped on the patch grid
+    if references=='crop_all':
+        assert any(s[1]!=(4,6) for s in seen)
+    else:
+        assert all(s[1]==(4,6) for s in seen)
+    assert refs[0]['latent'].shape[-2:]==(6,10)
+
+
+@pytest.mark.parametrize('hw',[(6,8),(7,9)])
+def test_real_native_h3_image_stream_tiled_forward(hw,monkeypatch):
+    import torch
+    from comfy.ldm.minimax.model import MiniMaxH3ImageModel
+    h3=_load(monkeypatch)
+    model=_tiny(MiniMaxH3ImageModel,pdd_sigmas=[1.0,0.5])
+    image=torch.randn(1,24,1,*hw)
+    refs=[dict(kind='image',latent=torch.randn(1,24,1,4,6),latent_h=4,latent_w=6)]
+    payload={'refs':refs,'cond_video_latents':[refs[0]['latent']],'cond_audio_latents':[],'seed':5}
+    ct={'minimax_payload':payload,'c_crossattn':torch.randn(1,3,32),'transformer_options':{}}
+    calls=[]
+    def apply_model(x,t,**c):
+        assert 'latent_shapes' not in c
+        out=model(x,t,context=c['c_crossattn'],transformer_options=c['transformer_options'],minimax_payload=c['minimax_payload'])
+        calls.append(tuple(x.shape))
+        return x-0.5*out
+    with torch.inference_mode():
+        output=h3.H3TiledDiffusion(64,64,32)(apply_model,{'input':image,'timestep':torch.tensor([500.]),'c':ct})
+        direct=apply_model(image,torch.tensor([500.]),**ct)
+        one=h3.H3TiledDiffusion(h3._ceil2(hw[1])*16,h3._ceil2(hw[0])*16,0)(
+            apply_model,{'input':image,'timestep':torch.tensor([500.]),'c':ct})
+    assert output.shape==image.shape and torch.isfinite(output).all()
+    assert len(calls)>2
+    torch.testing.assert_close(one,direct,atol=2e-6,rtol=2e-5)

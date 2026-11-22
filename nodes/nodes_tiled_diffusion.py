@@ -1,12 +1,34 @@
-"""Generic per-step tiled diffusion for 4-D image latents (MODEL patch).
+"""Generic per-step tiled diffusion for 4-D image latents and MiniMax H3 (MODEL patch).
+
+MiniMax H3 models (video and MiniMax-H3-Image) are routed to the pack's H3TiledDiffusion,
+which crops the H3 payload (keyframes, optional references) per tile and rebuilds its layout.
+Both paths also size ComfyUI's pre-sampling memory reservation for one tile (TileMemoryEstimate).
 
 Written from this pack's own H3TiledDiffusion pattern (nodes/h3_tiled_sampling.py)
 and ComfyUI's model_function_wrapper contract: every sampler step the denoiser
 runs once per overlapping latent tile and the x0 predictions are blended with
 positive weights. Nothing is retained on the wrapper between forwards.
 """
+import importlib.util
+import sys
+from pathlib import Path
+
 import torch
 import comfy.model_management
+
+
+def _h3_tiling():
+    """nodes/h3_tiled_sampling.py, also when this file is loaded standalone (tests)."""
+    if __package__:
+        from . import h3_tiled_sampling
+        return h3_tiled_sampling
+    name = "dasiwa_h3_tiled_sampling"
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name("h3_tiled_sampling.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        sys.modules[name] = module
+    return sys.modules[name]
 
 
 def tile_starts(total, tile, overlap):
@@ -42,7 +64,7 @@ class TiledDiffusion:
     def __call__(self, model_function, args):
         x, c = args["input"], args["c"]
         if x.ndim != 4:
-            raise ValueError("Tiled Diffusion (Image) only supports 4-D image latents (B,C,H,W)")
+            raise ValueError("Tiled Diffusion (Image) supports 4-D image latents (B,C,H,W) and MiniMax H3 models only")
         if c.get("control") is not None:
             raise ValueError("Tiled Diffusion (Image) does not support ControlNet; remove the tiled MODEL patch or the ControlNet")
         h, w = x.shape[-2:]
@@ -69,7 +91,9 @@ class TiledDiffusion:
 
 
 class DaSiWaTiledDiffusion:
-    DESCRIPTION = "Patches a MODEL so every sampling step denoises overlapping image tiles and blends them, letting any image model sample canvases far larger than its native size."
+    DESCRIPTION = ("Patches a MODEL so every sampling step denoises overlapping image tiles and blends them, letting any image model "
+                   "sample canvases far larger than its native size. MiniMax H3 (video and image) uses the H3 tiler; tile sizes and "
+                   "overlap must then be multiples of 32 px.")
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -79,14 +103,29 @@ class DaSiWaTiledDiffusion:
             "tile_width": ("INT", {**size, "tooltip": "Tile width in pixels (multiple of the model's latent scale, usually 8)."}),
             "tile_height": ("INT", {**size, "tooltip": "Tile height in pixels (multiple of the model's latent scale, usually 8)."}),
             "overlap": ("INT", {"default": 128, "min": 0, "max": 1024, "step": 8, "tooltip": "Overlap between neighbouring tiles in pixels; 64 or more hides seams."}),
+        }, "optional": {
+            "tile_memory_estimate": ("BOOLEAN", {"default": True, "tooltip": "Size ComfyUI's pre-sampling memory reservation for one tile instead of the whole canvas, so the model is not offloaded for memory a tiled step never uses. Changes model residency only, never the result."}),
+            "tile_references": (["full", "crop_video", "crop_all"], {"default": "full", "tooltip": "MiniMax H3 only: what each tile sees of Reference to Video blocks. full: every reference uncropped (character/style). crop_video: reference videos cropped to the tile (video edits). crop_all: reference images too (a picture that is a frame of this shot). Ignored for other models."}),
+            "weight_residency": (["auto", "keep", "stream"], {"default": "auto", "tooltip": "With the tile memory estimate: auto keeps the whole model loaded when it fits beside one tile's working memory, otherwise streams it from RAM with almost nothing resident; keep loads as much as fits; stream keeps as little as possible loaded. Never changes the result."}),
+            "max_resident_gb": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1024.0, "step": 0.5, "tooltip": "With the tile memory estimate, auto/keep: cap the model weights kept on the GPU. 0 = no cap."}),
         }}
 
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "patch"
     CATEGORY = "DaSiWa/Image"
 
-    def patch(self, model, tile_width, tile_height, overlap):
-        downscale = model.model.latent_format.spacial_downscale_ratio
+    def patch(self, model, tile_width, tile_height, overlap, tile_memory_estimate=True, tile_references="full",
+              weight_residency="auto", max_resident_gb=0.0):
+        import comfy.model_base
+        h3 = _h3_tiling()
+        if tile_references not in h3.REFERENCE_MODES:
+            raise ValueError(f"tile_references must be one of {', '.join(h3.REFERENCE_MODES)}")
         patched = model.clone()
-        patched.set_model_unet_function_wrapper(TiledDiffusion(tile_width, tile_height, overlap, downscale))
+        if isinstance(model.model, comfy.model_base.MiniMaxH3):
+            wrapper = h3.H3TiledDiffusion(tile_width, tile_height, overlap, coordinates="local", references=tile_references)
+        else:
+            wrapper = TiledDiffusion(tile_width, tile_height, overlap, model.model.latent_format.spacial_downscale_ratio)
+        patched.set_model_unet_function_wrapper(wrapper)
+        if tile_memory_estimate:
+            h3.install_tile_memory_estimate(patched, wrapper.tile_h, wrapper.tile_w, weight_residency, max_resident_gb)
         return (patched,)

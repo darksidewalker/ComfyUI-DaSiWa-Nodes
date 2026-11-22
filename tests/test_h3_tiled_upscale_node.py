@@ -90,7 +90,7 @@ def test_attention_budget_counts_refs_and_keyframes():
     cond=[[torch.zeros(1,12,8),{'minimax_refs':[{'latent':torch.zeros(1,24,2,4,6)}],
                                'minimax_keyframes':[{'latent':torch.zeros(1,24,1,4,6)}]}]]
     # Native references have 12 rows; one keyframe is sized per tile by the planner.
-    assert u.conditioning_token_counts(cond)==(12,12,1)
+    assert u.conditioning_token_counts(cond)==(12,12,1,0)
 
 
 def test_keyframe_budget_separates_cropped_video_from_native_refs_and_audio():
@@ -99,7 +99,18 @@ def test_keyframe_budget_separates_cropped_video_from_native_refs_and_audio():
                          'audio_latent':torch.zeros(1,32,2,7)}],
         'minimax_keyframes':[{'latent':torch.zeros(1,24,3,90,70),
                               'audio_latent':torch.zeros(1,32,2,5)}]}]]
-    assert u.conditioning_token_counts(cond)==(12,36,3)
+    assert u.conditioning_token_counts(cond)==(12,36,3,0)
+
+
+@pytest.mark.parametrize('crop,expected', [('full',(12,12+8+20,1,0)),('crop_video',(12,8+20,1,12)),('crop_all',(12,20,1,12+8))])
+def test_cropped_reference_rows_are_counted_separately(crop,expected):
+    # One reference video (12 rows), one reference image (8 rows) and reference audio (20 rows, never cropped).
+    cond=[[torch.zeros(1,12,8),{
+        'minimax_refs':[{'kind':'video','latent':torch.zeros(1,24,2,4,6),'latent_h':4,'latent_w':6},
+                        {'kind':'image','latent':torch.zeros(1,24,1,4,8),'latent_h':4,'latent_w':8},
+                        {'kind':'audio','audio_latent':torch.zeros(1,32,2,10)}],
+        'minimax_keyframes':[{'latent':torch.zeros(1,24,1,4,6)}]}]]
+    assert u.conditioning_token_counts(cond,crop=crop)==expected
 
 
 def test_budget_recovers_managed_residency_once_and_respects_cap(monkeypatch):
