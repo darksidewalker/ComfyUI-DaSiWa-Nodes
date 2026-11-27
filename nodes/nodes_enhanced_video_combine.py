@@ -4,11 +4,13 @@ import gc
 import inspect
 import time
 import hashlib
+import json
 import os
 import re
 
 import torch
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 
 import folder_paths
@@ -257,10 +259,22 @@ def _encoded_frame_count(images, pingpong):
     return len(images) + (len(images) - 2 if pingpong and len(images) >= 3 else 0)
 
 
-def _save_frame_exports(images, output_path, save_first_frame, save_last_frame, pingpong=False):
+def _png_metadata(metadata):
+    """Same text chunks as core SaveImage, so dropping the PNG into ComfyUI loads the workflow."""
+    if not metadata:
+        return None
+    info = PngInfo()
+    for key, value in metadata.items():
+        info.add_text(key, json.dumps(value))
+    return info
+
+
+def _save_frame_exports(images, output_path, save_first_frame, save_last_frame, pingpong=False, metadata=None):
     """Write selected source frames beside the encoded video without browser downloads."""
     if not (save_first_frame or save_last_frame):
         return []
+
+    pnginfo = _png_metadata(metadata)
 
     frame_stem = os.path.splitext(output_path)[0]
     exports = []
@@ -273,7 +287,7 @@ def _save_frame_exports(images, output_path, save_first_frame, save_last_frame, 
             continue
         path = f"{frame_stem}-{suffix}-frame.png"
         pixels = torch.round(frame[..., :3].detach().to(device="cpu", dtype=torch.float32).clamp(0, 1) * 255).to(torch.uint8).numpy()
-        Image.fromarray(pixels, mode="RGB").save(path, "PNG")
+        Image.fromarray(pixels, mode="RGB").save(path, "PNG", pnginfo=pnginfo)
         exports.append(path)
     return exports
 
@@ -439,7 +453,7 @@ class DaSiWa_EnhancedVideoCombine:
                 "quality": ("INT", {"default": 20, "min": 0, "max": 51, "description": "Encoding quality for every encoder. 0 is no compression (largest files); higher values increase compression and reduce quality. 20 is the recommended default."}),
                 "log_level": (["Standard", "Verbose"], {"default": "Standard", "description": "Legacy workflow compatibility; logging is always concise."}),
                 "pingpong": ("BOOLEAN", {"default": False, "description": "Append the interior frames in reverse order for seamless forward/reverse playback."}),
-                "save_metadata": ("BOOLEAN", {"default": True, "description": "Embed ComfyUI prompt and workflow metadata for workflow-aware video loaders."}),
+                "save_metadata": ("BOOLEAN", {"default": True, "description": "Embed ComfyUI prompt and workflow metadata for workflow-aware video loaders and in the saved first/last frame PNGs."}),
                 "filename_prefix": ("STRING", {"default": "video_%date:hhmmss%", "description": "Output path/name prefix. Supports %seed%, %date%, and formatted dates such as video/%date:yyyy-MM-dd%/%date:hhmmss%. Connect the optional seed input to expand %seed%."}),
                 "save_output": ("BOOLEAN", {"default": True}),
                 "pass_frames": ("BOOLEAN", {"default": False, "description": "Return the encoded frame sequence for downstream processing."}),
@@ -584,7 +598,7 @@ class DaSiWa_EnhancedVideoCombine:
         output_frames = _pingpong_frames(images, pingpong) if pass_frames else images.new_empty((0, *images.shape[1:]))
         if progress_bar is not None:
             progress_bar.update_absolute(_encoded_frame_count(images, pingpong))
-        frame_exports = _save_frame_exports(images, output_path, save_first_frame, save_last_frame, pingpong)
+        frame_exports = _save_frame_exports(images, output_path, save_first_frame, save_last_frame, pingpong, metadata)
         animated_settings = _animated_image_settings(selected_container)
         mime_types = {"WebM": "video/webm", "MKV": "video/x-matroska", "MP4": "video/mp4", **{name: settings[2] for name, settings in _ANIMATED_IMAGE_SETTINGS.items()}}
         output_mime_type = mime_types[selected_container]

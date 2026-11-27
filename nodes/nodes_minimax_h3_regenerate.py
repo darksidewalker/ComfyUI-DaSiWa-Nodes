@@ -86,7 +86,7 @@ class DaSiWaH3HiResRegenerate:
             'vae': ('VAE', {'tooltip': 'H3 video VAE for optional endpoint image re-encoding, not the audio VAE.'}),
             'start_image': ('IMAGE', {'tooltip': 'Optional explicit first-frame image for target-size re-encoding; requires the H3 video VAE.'}),
             'noise': ('NOISE', {'tooltip': 'Optional ComfyUI noise source replacing the seed-generated refinement noise.'}),
-            'continuity_context': ('DF_H3_CONTINUITY_CONTEXT', {'tooltip': 'Matching Guide continuity context. Follow the Continuity assembly order; protects the old prefix from diffusion refinement.'}),
+            'continuity_context': ('DF_H3_CONTINUITY_CONTEXT', {'tooltip': 'Matching continuity context: Append & Stage context, or Segment Prepare.segment_context in New segment only mode (render_latent → this node → Segment Decode). Protects the old prefix from diffusion refinement.'}),
             'spatial_tiling': ('BOOLEAN', {'default': True,
                 'tooltip': 'Allow automatic spatial tiling. Off samples the full canvas like the reference (more VRAM).'}),
             'denoise': ('FLOAT', {'default': 1.0, 'min': 0.0, 'max': 1.0, 'step': 0.01,

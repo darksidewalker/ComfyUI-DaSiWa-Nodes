@@ -179,7 +179,7 @@ No model monkeypatch is installed. Native tail/window/append code remains the MI
 flowchart LR
     G["Director Guide"] -->|continuity_context| P["Segment Prepare"]
     S["Sampler"] -->|sampled| P
-    P -->|render_latent| U["Optional Enhanced Upscale"]
+    P -->|render_latent| U["Optional Enhanced Upscale or Hi-Res Regenerate"]
     P -.->|segment_context| U
     U -->|LATENT| D["Segment Decode"]
     P -.->|segment_context| D
@@ -188,7 +188,7 @@ flowchart LR
     E -->|filename| X
 ```
 
-Without upscale, connect `Segment Prepare.render_latent` directly to `Segment Decode.latent`. Supply the native H3 video/audio VAEs to Segment Decode. Feed **Segment Prepare.segment_context**, not the Guide's original context, to optional Upscale and Segment Decode. Keep Segment Prepare before spatial upscaling so checkpoints remain at the source canvas.
+Without upscale, connect `Segment Prepare.render_latent` directly to `Segment Decode.latent`. Supply the native H3 video/audio VAEs to Segment Decode. Feed **Segment Prepare.segment_context**, not the Guide's original context, to the `continuity_context` input of optional Enhanced Upscale or Hi-Res Regenerate and to Segment Decode. Keep Segment Prepare before spatial upscaling so checkpoints remain at the source canvas.
 
 [Download the post-sampler node template](../examples/H3_Continuity_Segments.json). This is deliberately a wiring fragment, not a complete model-loading/generation workflow: insert it after your existing sampler, connect its sampled latent and Guide context to Segment Prepare, connect the H3 VAEs to Segment Decode, and select New segment only in Director Advanced. The fragment has been restored through the actual graph loader.
 

@@ -2,9 +2,11 @@
 
 Collection-wide news and change history for the DaSiWa Custom Nodes — one place to see what changed across every node. Per-node deep dives (UI guides, wiring, options) stay in their own docs, linked from the README.
 
-This changelog covers **2026-07-05 → 2026-11-22**. Older history lives in the git log. Entries within each section are listed **newest first**.
+This changelog covers **2026-07-05 → 2026-11-27**. Older history lives in the git log. Entries within each section are listed **newest first**.
 
 ## News
+
+- **Frame PNGs carry the workflow; Hi-Res Regenerate in New segment only (0.5.64):** Enhanced Video Combine's `save_first_frame`/`save_last_frame` PNGs now embed the same `prompt` and `workflow` text chunks as core Save Image whenever `save_metadata` is on (default), so dropping a saved frame into ComfyUI loads the workflow like the video does. With `save_metadata` off they stay plain PNGs. Hi-Res Regenerate can now sit between Segment Prepare and Segment Decode in Director **New segment only** mode (`render_latent` → `latent`, `segment_context` → `continuity_context`); the Python and frontend Segment validators previously accepted only Enhanced Upscale and refused that wiring. No inputs added or reordered. ([#103](https://github.com/darksidewalker/ComfyUI-DaSiWa-Nodes/issues/103))
 
 - **H3 Join and Transition keep MP4 audio on the sample grid (0.5.63):** Join clips joined a 29-frame transition bridge without a hitch while Director → Join clips failed on some systems with *Assembled audio failed presentation-duration readback* — and 12 or 63 frame bridges passed on the same machine. MP4 stores a track's edit list in the *movie* timescale, and FFmpeg 7.1 (PyAV 18, the oldest PyAV this pack supports) uses 1000 ticks/s there, so a bridge that is not a whole millisecond long reads back rounded to milliseconds: 29 frames become 1.208 s instead of 1.208333 s, 16 samples short, and the pack's one-sample readback correctly refuses the clip. FFmpeg 8 (PyAV 19) derives a 48 kHz timescale by itself, which is why the identical workflow passed elsewhere. Every MP4 the pack now writes sets `movie_timescale` 48000 (transition bridge, Join clips, Enhanced Video Combine and its previews), and Continuity publishing accepts a millisecond-rounded declared audio duration — as older FFmpeg and many other encoders write it — instead of rejecting the segment. Node inputs, saved workflows and H3 sample counts are unchanged; DEAS receives this through a node-pack update. Thanks to the reporter for the exact frame matrix; the regression suite now also runs in CI against the oldest supported PyAV, since that is where this class of bug lives.
 
@@ -257,6 +259,7 @@ Quick reference for the version bumps inside this window, newest first:
 
 | Version | Date | Headline |
 |---|---|---|
+| 0.5.64 | 11-27 | Enhanced Video Combine frame PNGs embed prompt/workflow metadata (#103); Hi-Res Regenerate accepted in Continuity New segment only wiring |
 | 0.5.63 | 11-22 | MP4 audio keeps the sample grid: H3 Transition/Join and Video Combine set movie_timescale 48000, Continuity accepts millisecond-rounded audio durations, and CI now tests the oldest supported PyAV |
 | 0.5.62 | 11-21 | H3 tiling sizes ComfyUI's memory reservation for one tile; prefix temporal join and per-tile reference cropping; Tiled Diffusion (Image) supports MiniMax H3 |
 | 0.5.61 | 11-20 | RTX Upscaler/Refiner, Frame Generation and Seamless Loop reuse loaded NVIDIA effects instead of destroying them each run (VRAM growth/slowdown report) |

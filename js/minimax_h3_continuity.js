@@ -58,7 +58,7 @@ export function validateSegmentGraph(output, directorId) {
     if(guide?.class_type!=='MiniMaxH3DirectorGuide'||!linked(guide.inputs?.guide,directorId,0))continue;
     for(const [decodeId,decode]of Object.entries(output)) {
       const latent=decode.inputs?.latent, upscale=output[latent?.[0]];
-      const localLatent=linked(latent,prepareId,0)||(upscale?.class_type==='DaSiWaH3TiledUpscale' && latent?.[1]===0 && linked(upscale.inputs?.latent,prepareId,0) && linked(upscale.inputs?.continuity_context,prepareId,1));
+      const localLatent=linked(latent,prepareId,0)||(['DaSiWaH3TiledUpscale','DaSiWaH3HiResRegenerate'].includes(upscale?.class_type) && latent?.[1]===0 && linked(upscale.inputs?.latent,prepareId,0) && linked(upscale.inputs?.continuity_context,prepareId,1));
       if(decode.class_type!=='DaSiWaH3ContinuitySegmentDecode'||!linked(decode.inputs?.context,prepareId,1)||!localLatent)continue;
       if(Object.values(output).some(node=>node.class_type==='DaSiWaH3ContinuityPublish'&&linked(node.inputs?.ticket,prepareId,2)&&depends(node.inputs?.filename?.[0],decodeId)))return;
     }

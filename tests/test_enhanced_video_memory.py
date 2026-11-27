@@ -142,3 +142,19 @@ def test_vp9_webm_keeps_rgba_alpha(video, tmp_path):
     with av.open(str(path)) as container:
         frames = [frame for packet in container.demux(video=0) for frame in decoder.decode(packet)]
     _assert_left_transparent([frame.to_ndarray(format="rgba")[..., 3] for frame in frames])
+
+
+def test_frame_exports_embed_workflow_metadata_like_save_image(video, tmp_path):
+    import json
+    from PIL import Image
+    images = torch.rand(3, 4, 4, 3)
+    metadata = video._metadata_file({"1": {"class_type": "X"}}, {"workflow": {"nodes": []}})
+    paths = video._save_frame_exports(images, str(tmp_path / "clip.mp4"), True, True, metadata=metadata)
+    assert len(paths) == 2
+    for path in paths:
+        text = Image.open(path).text
+        assert json.loads(text["prompt"]) == {"1": {"class_type": "X"}}
+        assert json.loads(text["workflow"]) == {"nodes": []}
+    # save_metadata off passes None: plain PNGs as before.
+    plain = video._save_frame_exports(images, str(tmp_path / "plain.mp4"), True, False, metadata=None)
+    assert "workflow" not in Image.open(plain[0]).text

@@ -94,7 +94,7 @@ def validate_capture_graph(prompt, guide_id, output_mode="full"):
             seen.add(key)
             node = nodes.get(key, {})
             inputs = node.get("inputs", {})
-            return (node.get("class_type") == "DaSiWaH3TiledUpscale"
+            return (node.get("class_type") in {"DaSiWaH3TiledUpscale", "DaSiWaH3HiResRegenerate"}
                     and linked(inputs.get("continuity_context"), append_id, 1)
                     and render_latent(inputs.get("latent"), seen))
         decoders = [(key,node) for key,node in nodes.items()
@@ -102,7 +102,7 @@ def validate_capture_graph(prompt, guide_id, output_mode="full"):
                     and linked(node.get("inputs",{}).get("context"),append_id,1)
                     and render_latent(node.get("inputs",{}).get("latent"))]
         if len(decoders) != 1:
-            raise ValueError("Wire Segment Prepare.render_latent and segment_context through optional Upscale to one Segment Decode.")
+            raise ValueError("Wire Segment Prepare.render_latent and segment_context through optional Enhanced Upscale or Hi-Res Regenerate to one Segment Decode.")
         decode_id = decoders[0][0]
         images = exporter.get("inputs",{}).get("images")
         # Spatial post-processing may sit between decode and exporter; Publish still checks 24 fps and frame count.
